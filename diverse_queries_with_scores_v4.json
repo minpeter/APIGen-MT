@@ -1,0 +1,439 @@
+[
+    {
+        "q": "What's the current temperature in Berlin?",
+        "max_similarity_score_against_all": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_instructions": {}
+    },
+    {
+        "q": "Show me headlines about climate change from BBC.",
+        "max_similarity_score_against_all": 0.6075,
+        "avg_similarity_score": 0.6075,
+        "most_similar_instructions": {
+            "What's the current temperature in Berlin?": 0.6075
+        }
+    },
+    {
+        "q": "How hot is it in Dubai right now in Fahrenheit?",
+        "max_similarity_score_against_all": 0.7255,
+        "avg_similarity_score": 0.6306,
+        "most_similar_instructions": {
+            "What's the current temperature in Berlin?": 0.7255,
+            "Show me headlines about climate change from BBC.": 0.5356
+        }
+    },
+    {
+        "q": "Find recent updates on artificial intelligence research.",
+        "max_similarity_score_against_all": 0.7293,
+        "avg_similarity_score": 0.6651,
+        "most_similar_instructions": {
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7293,
+            "What's the current temperature in Berlin?": 0.7259,
+            "Show me headlines about climate change from BBC.": 0.5402
+        }
+    },
+    {
+        "q": "Can you tell me the weather here?",
+        "max_similarity_score_against_all": 0.7334,
+        "avg_similarity_score": 0.6582,
+        "most_similar_instructions": {
+            "What's the current temperature in Berlin?": 0.7334,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.6802,
+            "Find recent updates on artificial intelligence research.": 0.643,
+            "Show me headlines about climate change from BBC.": 0.5762
+        }
+    },
+    {
+        "q": "Get me the latest sports news from ESPN.",
+        "max_similarity_score_against_all": 0.6336,
+        "avg_similarity_score": 0.604,
+        "most_similar_instructions": {
+            "Find recent updates on artificial intelligence research.": 0.6336,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.6076,
+            "What's the current temperature in Berlin?": 0.6056,
+            "Show me headlines about climate change from BBC.": 0.5882,
+            "Can you tell me the weather here?": 0.5852
+        }
+    },
+    {
+        "q": "What's the forecast for Madrid this weekend?",
+        "max_similarity_score_against_all": 0.7892,
+        "avg_similarity_score": 0.689,
+        "most_similar_instructions": {
+            "What's the current temperature in Berlin?": 0.7892,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7807,
+            "Can you tell me the weather here?": 0.7597,
+            "Find recent updates on artificial intelligence research.": 0.6931,
+            "Show me headlines about climate change from BBC.": 0.5681,
+            "Get me the latest sports news from ESPN.": 0.543
+        }
+    },
+    {
+        "q": "Retrieve news articles about renewable energy.",
+        "max_similarity_score_against_all": 0.7524,
+        "avg_similarity_score": 0.6523,
+        "most_similar_instructions": {
+            "Find recent updates on artificial intelligence research.": 0.7524,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7217,
+            "What's the forecast for Madrid this weekend?": 0.6787,
+            "What's the current temperature in Berlin?": 0.6663,
+            "Can you tell me the weather here?": 0.6242,
+            "Get me the latest sports news from ESPN.": 0.6099,
+            "Show me headlines about climate change from BBC.": 0.513
+        }
+    },
+    {
+        "q": "Check the weather in San Francisco in Celsius.",
+        "max_similarity_score_against_all": 0.7325,
+        "avg_similarity_score": 0.6329,
+        "most_similar_instructions": {
+            "What's the current temperature in Berlin?": 0.7325,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7242,
+            "What's the forecast for Madrid this weekend?": 0.6733,
+            "Find recent updates on artificial intelligence research.": 0.6664,
+            "Retrieve news articles about renewable energy.": 0.6299,
+            "Can you tell me the weather here?": 0.5888,
+            "Get me the latest sports news from ESPN.": 0.5583,
+            "Show me headlines about climate change from BBC.": 0.4898
+        }
+    },
+    {
+        "q": "Find the latest tech news from TechCrunch.",
+        "max_similarity_score_against_all": 0.7975,
+        "avg_similarity_score": 0.6894,
+        "most_similar_instructions": {
+            "Find recent updates on artificial intelligence research.": 0.7975,
+            "Retrieve news articles about renewable energy.": 0.7508,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7342,
+            "Check the weather in San Francisco in Celsius.": 0.7209,
+            "What's the current temperature in Berlin?": 0.7118,
+            "Get me the latest sports news from ESPN.": 0.6709,
+            "What's the forecast for Madrid this weekend?": 0.6644,
+            "Can you tell me the weather here?": 0.5965,
+            "Show me headlines about climate change from BBC.": 0.5576
+        }
+    },
+    {
+        "q": "Show me breaking news stories related to cybersecurity threats.",
+        "max_similarity_score_against_all": 0.7857,
+        "avg_similarity_score": 0.7169,
+        "most_similar_instructions": {
+            "Retrieve news articles about renewable energy.": 0.7857,
+            "Can you tell me the weather here?": 0.7767,
+            "What's the forecast for Madrid this weekend?": 0.7661,
+            "Find recent updates on artificial intelligence research.": 0.7645,
+            "What's the current temperature in Berlin?": 0.764,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7239,
+            "Find the latest tech news from TechCrunch.": 0.6844,
+            "Get me the latest sports news from ESPN.": 0.6609,
+            "Show me headlines about climate change from BBC.": 0.626,
+            "Check the weather in San Francisco in Celsius.": 0.6172
+        }
+    },
+    {
+        "q": "Search for opinion pieces on education reform in Asia.",
+        "max_similarity_score_against_all": 0.795,
+        "avg_similarity_score": 0.6797,
+        "most_similar_instructions": {
+            "Find recent updates on artificial intelligence research.": 0.795,
+            "What's the current temperature in Berlin?": 0.7465,
+            "Check the weather in San Francisco in Celsius.": 0.7442,
+            "Show me breaking news stories related to cybersecurity threats.": 0.7273,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.6951,
+            "Find the latest tech news from TechCrunch.": 0.6716,
+            "Retrieve news articles about renewable energy.": 0.6679,
+            "What's the forecast for Madrid this weekend?": 0.654,
+            "Get me the latest sports news from ESPN.": 0.6142,
+            "Can you tell me the weather here?": 0.6088
+        }
+    },
+    {
+        "q": "Display precipitation chances for Chicago at 3 PM today.",
+        "max_similarity_score_against_all": 0.7759,
+        "avg_similarity_score": 0.6838,
+        "most_similar_instructions": {
+            "Search for opinion pieces on education reform in Asia.": 0.7759,
+            "Check the weather in San Francisco in Celsius.": 0.7755,
+            "Find recent updates on artificial intelligence research.": 0.7376,
+            "What's the current temperature in Berlin?": 0.7138,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.699,
+            "Show me breaking news stories related to cybersecurity threats.": 0.6952,
+            "Find the latest tech news from TechCrunch.": 0.695,
+            "What's the forecast for Madrid this weekend?": 0.6856,
+            "Get me the latest sports news from ESPN.": 0.635,
+            "Can you tell me the weather here?": 0.6302
+        }
+    },
+    {
+        "q": "Get humidity levels for Singapore next Monday.",
+        "max_similarity_score_against_all": 0.7371,
+        "avg_similarity_score": 0.6813,
+        "most_similar_instructions": {
+            "Show me breaking news stories related to cybersecurity threats.": 0.7371,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7359,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.7284,
+            "Find recent updates on artificial intelligence research.": 0.7079,
+            "Retrieve news articles about renewable energy.": 0.7058,
+            "What's the current temperature in Berlin?": 0.6911,
+            "Check the weather in San Francisco in Celsius.": 0.6886,
+            "Search for opinion pieces on education reform in Asia.": 0.6779,
+            "What's the forecast for Madrid this weekend?": 0.6721,
+            "Can you tell me the weather here?": 0.6719
+        }
+    },
+    {
+        "q": "Show political analysis from BBC regarding upcoming elections.",
+        "max_similarity_score_against_all": 0.7894,
+        "avg_similarity_score": 0.6419,
+        "most_similar_instructions": {
+            "Show me headlines about climate change from BBC.": 0.7894,
+            "Show me breaking news stories related to cybersecurity threats.": 0.6938,
+            "Search for opinion pieces on education reform in Asia.": 0.6905,
+            "Get me the latest sports news from ESPN.": 0.6585,
+            "What's the current temperature in Berlin?": 0.6548,
+            "Find recent updates on artificial intelligence research.": 0.6517,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.6345,
+            "Get humidity levels for Singapore next Monday.": 0.6329,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.6301,
+            "Check the weather in San Francisco in Celsius.": 0.6216
+        }
+    },
+    {
+        "q": "Find recent updates on Mars rover missions from NASA's blog.",
+        "max_similarity_score_against_all": 0.7329,
+        "avg_similarity_score": 0.6575,
+        "most_similar_instructions": {
+            "Find recent updates on artificial intelligence research.": 0.7329,
+            "Find the latest tech news from TechCrunch.": 0.7113,
+            "Search for opinion pieces on education reform in Asia.": 0.6873,
+            "What's the current temperature in Berlin?": 0.6758,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.6742,
+            "Show political analysis from BBC regarding upcoming elections.": 0.674,
+            "Show me breaking news stories related to cybersecurity threats.": 0.6659,
+            "Check the weather in San Francisco in Celsius.": 0.6555,
+            "Show me headlines about climate change from BBC.": 0.6555,
+            "What's the forecast for Madrid this weekend?": 0.655
+        }
+    },
+    {
+        "q": "Check the local weather using my current location in kelvin units.",
+        "max_similarity_score_against_all": 0.7855,
+        "avg_similarity_score": 0.7135,
+        "most_similar_instructions": {
+            "What's the current temperature in Berlin?": 0.7855,
+            "Check the weather in San Francisco in Celsius.": 0.7759,
+            "Find recent updates on artificial intelligence research.": 0.7759,
+            "Show me breaking news stories related to cybersecurity threats.": 0.773,
+            "Search for opinion pieces on education reform in Asia.": 0.766,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.7562,
+            "Get humidity levels for Singapore next Monday.": 0.7268,
+            "Show political analysis from BBC regarding upcoming elections.": 0.7229,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7214,
+            "Find the latest tech news from TechCrunch.": 0.7031
+        }
+    },
+    {
+        "q": "Find celebrity gossip headlines about Hollywood award shows from TMZ.",
+        "max_similarity_score_against_all": 0.751,
+        "avg_similarity_score": 0.6744,
+        "most_similar_instructions": {
+            "Find the latest tech news from TechCrunch.": 0.751,
+            "What's the forecast for Madrid this weekend?": 0.7413,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.7317,
+            "Retrieve news articles about renewable energy.": 0.7193,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7178,
+            "Find recent updates on Mars rover missions from NASA's blog.": 0.7057,
+            "Find recent updates on artificial intelligence research.": 0.705,
+            "Show me breaking news stories related to cybersecurity threats.": 0.694,
+            "Get humidity levels for Singapore next Monday.": 0.6835,
+            "Check the weather in San Francisco in Celsius.": 0.6778
+        }
+    },
+    {
+        "q": "Retrieve the latest health news regarding COVID-19 variants.",
+        "max_similarity_score_against_all": 0.748,
+        "avg_similarity_score": 0.6186,
+        "most_similar_instructions": {
+            "Retrieve news articles about renewable energy.": 0.748,
+            "Find celebrity gossip headlines about Hollywood award shows from TMZ.": 0.7305,
+            "Find the latest tech news from TechCrunch.": 0.6589,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.6516,
+            "Show me breaking news stories related to cybersecurity threats.": 0.6466,
+            "Get humidity levels for Singapore next Monday.": 0.6419,
+            "Find recent updates on Mars rover missions from NASA's blog.": 0.6412,
+            "Find recent updates on artificial intelligence research.": 0.6349,
+            "Search for opinion pieces on education reform in Asia.": 0.6326,
+            "What's the current temperature in Berlin?": 0.6019
+        }
+    },
+    {
+        "q": "Any updates on the Tokyo Olympics?",
+        "max_similarity_score_against_all": 0.7649,
+        "avg_similarity_score": 0.6869,
+        "most_similar_instructions": {
+            "Search for opinion pieces on education reform in Asia.": 0.7649,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7571,
+            "What's the current temperature in Berlin?": 0.7527,
+            "Find recent updates on artificial intelligence research.": 0.7483,
+            "Check the weather in San Francisco in Celsius.": 0.7344,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.7298,
+            "Find the latest tech news from TechCrunch.": 0.7151,
+            "Show me breaking news stories related to cybersecurity threats.": 0.7122,
+            "What's the forecast for Madrid this weekend?": 0.7087,
+            "Check the local weather using my current location in kelvin units.": 0.7064
+        }
+    },
+    {
+        "q": "Is hail expected in Denver today?",
+        "max_similarity_score_against_all": 0.7788,
+        "avg_similarity_score": 0.6739,
+        "most_similar_instructions": {
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7788,
+            "Can you tell me the weather here?": 0.7549,
+            "Show me breaking news stories related to cybersecurity threats.": 0.7452,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.7376,
+            "What's the forecast for Madrid this weekend?": 0.7326,
+            "Get humidity levels for Singapore next Monday.": 0.7292,
+            "Any updates on the Tokyo Olympics?": 0.7182,
+            "Search for opinion pieces on education reform in Asia.": 0.7134,
+            "What's the current temperature in Berlin?": 0.7104,
+            "Find recent updates on artificial intelligence research.": 0.6992
+        }
+    },
+    {
+        "q": "Fetch headlines on AI ethics debates from Wired.",
+        "max_similarity_score_against_all": 0.7673,
+        "avg_similarity_score": 0.6954,
+        "most_similar_instructions": {
+            "Find the latest tech news from TechCrunch.": 0.7673,
+            "Any updates on the Tokyo Olympics?": 0.7582,
+            "Find recent updates on artificial intelligence research.": 0.7516,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7468,
+            "Is hail expected in Denver today?": 0.7367,
+            "Retrieve news articles about renewable energy.": 0.7344,
+            "Check the weather in San Francisco in Celsius.": 0.7316,
+            "Search for opinion pieces on education reform in Asia.": 0.7279,
+            "Find celebrity gossip headlines about Hollywood award shows from TMZ.": 0.7234,
+            "Retrieve the latest health news regarding COVID-19 variants.": 0.7086
+        }
+    },
+    {
+        "q": "Does Mumbai require an umbrella at this moment?",
+        "max_similarity_score_against_all": 0.7955,
+        "avg_similarity_score": 0.6875,
+        "most_similar_instructions": {
+            "Any updates on the Tokyo Olympics?": 0.7955,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7952,
+            "Retrieve news articles about renewable energy.": 0.7335,
+            "What's the current temperature in Berlin?": 0.7306,
+            "Check the local weather using my current location in kelvin units.": 0.7179,
+            "Fetch headlines on AI ethics debates from Wired.": 0.7173,
+            "Check the weather in San Francisco in Celsius.": 0.7109,
+            "Search for opinion pieces on education reform in Asia.": 0.7071,
+            "Show me breaking news stories related to cybersecurity threats.": 0.7059,
+            "Find recent updates on artificial intelligence research.": 0.7056
+        }
+    },
+    {
+        "q": "Compile biotechnology innovation stories from Nature Journal.",
+        "max_similarity_score_against_all": 0.7478,
+        "avg_similarity_score": 0.6457,
+        "most_similar_instructions": {
+            "Any updates on the Tokyo Olympics?": 0.7478,
+            "Check the weather in San Francisco in Celsius.": 0.7477,
+            "Find the latest tech news from TechCrunch.": 0.7253,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.7133,
+            "Find recent updates on artificial intelligence research.": 0.7097,
+            "Fetch headlines on AI ethics debates from Wired.": 0.7083,
+            "Get humidity levels for Singapore next Monday.": 0.7013,
+            "Search for opinion pieces on education reform in Asia.": 0.6954,
+            "Does Mumbai require an umbrella at this moment?": 0.6885,
+            "Check the local weather using my current location in kelvin units.": 0.6868
+        }
+    },
+    {
+        "q": "What's the humidity level in São Paulo right now?",
+        "max_similarity_score_against_all": 0.7757,
+        "avg_similarity_score": 0.6702,
+        "most_similar_instructions": {
+            "Get humidity levels for Singapore next Monday.": 0.7757,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7722,
+            "What's the current temperature in Berlin?": 0.7505,
+            "What's the forecast for Madrid this weekend?": 0.7501,
+            "Show me breaking news stories related to cybersecurity threats.": 0.735,
+            "Can you tell me the weather here?": 0.7206,
+            "Display precipitation chances for Chicago at 3 PM today.": 0.692,
+            "Any updates on the Tokyo Olympics?": 0.6918,
+            "Does Mumbai require an umbrella at this moment?": 0.6805,
+            "Is hail expected in Denver today?": 0.6746
+        }
+    },
+    {
+        "q": "Give me the top stories about renewable energy from CNN.",
+        "max_similarity_score_against_all": 0.6879,
+        "avg_similarity_score": 0.621,
+        "most_similar_instructions": {
+            "Show me headlines about climate change from BBC.": 0.6879,
+            "Find celebrity gossip headlines about Hollywood award shows from TMZ.": 0.6833,
+            "Fetch headlines on AI ethics debates from Wired.": 0.6817,
+            "Find recent updates on Mars rover missions from NASA's blog.": 0.662,
+            "Show me breaking news stories related to cybersecurity threats.": 0.6525,
+            "Search for opinion pieces on education reform in Asia.": 0.6487,
+            "What's the current temperature in Berlin?": 0.6449,
+            "Find recent updates on artificial intelligence research.": 0.6331,
+            "Show political analysis from BBC regarding upcoming elections.": 0.6291,
+            "Find the latest tech news from TechCrunch.": 0.627
+        }
+    },
+    {
+        "q": "Get the temperature in Dubai with Kelvin units.",
+        "max_similarity_score_against_all": 0.7999,
+        "avg_similarity_score": 0.6887,
+        "most_similar_instructions": {
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7999,
+            "Check the local weather using my current location in kelvin units.": 0.7747,
+            "Check the weather in San Francisco in Celsius.": 0.7725,
+            "Does Mumbai require an umbrella at this moment?": 0.7684,
+            "What's the current temperature in Berlin?": 0.7473,
+            "Any updates on the Tokyo Olympics?": 0.7406,
+            "Get humidity levels for Singapore next Monday.": 0.739,
+            "Retrieve news articles about renewable energy.": 0.7379,
+            "Fetch headlines on AI ethics debates from Wired.": 0.7375,
+            "Find the latest tech news from TechCrunch.": 0.7355
+        }
+    },
+    {
+        "q": "Will I need a jacket in Chicago tonight?",
+        "max_similarity_score_against_all": 0.7731,
+        "avg_similarity_score": 0.6786,
+        "most_similar_instructions": {
+            "Display precipitation chances for Chicago at 3 PM today.": 0.7731,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.7525,
+            "Is hail expected in Denver today?": 0.7466,
+            "What's the humidity level in São Paulo right now?": 0.7462,
+            "What's the forecast for Madrid this weekend?": 0.7459,
+            "Can you tell me the weather here?": 0.743,
+            "Find celebrity gossip headlines about Hollywood award shows from TMZ.": 0.7367,
+            "What's the current temperature in Berlin?": 0.7135,
+            "Find the latest tech news from TechCrunch.": 0.7097,
+            "Any updates on the Tokyo Olympics?": 0.704
+        }
+    },
+    {
+        "q": "Find recent articles on sustainable architecture from ArchDaily.",
+        "max_similarity_score_against_all": 0.7875,
+        "avg_similarity_score": 0.6427,
+        "most_similar_instructions": {
+            "Find recent updates on artificial intelligence research.": 0.7875,
+            "Find the latest tech news from TechCrunch.": 0.7478,
+            "Fetch headlines on AI ethics debates from Wired.": 0.7395,
+            "Retrieve news articles about renewable energy.": 0.7026,
+            "Show me breaking news stories related to cybersecurity threats.": 0.6984,
+            "What's the forecast for Madrid this weekend?": 0.6821,
+            "How hot is it in Dubai right now in Fahrenheit?": 0.6791,
+            "Search for opinion pieces on education reform in Asia.": 0.6771,
+            "Is hail expected in Denver today?": 0.6762,
+            "Find recent updates on Mars rover missions from NASA's blog.": 0.673
+        }
+    }
+]
