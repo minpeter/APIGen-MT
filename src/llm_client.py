@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-import requests, os, json
+import requests, os, json, re
 from transformers import AutoTokenizer
 
 
@@ -34,10 +34,12 @@ class LLMClient:
         if messages[-1]["role"] == "assistant":
             # prefill = True
             prompt = self.__apply_chat_template(messages, prefill=True)
-            return self.completions(
+            response = self.completions(
                 prompt=prompt,
                 kwargs=kwargs,
             )
+            # reasoning parser not working, if prefill is True
+            return response, ""
         else:
             # prefill = False
             payload = {
@@ -52,7 +54,13 @@ class LLMClient:
                 json=payload,
             ).json()["choices"][0]["message"]["content"]
 
-            return response
+            think_match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
+            reasoning = think_match.group(1).strip() if think_match else ""
+            response_wo_think = re.sub(
+                r"<think>.*?</think>", "", response, flags=re.DOTALL
+            ).strip()
+
+            return response_wo_think, reasoning
 
     def completions(self, prompt: str, kwargs) -> str:
         payload = {
@@ -123,22 +131,23 @@ if __name__ == "__main__":
     # Example usage
     llm_client = LLMClient()
 
-    # response = llm_client.chat(
-    #     messages=[{"role": "user", "content": "Hello, how are you?"}],
-    #     kwargs={"temperature": 0.7},
-    # )
+    response = llm_client.chat(
+        messages=[{"role": "user", "content": "1+1=?"}],
+        kwargs={"temperature": 0.7},
+    )
     # response = llm_client.completions(
     #     prompt="Hello, how are you?",
     #     kwargs={"stop": ["\n"]},
     # )
 
-    class extraction_schema(BaseModel):
-        name: str
-        age: int
+    # class extraction_schema(BaseModel):
+    #     name: str
+    #     age: int
 
-    response = llm_client.structured_output(
-        extraction_target="Extract the name and age from this text: John Doe, 30 years old.",
-        extraction_schema=extraction_schema,
-        reasoning=True,
-    )
+    # response = llm_client.structured_output(
+    #     extraction_target="Extract the name and age from this text: John Doe, 30 years old.",
+    #     extraction_schema=extraction_schema,
+    #     reasoning=True,
+    # )
+
     print(response)
