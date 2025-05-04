@@ -16,12 +16,14 @@ name = "apigen-mt"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "function-schema" },
     { name = "pydantic" },
     { name = "transformers" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "function-schema", specifier = ">=0.4.5" },
     { name = "pydantic", specifier = ">=2.11.4" },
     { name = "transformers", specifier = ">=4.51.3" },
 ]
@@ -82,6 +84,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/45/d8/8425e6ba5fcec61a1d16e41b1b71d2bf9344f1fe48012c2b48b9620feae5/fsspec-2025.3.2.tar.gz", hash = "sha256:e52c77ef398680bbd6a98c0e628fbc469491282981209907bbc8aea76a04fdc6", size = 299281 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/44/4b/e0cfc1a6f17e990f3e64b7d941ddc4acdc7b19d6edd51abf495f32b1a9e4/fsspec-2025.3.2-py3-none-any.whl", hash = "sha256:2daf8dc3d1dfa65b6aa37748d112773a7a08416f6c70d96b264c96476ecaf711", size = 194435 },
+]
+
+[[package]]
+name = "function-schema"
+version = "0.4.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2b/0e/3046a510678c5e714cd8001948408018f236d2ba8daff43598962db87682/function_schema-0.4.5.tar.gz", hash = "sha256:98cb074089f9d64499b66875f6b9ad86745d9133f8c627566fd1cca863e6a79e", size = 6088 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/7b/ff5677ffd205b657a765f4ac209e892e0464d49e54bdafd8655654405cc6/function_schema-0.4.5-py3-none-any.whl", hash = "sha256:1b34fea31ecb25b643056b35f1be17b78639fd39aceff8a3de4673795b59a2d2", size = 7822 },
 ]
 
 [[package]]

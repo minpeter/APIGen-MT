@@ -77,18 +77,28 @@ class LLMClient:
 
         return response
 
-    def structured_output(
+    def json_output(
         self,
-        extraction_target: str,
-        extraction_schema: BaseModel,
+        prompt: str,
+        system_prompt: str = None,
+        schema: BaseModel = None,
         reasoning: bool = True,
     ):
-        extraction_system_prompt = f"""Extract the information.
-        follow the schema: {extraction_schema.model_json_schema()}
-        """
+        if not system_prompt and schema is not None:
+            system_prompt = f"""Extract the information.
+            follow the schema: {schema.model_json_schema()}
+            """
+
+        if system_prompt is None:
+            system_prompt = (
+                "You are an information extraction assistant. "
+                "Extract the required information from the user's input and respond ONLY with a valid, minified JSON object. "
+                "Do not include any explanations or extra text. "
+            )
+
         messages = [
-            {"role": "system", "content": extraction_system_prompt},
-            {"role": "user", "content": extraction_target},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
         ]
         if reasoning:
             reasoning_messages = [
@@ -98,56 +108,66 @@ class LLMClient:
                     "content": "<think>\n",
                 },
             ]
-            reasoning = self.chat(
+            # if prefill is True, reasoning parser not working
+            reasoning_str, _ = self.chat(
                 messages=reasoning_messages,
                 kwargs={
                     "stop": ["</think>"],
                 },
             )
         else:
-            reasoning = ""
+            reasoning_str = ""
 
         final_messages = [
             *messages,
-            {"role": "assistant", "content": "<think>\n" + reasoning + "\n</think>\n"},
+            {
+                "role": "assistant",
+                "content": "<think>\n" + reasoning_str + "\n</think>\n",
+            },
         ]
 
-        raw_json = self.chat(
+        if schema is not None:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "schema": schema.model_json_schema(),
+                },
+            }
+        else:
+            response_format = {
+                "type": "json_object",
+            }
+
+        # if prefill is True, reasoning parser not working
+        raw_json, _ = self.chat(
             messages=final_messages,
-            kwargs={
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "schema": extraction_schema.model_json_schema(),
-                    },
-                }
-            },
+            kwargs={"response_format": response_format},
         )
         parsed = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
-        return parsed, reasoning
+        return parsed, reasoning_str
 
 
 if __name__ == "__main__":
     # Example usage
     llm_client = LLMClient()
 
-    response = llm_client.chat(
-        messages=[{"role": "user", "content": "1+1=?"}],
-        kwargs={"temperature": 0.7},
-    )
+    # response = llm_client.chat(
+    #     messages=[{"role": "user", "content": "1+1=?"}],
+    #     kwargs={"temperature": 0.7},
+    # )
     # response = llm_client.completions(
     #     prompt="Hello, how are you?",
     #     kwargs={"stop": ["\n"]},
     # )
 
-    # class extraction_schema(BaseModel):
-    #     name: str
-    #     age: int
+    class schema(BaseModel):
+        name: str
+        age: int
 
-    # response = llm_client.structured_output(
-    #     extraction_target="Extract the name and age from this text: John Doe, 30 years old.",
-    #     extraction_schema=extraction_schema,
-    #     reasoning=True,
-    # )
+    response = llm_client.json_output(
+        prompt="Extract the name and age from this text: John Doe, 30 years old.",
+        # schema=schema,
+        reasoning=True,
+    )
 
     print(response)
