@@ -1,0 +1,182 @@
+[
+    {
+        "q": "What's the current temperature in Tokyo using Fahrenheit?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Show headlines about renewable energy innovations.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Where am I located right now?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Check if it's snowing in Toronto today.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Get latest updates on artificial intelligence research from Nature journal.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "How's the weather looking in Dubai this afternoon?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Find news articles about Mars rover discoveries.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "What's the temperature here in Celsius?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Can you check the weather for my current location?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Fetch recent business news from Bloomberg.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Will it rain in San Francisco tomorrow?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "How humid is Bangkok right now in Fahrenheit?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Show me the latest headlines about quantum computing.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "What's the temperature in my current location using Kelvin?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Find news on the upcoming Olympics from BBC.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Is there a heatwave predicted for Madrid this week?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Get me updates on cybersecurity breaches this month.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "What's the wind speed like in Chicago today?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Any breaking news on climate change policies?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Can you check the weather in Reykjavik for hiking conditions?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "What's the humidity level in Bangkok right now?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Show me the latest news on artificial intelligence from MIT Tech Review.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Will it rain in London tomorrow?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Find updates on the ongoing peace talks in the Middle East.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "What's the temperature in New York in Fahrenheit?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Get me the top business news from Bloomberg.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Is there any news about the Mars rover mission?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "Check the weather in Tokyo for the next three days.",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "What are the headlines on climate change today?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    },
+    {
+        "q": "How cold is it in Moscow right now?",
+        "max_similarity_score": 0.0,
+        "avg_similarity_score": 0.0,
+        "most_similar_queries": {}
+    }
+]
