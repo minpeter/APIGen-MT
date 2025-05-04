@@ -1,439 +1,371 @@
 [
     {
-        "q": "What's the current temperature in Berlin?",
+        "q": "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM",
         "max_similarity_score_against_all": 0.0,
         "avg_similarity_score": 0.0,
         "most_similar_instructions": {}
     },
     {
-        "q": "Show me headlines about climate change from BBC.",
-        "max_similarity_score_against_all": 0.6075,
-        "avg_similarity_score": 0.6075,
+        "q": "Show my calendar events between October 1st and October 7th",
+        "max_similarity_score_against_all": 0.6674,
+        "avg_similarity_score": 0.6674,
         "most_similar_instructions": {
-            "What's the current temperature in Berlin?": 0.6075
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.6674
         }
     },
     {
-        "q": "How hot is it in Dubai right now in Fahrenheit?",
-        "max_similarity_score_against_all": 0.7255,
-        "avg_similarity_score": 0.6306,
+        "q": "Find recent news about quantum computing breakthroughs",
+        "max_similarity_score_against_all": 0.7878,
+        "avg_similarity_score": 0.7303,
         "most_similar_instructions": {
-            "What's the current temperature in Berlin?": 0.7255,
-            "Show me headlines about climate change from BBC.": 0.5356
+            "Show my calendar events between October 1st and October 7th": 0.7878,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.6729
         }
     },
     {
-        "q": "Find recent updates on artificial intelligence research.",
-        "max_similarity_score_against_all": 0.7293,
-        "avg_similarity_score": 0.6651,
+        "q": "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?",
+        "max_similarity_score_against_all": 0.7286,
+        "avg_similarity_score": 0.6791,
         "most_similar_instructions": {
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7293,
-            "What's the current temperature in Berlin?": 0.7259,
-            "Show me headlines about climate change from BBC.": 0.5402
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.7286,
+            "Show my calendar events between October 1st and October 7th": 0.6822,
+            "Find recent news about quantum computing breakthroughs": 0.6264
         }
     },
     {
-        "q": "Can you tell me the weather here?",
-        "max_similarity_score_against_all": 0.7334,
-        "avg_similarity_score": 0.6582,
+        "q": "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar",
+        "max_similarity_score_against_all": 0.7944,
+        "avg_similarity_score": 0.7466,
         "most_similar_instructions": {
-            "What's the current temperature in Berlin?": 0.7334,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.6802,
-            "Find recent updates on artificial intelligence research.": 0.643,
-            "Show me headlines about climate change from BBC.": 0.5762
+            "Find recent news about quantum computing breakthroughs": 0.7944,
+            "Show my calendar events between October 1st and October 7th": 0.7874,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.716,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.6886
         }
     },
     {
-        "q": "Get me the latest sports news from ESPN.",
-        "max_similarity_score_against_all": 0.6336,
-        "avg_similarity_score": 0.604,
+        "q": "Create an all-day event called \"Anniversary\" on 2024-05-21",
+        "max_similarity_score_against_all": 0.7637,
+        "avg_similarity_score": 0.6573,
         "most_similar_instructions": {
-            "Find recent updates on artificial intelligence research.": 0.6336,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.6076,
-            "What's the current temperature in Berlin?": 0.6056,
-            "Show me headlines about climate change from BBC.": 0.5882,
-            "Can you tell me the weather here?": 0.5852
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.7637,
+            "Show my calendar events between October 1st and October 7th": 0.6939,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.6584,
+            "Find recent news about quantum computing breakthroughs": 0.5905,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.58
         }
     },
     {
-        "q": "What's the forecast for Madrid this weekend?",
-        "max_similarity_score_against_all": 0.7892,
-        "avg_similarity_score": 0.689,
+        "q": "What’s my availability like next Wednesday morning?",
+        "max_similarity_score_against_all": 0.792,
+        "avg_similarity_score": 0.6849,
         "most_similar_instructions": {
-            "What's the current temperature in Berlin?": 0.7892,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7807,
-            "Can you tell me the weather here?": 0.7597,
-            "Find recent updates on artificial intelligence research.": 0.6931,
-            "Show me headlines about climate change from BBC.": 0.5681,
-            "Get me the latest sports news from ESPN.": 0.543
+            "Show my calendar events between October 1st and October 7th": 0.792,
+            "Find recent news about quantum computing breakthroughs": 0.7709,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7264,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.6193,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.606,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.5945
         }
     },
     {
-        "q": "Retrieve news articles about renewable energy.",
-        "max_similarity_score_against_all": 0.7524,
-        "avg_similarity_score": 0.6523,
+        "q": "Display all events from December 20th to December 31st",
+        "max_similarity_score_against_all": 0.7477,
+        "avg_similarity_score": 0.6727,
         "most_similar_instructions": {
-            "Find recent updates on artificial intelligence research.": 0.7524,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7217,
-            "What's the forecast for Madrid this weekend?": 0.6787,
-            "What's the current temperature in Berlin?": 0.6663,
-            "Can you tell me the weather here?": 0.6242,
-            "Get me the latest sports news from ESPN.": 0.6099,
-            "Show me headlines about climate change from BBC.": 0.513
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.7477,
+            "Show my calendar events between October 1st and October 7th": 0.6906,
+            "Find recent news about quantum computing breakthroughs": 0.6882,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.6745,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.6588,
+            "What’s my availability like next Wednesday morning?": 0.6342,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.6148
         }
     },
     {
-        "q": "Check the weather in San Francisco in Celsius.",
-        "max_similarity_score_against_all": 0.7325,
-        "avg_similarity_score": 0.6329,
+        "q": "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"",
+        "max_similarity_score_against_all": 0.7961,
+        "avg_similarity_score": 0.7245,
         "most_similar_instructions": {
-            "What's the current temperature in Berlin?": 0.7325,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7242,
-            "What's the forecast for Madrid this weekend?": 0.6733,
-            "Find recent updates on artificial intelligence research.": 0.6664,
-            "Retrieve news articles about renewable energy.": 0.6299,
-            "Can you tell me the weather here?": 0.5888,
-            "Get me the latest sports news from ESPN.": 0.5583,
-            "Show me headlines about climate change from BBC.": 0.4898
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.7961,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.7839,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.774,
+            "Show my calendar events between October 1st and October 7th": 0.713,
+            "Find recent news about quantum computing breakthroughs": 0.7104,
+            "Display all events from December 20th to December 31st": 0.7067,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.6601,
+            "What’s my availability like next Wednesday morning?": 0.6514
         }
     },
     {
-        "q": "Find the latest tech news from TechCrunch.",
-        "max_similarity_score_against_all": 0.7975,
-        "avg_similarity_score": 0.6894,
+        "q": "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries",
+        "max_similarity_score_against_all": 0.7842,
+        "avg_similarity_score": 0.7035,
         "most_similar_instructions": {
-            "Find recent updates on artificial intelligence research.": 0.7975,
-            "Retrieve news articles about renewable energy.": 0.7508,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7342,
-            "Check the weather in San Francisco in Celsius.": 0.7209,
-            "What's the current temperature in Berlin?": 0.7118,
-            "Get me the latest sports news from ESPN.": 0.6709,
-            "What's the forecast for Madrid this weekend?": 0.6644,
-            "Can you tell me the weather here?": 0.5965,
-            "Show me headlines about climate change from BBC.": 0.5576
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7842,
+            "Show my calendar events between October 1st and October 7th": 0.7422,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.7277,
+            "Find recent news about quantum computing breakthroughs": 0.7273,
+            "What’s my availability like next Wednesday morning?": 0.6819,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.6803,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.6697,
+            "Display all events from December 20th to December 31st": 0.6675,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.6505
         }
     },
     {
-        "q": "Show me breaking news stories related to cybersecurity threats.",
-        "max_similarity_score_against_all": 0.7857,
-        "avg_similarity_score": 0.7169,
+        "q": "Search the web for the latest AI conference dates in 2024",
+        "max_similarity_score_against_all": 0.7482,
+        "avg_similarity_score": 0.6564,
         "most_similar_instructions": {
-            "Retrieve news articles about renewable energy.": 0.7857,
-            "Can you tell me the weather here?": 0.7767,
-            "What's the forecast for Madrid this weekend?": 0.7661,
-            "Find recent updates on artificial intelligence research.": 0.7645,
-            "What's the current temperature in Berlin?": 0.764,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7239,
-            "Find the latest tech news from TechCrunch.": 0.6844,
-            "Get me the latest sports news from ESPN.": 0.6609,
-            "Show me headlines about climate change from BBC.": 0.626,
-            "Check the weather in San Francisco in Celsius.": 0.6172
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.7482,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.7391,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7212,
+            "Show my calendar events between October 1st and October 7th": 0.7176,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.6557,
+            "Find recent news about quantum computing breakthroughs": 0.6342,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.6279,
+            "Display all events from December 20th to December 31st": 0.6107,
+            "What’s my availability like next Wednesday morning?": 0.5832,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.5259
         }
     },
     {
-        "q": "Search for opinion pieces on education reform in Asia.",
-        "max_similarity_score_against_all": 0.795,
-        "avg_similarity_score": 0.6797,
+        "q": "Authorize access to manage my calendar events",
+        "max_similarity_score_against_all": 0.7701,
+        "avg_similarity_score": 0.6942,
         "most_similar_instructions": {
-            "Find recent updates on artificial intelligence research.": 0.795,
-            "What's the current temperature in Berlin?": 0.7465,
-            "Check the weather in San Francisco in Celsius.": 0.7442,
-            "Show me breaking news stories related to cybersecurity threats.": 0.7273,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.6951,
-            "Find the latest tech news from TechCrunch.": 0.6716,
-            "Retrieve news articles about renewable energy.": 0.6679,
-            "What's the forecast for Madrid this weekend?": 0.654,
-            "Get me the latest sports news from ESPN.": 0.6142,
-            "Can you tell me the weather here?": 0.6088
+            "Find recent news about quantum computing breakthroughs": 0.7701,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7612,
+            "Show my calendar events between October 1st and October 7th": 0.7483,
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.7256,
+            "What’s my availability like next Wednesday morning?": 0.6962,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.6878,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.6766,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.6613,
+            "Display all events from December 20th to December 31st": 0.6567,
+            "Search the web for the latest AI conference dates in 2024": 0.6504
         }
     },
     {
-        "q": "Display precipitation chances for Chicago at 3 PM today.",
-        "max_similarity_score_against_all": 0.7759,
-        "avg_similarity_score": 0.6838,
+        "q": "Create a marketing team meeting on June 5th, 2024 from 1:30 PM to 2:30 PM",
+        "max_similarity_score_against_all": 0.7613,
+        "avg_similarity_score": 0.6612,
         "most_similar_instructions": {
-            "Search for opinion pieces on education reform in Asia.": 0.7759,
-            "Check the weather in San Francisco in Celsius.": 0.7755,
-            "Find recent updates on artificial intelligence research.": 0.7376,
-            "What's the current temperature in Berlin?": 0.7138,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.699,
-            "Show me breaking news stories related to cybersecurity threats.": 0.6952,
-            "Find the latest tech news from TechCrunch.": 0.695,
-            "What's the forecast for Madrid this weekend?": 0.6856,
-            "Get me the latest sports news from ESPN.": 0.635,
-            "Can you tell me the weather here?": 0.6302
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.7613,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.753,
+            "Display all events from December 20th to December 31st": 0.7147,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.6803,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.6748,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.6528,
+            "Search the web for the latest AI conference dates in 2024": 0.6524,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.6387,
+            "Show my calendar events between October 1st and October 7th": 0.635,
+            "Find recent news about quantum computing breakthroughs": 0.6135
         }
     },
     {
-        "q": "Get humidity levels for Singapore next Monday.",
-        "max_similarity_score_against_all": 0.7371,
-        "avg_similarity_score": 0.6813,
+        "q": "Show all meetings scheduled during the first week of September 2024",
+        "max_similarity_score_against_all": 0.7928,
+        "avg_similarity_score": 0.7447,
         "most_similar_instructions": {
-            "Show me breaking news stories related to cybersecurity threats.": 0.7371,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7359,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.7284,
-            "Find recent updates on artificial intelligence research.": 0.7079,
-            "Retrieve news articles about renewable energy.": 0.7058,
-            "What's the current temperature in Berlin?": 0.6911,
-            "Check the weather in San Francisco in Celsius.": 0.6886,
-            "Search for opinion pieces on education reform in Asia.": 0.6779,
-            "What's the forecast for Madrid this weekend?": 0.6721,
-            "Can you tell me the weather here?": 0.6719
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.7928,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7926,
+            "Show my calendar events between October 1st and October 7th": 0.7872,
+            "Search the web for the latest AI conference dates in 2024": 0.7871,
+            "Find recent news about quantum computing breakthroughs": 0.7866,
+            "What’s my availability like next Wednesday morning?": 0.7547,
+            "Create a marketing team meeting on June 5th, 2024 from 1:30 PM to 2:30 PM": 0.7458,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.7237,
+            "Authorize access to manage my calendar events": 0.7184,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.7157
         }
     },
     {
-        "q": "Show political analysis from BBC regarding upcoming elections.",
-        "max_similarity_score_against_all": 0.7894,
-        "avg_similarity_score": 0.6419,
+        "q": "Check my schedule for any conflicts on November 22nd between 3 PM and 5 PM.",
+        "max_similarity_score_against_all": 0.7826,
+        "avg_similarity_score": 0.6674,
         "most_similar_instructions": {
-            "Show me headlines about climate change from BBC.": 0.7894,
-            "Show me breaking news stories related to cybersecurity threats.": 0.6938,
-            "Search for opinion pieces on education reform in Asia.": 0.6905,
-            "Get me the latest sports news from ESPN.": 0.6585,
-            "What's the current temperature in Berlin?": 0.6548,
-            "Find recent updates on artificial intelligence research.": 0.6517,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.6345,
-            "Get humidity levels for Singapore next Monday.": 0.6329,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.6301,
-            "Check the weather in San Francisco in Celsius.": 0.6216
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.7826,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7197,
+            "Display all events from December 20th to December 31st": 0.7193,
+            "Show all meetings scheduled during the first week of September 2024": 0.7117,
+            "Show my calendar events between October 1st and October 7th": 0.7012,
+            "Create a marketing team meeting on June 5th, 2024 from 1:30 PM to 2:30 PM": 0.6931,
+            "Find recent news about quantum computing breakthroughs": 0.6829,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.6734,
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.6687,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.6317
         }
     },
     {
-        "q": "Find recent updates on Mars rover missions from NASA's blog.",
-        "max_similarity_score_against_all": 0.7329,
-        "avg_similarity_score": 0.6575,
+        "q": "Search for volunteer opportunities in Austin and block time for Habitat for Humanity on September 21st.",
+        "max_similarity_score_against_all": 0.7732,
+        "avg_similarity_score": 0.7188,
         "most_similar_instructions": {
-            "Find recent updates on artificial intelligence research.": 0.7329,
-            "Find the latest tech news from TechCrunch.": 0.7113,
-            "Search for opinion pieces on education reform in Asia.": 0.6873,
-            "What's the current temperature in Berlin?": 0.6758,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.6742,
-            "Show political analysis from BBC regarding upcoming elections.": 0.674,
-            "Show me breaking news stories related to cybersecurity threats.": 0.6659,
-            "Check the weather in San Francisco in Celsius.": 0.6555,
-            "Show me headlines about climate change from BBC.": 0.6555,
-            "What's the forecast for Madrid this weekend?": 0.655
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7732,
+            "Check my schedule for any conflicts on November 22nd between 3 PM and 5 PM.": 0.7648,
+            "Show all meetings scheduled during the first week of September 2024": 0.759,
+            "Show my calendar events between October 1st and October 7th": 0.7552,
+            "Display all events from December 20th to December 31st": 0.7531,
+            "Find recent news about quantum computing breakthroughs": 0.7481,
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.7353,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.7322,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.7047,
+            "What’s my availability like next Wednesday morning?": 0.7042
         }
     },
     {
-        "q": "Check the local weather using my current location in kelvin units.",
-        "max_similarity_score_against_all": 0.7855,
-        "avg_similarity_score": 0.7135,
+        "q": "Can you see if I’m free on December 3rd at 2 PM for a client workshop?",
+        "max_similarity_score_against_all": 0.7805,
+        "avg_similarity_score": 0.7151,
         "most_similar_instructions": {
-            "What's the current temperature in Berlin?": 0.7855,
-            "Check the weather in San Francisco in Celsius.": 0.7759,
-            "Find recent updates on artificial intelligence research.": 0.7759,
-            "Show me breaking news stories related to cybersecurity threats.": 0.773,
-            "Search for opinion pieces on education reform in Asia.": 0.766,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.7562,
-            "Get humidity levels for Singapore next Monday.": 0.7268,
-            "Show political analysis from BBC regarding upcoming elections.": 0.7229,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7214,
-            "Find the latest tech news from TechCrunch.": 0.7031
+            "Check my schedule for any conflicts on November 22nd between 3 PM and 5 PM.": 0.7805,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.7786,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.767,
+            "Find recent news about quantum computing breakthroughs": 0.7591,
+            "Show all meetings scheduled during the first week of September 2024": 0.7582,
+            "What’s my availability like next Wednesday morning?": 0.7505,
+            "Show my calendar events between October 1st and October 7th": 0.7381,
+            "Display all events from December 20th to December 31st": 0.7244,
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.7244,
+            "Create a marketing team meeting on June 5th, 2024 from 1:30 PM to 2:30 PM": 0.7059
         }
     },
     {
-        "q": "Find celebrity gossip headlines about Hollywood award shows from TMZ.",
-        "max_similarity_score_against_all": 0.751,
-        "avg_similarity_score": 0.6744,
+        "q": "Add a webinar about AI ethics to my schedule on 2024-11-14 from 1:30 PM to 3 PM.",
+        "max_similarity_score_against_all": 0.7972,
+        "avg_similarity_score": 0.6938,
         "most_similar_instructions": {
-            "Find the latest tech news from TechCrunch.": 0.751,
-            "What's the forecast for Madrid this weekend?": 0.7413,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.7317,
-            "Retrieve news articles about renewable energy.": 0.7193,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7178,
-            "Find recent updates on Mars rover missions from NASA's blog.": 0.7057,
-            "Find recent updates on artificial intelligence research.": 0.705,
-            "Show me breaking news stories related to cybersecurity threats.": 0.694,
-            "Get humidity levels for Singapore next Monday.": 0.6835,
-            "Check the weather in San Francisco in Celsius.": 0.6778
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.7972,
+            "Create a marketing team meeting on June 5th, 2024 from 1:30 PM to 2:30 PM": 0.7683,
+            "Check my schedule for any conflicts on November 22nd between 3 PM and 5 PM.": 0.7481,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.7437,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7428,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.7335,
+            "Show all meetings scheduled during the first week of September 2024": 0.7144,
+            "Display all events from December 20th to December 31st": 0.7077,
+            "Can you see if I’m free on December 3rd at 2 PM for a client workshop?": 0.6981,
+            "Search the web for the latest AI conference dates in 2024": 0.695
         }
     },
     {
-        "q": "Retrieve the latest health news regarding COVID-19 variants.",
-        "max_similarity_score_against_all": 0.748,
-        "avg_similarity_score": 0.6186,
+        "q": "Find the dates for Coachella 2024 and block my calendar with 'Music Festival'",
+        "max_similarity_score_against_all": 0.7961,
+        "avg_similarity_score": 0.7035,
         "most_similar_instructions": {
-            "Retrieve news articles about renewable energy.": 0.748,
-            "Find celebrity gossip headlines about Hollywood award shows from TMZ.": 0.7305,
-            "Find the latest tech news from TechCrunch.": 0.6589,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.6516,
-            "Show me breaking news stories related to cybersecurity threats.": 0.6466,
-            "Get humidity levels for Singapore next Monday.": 0.6419,
-            "Find recent updates on Mars rover missions from NASA's blog.": 0.6412,
-            "Find recent updates on artificial intelligence research.": 0.6349,
-            "Search for opinion pieces on education reform in Asia.": 0.6326,
-            "What's the current temperature in Berlin?": 0.6019
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.7961,
+            "Show all meetings scheduled during the first week of September 2024": 0.7654,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7635,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.7588,
+            "Authorize access to manage my calendar events": 0.7536,
+            "Create a marketing team meeting on June 5th, 2024 from 1:30 PM to 2:30 PM": 0.7496,
+            "Search for volunteer opportunities in Austin and block time for Habitat for Humanity on September 21st.": 0.7357,
+            "Search the web for the latest AI conference dates in 2024": 0.7203,
+            "Find recent news about quantum computing breakthroughs": 0.7142,
+            "Can you schedule a doctor's appointment on 2024-03-05 at 9:15 AM for 45 minutes?": 0.7061
         }
     },
     {
-        "q": "Any updates on the Tokyo Olympics?",
-        "max_similarity_score_against_all": 0.7649,
-        "avg_similarity_score": 0.6869,
+        "q": "What do I have scheduled on February 14th next year?",
+        "max_similarity_score_against_all": 0.7342,
+        "avg_similarity_score": 0.6463,
         "most_similar_instructions": {
-            "Search for opinion pieces on education reform in Asia.": 0.7649,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7571,
-            "What's the current temperature in Berlin?": 0.7527,
-            "Find recent updates on artificial intelligence research.": 0.7483,
-            "Check the weather in San Francisco in Celsius.": 0.7344,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.7298,
-            "Find the latest tech news from TechCrunch.": 0.7151,
-            "Show me breaking news stories related to cybersecurity threats.": 0.7122,
-            "What's the forecast for Madrid this weekend?": 0.7087,
-            "Check the local weather using my current location in kelvin units.": 0.7064
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.7342,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7146,
+            "Show my calendar events between October 1st and October 7th": 0.7079,
+            "Find recent news about quantum computing breakthroughs": 0.6969,
+            "What’s my availability like next Wednesday morning?": 0.6964,
+            "Add a webinar about AI ethics to my schedule on 2024-11-14 from 1:30 PM to 3 PM.": 0.6964,
+            "Search for volunteer opportunities in Austin and block time for Habitat for Humanity on September 21st.": 0.6862,
+            "Show all meetings scheduled during the first week of September 2024": 0.6793,
+            "Check my schedule for any conflicts on November 22nd between 3 PM and 5 PM.": 0.6651,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.6548
         }
     },
     {
-        "q": "Is hail expected in Denver today?",
-        "max_similarity_score_against_all": 0.7788,
-        "avg_similarity_score": 0.6739,
+        "q": "Check if I have any meetings scheduled between March 10th and March 15th.",
+        "max_similarity_score_against_all": 0.7991,
+        "avg_similarity_score": 0.7095,
         "most_similar_instructions": {
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7788,
-            "Can you tell me the weather here?": 0.7549,
-            "Show me breaking news stories related to cybersecurity threats.": 0.7452,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.7376,
-            "What's the forecast for Madrid this weekend?": 0.7326,
-            "Get humidity levels for Singapore next Monday.": 0.7292,
-            "Any updates on the Tokyo Olympics?": 0.7182,
-            "Search for opinion pieces on education reform in Asia.": 0.7134,
-            "What's the current temperature in Berlin?": 0.7104,
-            "Find recent updates on artificial intelligence research.": 0.6992
+            "Show all meetings scheduled during the first week of September 2024": 0.7991,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7948,
+            "Show my calendar events between October 1st and October 7th": 0.7873,
+            "What do I have scheduled on February 14th next year?": 0.7849,
+            "Check my schedule for any conflicts on November 22nd between 3 PM and 5 PM.": 0.7836,
+            "Find recent news about quantum computing breakthroughs": 0.7629,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.7611,
+            "Can you see if I’m free on December 3rd at 2 PM for a client workshop?": 0.7399,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.722,
+            "Add a webinar about AI ethics to my schedule on 2024-11-14 from 1:30 PM to 3 PM.": 0.7096
         }
     },
     {
-        "q": "Fetch headlines on AI ethics debates from Wired.",
-        "max_similarity_score_against_all": 0.7673,
-        "avg_similarity_score": 0.6954,
+        "q": "When does E3 2024 start? Block those three days with \"Gaming Expo\" titles.",
+        "max_similarity_score_against_all": 0.771,
+        "avg_similarity_score": 0.688,
         "most_similar_instructions": {
-            "Find the latest tech news from TechCrunch.": 0.7673,
-            "Any updates on the Tokyo Olympics?": 0.7582,
-            "Find recent updates on artificial intelligence research.": 0.7516,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7468,
-            "Is hail expected in Denver today?": 0.7367,
-            "Retrieve news articles about renewable energy.": 0.7344,
-            "Check the weather in San Francisco in Celsius.": 0.7316,
-            "Search for opinion pieces on education reform in Asia.": 0.7279,
-            "Find celebrity gossip headlines about Hollywood award shows from TMZ.": 0.7234,
-            "Retrieve the latest health news regarding COVID-19 variants.": 0.7086
+            "Find the dates for Coachella 2024 and block my calendar with 'Music Festival'": 0.771,
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.7666,
+            "Show all meetings scheduled during the first week of September 2024": 0.7572,
+            "Can you see if I’m free on December 3rd at 2 PM for a client workshop?": 0.7564,
+            "Create a marketing team meeting on June 5th, 2024 from 1:30 PM to 2:30 PM": 0.7428,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7137,
+            "Show my calendar events between October 1st and October 7th": 0.7119,
+            "Create an all-day event called \"Anniversary\" on 2024-05-21": 0.7017,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.6851,
+            "Add a webinar about AI ethics to my schedule on 2024-11-14 from 1:30 PM to 3 PM.": 0.685
         }
     },
     {
-        "q": "Does Mumbai require an umbrella at this moment?",
-        "max_similarity_score_against_all": 0.7955,
-        "avg_similarity_score": 0.6875,
+        "q": "What's my schedule look like on June 7th after 1 PM?",
+        "max_similarity_score_against_all": 0.7984,
+        "avg_similarity_score": 0.6688,
         "most_similar_instructions": {
-            "Any updates on the Tokyo Olympics?": 0.7955,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7952,
-            "Retrieve news articles about renewable energy.": 0.7335,
-            "What's the current temperature in Berlin?": 0.7306,
-            "Check the local weather using my current location in kelvin units.": 0.7179,
-            "Fetch headlines on AI ethics debates from Wired.": 0.7173,
-            "Check the weather in San Francisco in Celsius.": 0.7109,
-            "Search for opinion pieces on education reform in Asia.": 0.7071,
-            "Show me breaking news stories related to cybersecurity threats.": 0.7059,
-            "Find recent updates on artificial intelligence research.": 0.7056
+            "What’s my availability like next Wednesday morning?": 0.7984,
+            "Can you see if I’m free on December 3rd at 2 PM for a client workshop?": 0.7769,
+            "Check if I have any meetings scheduled between March 10th and March 15th.": 0.7591,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.7391,
+            "Show my calendar events between October 1st and October 7th": 0.7378,
+            "Check my schedule for any conflicts on November 22nd between 3 PM and 5 PM.": 0.7252,
+            "What do I have scheduled on February 14th next year?": 0.7211,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7171,
+            "Add a webinar about AI ethics to my schedule on 2024-11-14 from 1:30 PM to 3 PM.": 0.7094,
+            "Show all meetings scheduled during the first week of September 2024": 0.7079
         }
     },
     {
-        "q": "Compile biotechnology innovation stories from Nature Journal.",
-        "max_similarity_score_against_all": 0.7478,
-        "avg_similarity_score": 0.6457,
+        "q": "Do I have any client calls scheduled between May 20th and May 24th?",
+        "max_similarity_score_against_all": 0.7723,
+        "avg_similarity_score": 0.6866,
         "most_similar_instructions": {
-            "Any updates on the Tokyo Olympics?": 0.7478,
-            "Check the weather in San Francisco in Celsius.": 0.7477,
-            "Find the latest tech news from TechCrunch.": 0.7253,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.7133,
-            "Find recent updates on artificial intelligence research.": 0.7097,
-            "Fetch headlines on AI ethics debates from Wired.": 0.7083,
-            "Get humidity levels for Singapore next Monday.": 0.7013,
-            "Search for opinion pieces on education reform in Asia.": 0.6954,
-            "Does Mumbai require an umbrella at this moment?": 0.6885,
-            "Check the local weather using my current location in kelvin units.": 0.6868
+            "Check if I have any meetings scheduled between March 10th and March 15th.": 0.7723,
+            "Show my calendar events between October 1st and October 7th": 0.7472,
+            "Display all events from December 20th to December 31st": 0.7454,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.7315,
+            "What do I have scheduled on February 14th next year?": 0.7247,
+            "Show all meetings scheduled during the first week of September 2024": 0.7022,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.6932,
+            "Can you see if I’m free on December 3rd at 2 PM for a client workshop?": 0.6929,
+            "Find recent news about quantum computing breakthroughs": 0.6886,
+            "What's the date range for CES 2025? Create placeholder events spanning those dates with \"Tech Conference\" summaries": 0.6863
         }
     },
     {
-        "q": "What's the humidity level in São Paulo right now?",
-        "max_similarity_score_against_all": 0.7757,
-        "avg_similarity_score": 0.6702,
+        "q": "Create an all-day event titled 'Anniversary Vacation' on September 14th",
+        "max_similarity_score_against_all": 0.7717,
+        "avg_similarity_score": 0.6704,
         "most_similar_instructions": {
-            "Get humidity levels for Singapore next Monday.": 0.7757,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7722,
-            "What's the current temperature in Berlin?": 0.7505,
-            "What's the forecast for Madrid this weekend?": 0.7501,
-            "Show me breaking news stories related to cybersecurity threats.": 0.735,
-            "Can you tell me the weather here?": 0.7206,
-            "Display precipitation chances for Chicago at 3 PM today.": 0.692,
-            "Any updates on the Tokyo Olympics?": 0.6918,
-            "Does Mumbai require an umbrella at this moment?": 0.6805,
-            "Is hail expected in Denver today?": 0.6746
-        }
-    },
-    {
-        "q": "Give me the top stories about renewable energy from CNN.",
-        "max_similarity_score_against_all": 0.6879,
-        "avg_similarity_score": 0.621,
-        "most_similar_instructions": {
-            "Show me headlines about climate change from BBC.": 0.6879,
-            "Find celebrity gossip headlines about Hollywood award shows from TMZ.": 0.6833,
-            "Fetch headlines on AI ethics debates from Wired.": 0.6817,
-            "Find recent updates on Mars rover missions from NASA's blog.": 0.662,
-            "Show me breaking news stories related to cybersecurity threats.": 0.6525,
-            "Search for opinion pieces on education reform in Asia.": 0.6487,
-            "What's the current temperature in Berlin?": 0.6449,
-            "Find recent updates on artificial intelligence research.": 0.6331,
-            "Show political analysis from BBC regarding upcoming elections.": 0.6291,
-            "Find the latest tech news from TechCrunch.": 0.627
-        }
-    },
-    {
-        "q": "Get the temperature in Dubai with Kelvin units.",
-        "max_similarity_score_against_all": 0.7999,
-        "avg_similarity_score": 0.6887,
-        "most_similar_instructions": {
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7999,
-            "Check the local weather using my current location in kelvin units.": 0.7747,
-            "Check the weather in San Francisco in Celsius.": 0.7725,
-            "Does Mumbai require an umbrella at this moment?": 0.7684,
-            "What's the current temperature in Berlin?": 0.7473,
-            "Any updates on the Tokyo Olympics?": 0.7406,
-            "Get humidity levels for Singapore next Monday.": 0.739,
-            "Retrieve news articles about renewable energy.": 0.7379,
-            "Fetch headlines on AI ethics debates from Wired.": 0.7375,
-            "Find the latest tech news from TechCrunch.": 0.7355
-        }
-    },
-    {
-        "q": "Will I need a jacket in Chicago tonight?",
-        "max_similarity_score_against_all": 0.7731,
-        "avg_similarity_score": 0.6786,
-        "most_similar_instructions": {
-            "Display precipitation chances for Chicago at 3 PM today.": 0.7731,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.7525,
-            "Is hail expected in Denver today?": 0.7466,
-            "What's the humidity level in São Paulo right now?": 0.7462,
-            "What's the forecast for Madrid this weekend?": 0.7459,
-            "Can you tell me the weather here?": 0.743,
-            "Find celebrity gossip headlines about Hollywood award shows from TMZ.": 0.7367,
-            "What's the current temperature in Berlin?": 0.7135,
-            "Find the latest tech news from TechCrunch.": 0.7097,
-            "Any updates on the Tokyo Olympics?": 0.704
-        }
-    },
-    {
-        "q": "Find recent articles on sustainable architecture from ArchDaily.",
-        "max_similarity_score_against_all": 0.7875,
-        "avg_similarity_score": 0.6427,
-        "most_similar_instructions": {
-            "Find recent updates on artificial intelligence research.": 0.7875,
-            "Find the latest tech news from TechCrunch.": 0.7478,
-            "Fetch headlines on AI ethics debates from Wired.": 0.7395,
-            "Retrieve news articles about renewable energy.": 0.7026,
-            "Show me breaking news stories related to cybersecurity threats.": 0.6984,
-            "What's the forecast for Madrid this weekend?": 0.6821,
-            "How hot is it in Dubai right now in Fahrenheit?": 0.6791,
-            "Search for opinion pieces on education reform in Asia.": 0.6771,
-            "Is hail expected in Denver today?": 0.6762,
-            "Find recent updates on Mars rover missions from NASA's blog.": 0.673
+            "What do I have scheduled on February 14th next year?": 0.7717,
+            "Display all events from December 20th to December 31st": 0.7381,
+            "Search for volunteer opportunities in Austin and block time for Habitat for Humanity on September 21st.": 0.738,
+            "Show my calendar events between October 1st and October 7th": 0.7291,
+            "Search for top-rated Italian restaurants in Chicago and add a dinner reservation to my calendar": 0.7228,
+            "Schedule a dentist appointment for next Thursday from 10:00 AM to 11:30 AM with the summary \"Root Canal Checkup\"": 0.7216,
+            "Find recent news about quantum computing breakthroughs": 0.7053,
+            "Check my schedule for any conflicts on November 22nd between 3 PM and 5 PM.": 0.7016,
+            "Check if I have any meetings scheduled between March 10th and March 15th.": 0.6863,
+            "Add a meeting titled \"Project Kickoff\" for September 12th from 2:30 PM to 4:00 PM": 0.686
         }
     }
 ]
