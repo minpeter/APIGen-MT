@@ -1,8 +1,8 @@
 import random
 import re
 from typing import List
-from .tool_manager import ToolManager
-from .llm_client import LLMClient
+from tool_manager import ToolManager
+from llm_client import LLMClient
 
 
 class QGenerator:

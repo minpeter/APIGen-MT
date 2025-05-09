@@ -4,7 +4,7 @@ import json
 import datetime
 from typing import Annotated, Any
 
-from .llm_client import LLMClient
+from llm_client import LLMClient
 
 
 # >>>>> exmple function >>>>>
