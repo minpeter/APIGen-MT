@@ -3,6 +3,9 @@ from function_schema import get_function_schema
 import json, datetime
 from typing import Annotated, Any
 
+from .llm_client import LLMClient
+
+
 # >>>>> exmple function >>>>>
 
 
@@ -60,7 +63,7 @@ def web_search(query: Annotated[str, "The query to search for on the web."]) -> 
 
 
 class ToolManager:
-    def __init__(self, llm_client: Any):
+    def __init__(self, llm: LLMClient):
         tools = [
             create_calendar_event,
             fetch_calendar_events,
@@ -68,7 +71,7 @@ class ToolManager:
         ]
         tool_schemas = [get_function_schema(tool) for tool in tools]
         self.tool_schemas = tool_schemas
-        self.llm_client = llm_client
+        self.llm = llm
 
     def get_tools(self):
         return self.tool_schemas
@@ -111,7 +114,7 @@ class ToolManager:
         - Ensure your entire output is ONLY the JSON string, without any introductory text, explanations, or markdown formatting like ```json ... ```. Just the raw JSON string.
         """
 
-        response, _ = self.llm_client.json_output(
+        response, _ = self.llm.json_output(
             system_prompt="You are an expert function simulator outputting only JSON strings.",
             prompt=prompt,
             reasoning=True,
@@ -120,9 +123,7 @@ class ToolManager:
 
 
 if __name__ == "__main__":
-    from .llm_client import LLMClient
-
-    tool_manager = ToolManager(llm_client=LLMClient())
+    tool_manager = ToolManager(llm=LLMClient())
 
     # Get available tools
     tools = tool_manager.get_tools()
