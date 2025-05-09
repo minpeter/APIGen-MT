@@ -74,7 +74,7 @@ class ToolManager:
         self.tool_schemas = tool_schemas
         self.llm = llm
 
-    def get_tools(self):
+    def get_tools_json_schema(self):
         return self.tool_schemas
 
     def invoke_tool(self, tool_name: str, params: dict) -> Any:
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     tool_manager = ToolManager(llm=LLMClient())
 
     # Get available tools
-    tools = tool_manager.get_tools()
+    tools = tool_manager.get_tools_json_schema()
     print("Available tools:", tools)
 
     # Invoke a specific tool with parameters

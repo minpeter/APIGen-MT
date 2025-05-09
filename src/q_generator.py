@@ -18,7 +18,7 @@ class QGenerator:
         llm: LLMClient,
         sentence_model_id: str = "snunlp/KR-SBERT-V40K-klueNLI-augSTS",
     ):
-        raw_tools = tool_manager.get_tools()
+        raw_tools = tool_manager.get_tools_json_schema()
         self.tool_schemas_json_str = json.dumps(raw_tools, indent=2) # Store as JSON string
         self.llm = llm
         self.sentence_model = SentenceTransformer(sentence_model_id)
