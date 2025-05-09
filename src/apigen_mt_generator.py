@@ -271,20 +271,16 @@ Provide your review as a structured text.
         a_gt, o_gt = generation_result
         
         # 2. Execute and Verify A_GT - also store conversation messages
-        conversation_messages: List[Dict[str, Any]] = []
-        
-        # Add initial system message to conversation flow
-        conversation_messages.append({
-            "role": "system", 
-            "content": "You are a helpful assistant that uses tools to fulfill user requests."
-        })
-        
-        # Add initial user message based on the actual query
-        conversation_messages.append({
-            "role": "user",
-            "content": q
-        })
-        
+        conversation_messages: List[Dict[str, Any]] = [
+            {
+                "role": "system", 
+                "content": "You are a helpful assistant that uses tools to fulfill user requests."
+            },
+            {
+                "role": "user",
+                "content": q
+            }
+        ] 
         # Execute tools and get verification result
         verification_result = self._execute_and_verify_a_gt(q, a_gt, o_gt)
         
