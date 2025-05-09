@@ -49,7 +49,16 @@ class APIGenMTGenerator:
         self.llm = llm
         self.tool_manager = tool_manager
 
-    def _call_llm_for_blueprint_parts(self, q: str, tool_schema_json: str) -> Optional[Blueprint]:
+    def _generate_blueprint(self, q: str) -> Optional[Tuple[List[aGTStep], str]]:
+        """
+        Generate a blueprint for the given query.
+        a_gt_steps, and o_gt are generated based on the query.
+        """
+        tool_schema_json = self.tool_manager.get_tools_json_schema() # Assuming this method exists
+        if not tool_schema_json:
+            print("Error: Could not retrieve tool schema.")
+            return None
+
         system_prompt = f'''당신은 APIGen-MT 파이프라인의 1단계를 위한 '작업 청사진 생성자'입니다. 당신의 목표는 사용자와 AI 에이전트 간의 **현실적이고 검증 가능한 다중 턴 상호작용 시나리오**를 나타내는 상세한 청사진을 만드는 것입니다. 주어진 도구 설명을 바탕으로 다음 구성요소를 포함하는 **JSON 객체**를 생성해야 합니다.
 
 1.  `q` (string): 사용자의 초기 질문/요청입니다. **구체적이고 자연스러워야 하며**, 에이전트가 정보를 조회하고, 상태를 변경하고, 사용자에게 다시 확인하는 등 **여러 단계의 상호작용이 필요할 수 있는** 시나리오를 나타내는 것이 좋습니다.
@@ -77,24 +86,11 @@ Remember to properly structure a_gt_steps for parallel or sequential tool calls.
                 schema=Blueprint,
                 reasoning=True
             )
-            
-            return parsed_blueprint
         except Exception as e:
             print(f"Error generating blueprint: {e}")
-            return None
-
-    def _generate_a_gt_o_gt(self, q: str) -> Optional[Tuple[List[aGTStep], str]]:
-        tool_schema_json = self.tool_manager.get_tools_json_schema() # Assuming this method exists
-        if not tool_schema_json:
-            print("Error: Could not retrieve tool schema.")
-            return None
-
-        parsed_blueprint = self._call_llm_for_blueprint_parts(q, tool_schema_json)
-
-        if not parsed_blueprint:
             print(f"Failed to get blueprint from LLM for q: {q}")
             return None
-
+        
         try:
             # Extract the 'a_gt_steps' and 'o_gt' from the parsed blueprint
             a_gt_steps = parsed_blueprint.get("a_gt_steps")
@@ -289,7 +285,7 @@ Provide your review as a structured text.
         print(f"\n--- Processing query: {q} ---")
         
         # 1. Generate A_GT_STEPS and O_GT based on Q
-        generation_result = self._generate_a_gt_o_gt(q)
+        generation_result = self._generate_blueprint(q)
         if not generation_result:
             print(f"Failed to generate a_gt_steps and o_gt for query: {q}.")
             return None
