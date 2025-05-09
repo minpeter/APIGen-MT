@@ -5,11 +5,9 @@ from typing import List, Dict, Any, Optional, Tuple
 import json
 import re 
 
-
 class ToolCallInternal(BaseModel):
     tool_name: str
     tool_input: Dict[str, Any]
-
 
 class GeneratedData(BaseModel):
     q: str
@@ -18,7 +16,6 @@ class GeneratedData(BaseModel):
     verification_result: Dict[str, Any]
     llm_review: Optional[str] = None
     messages: Optional[List[Dict[str, Any]]] = None
-
 
 class APIGenMTGenerator:
     """
@@ -29,7 +26,7 @@ class APIGenMTGenerator:
     - o_gt: Expected outcome after executing the tool calls
     - verification_result: Results of actually executing the tool calls
     - llm_review: Optional LLM-generated review of the data quality
-    
+    - messages: Optional list of messages exchanged during the process
     It doesn't generate queries internally but relies on queries provided from outside.
     """
     
@@ -362,26 +359,17 @@ Provide your review as a structured text.
         return generated_data
 
 if __name__ == "__main__":
-    # --- Instantiate actual components ---
-    # Ensure you have your API key set as an environment variable or directly here
-    # For example: api_key = os.getenv("OPENAI_API_KEY") or "your_actual_api_key"
-    # Ensure your tool configuration path is correct for ToolManager
-    # For example: tool_config_path = "path/to/your/tools_config.json"
-
     print("Starting APIGenMTGenerator with actual components...")
 
     try:
-        # 1. Initialize LLMClient
         llm_client = LLMClient() 
         print("LLMClient initialized.")
 
-        # 2. Initialize ToolManager
         tool_manager = ToolManager(
             llm=llm_client,
         )
         print("ToolManager initialized.")
 
-        # 3. Initialize APIGenMTGenerator with components
         generator = APIGenMTGenerator(
             llm=llm_client,
             tool_manager=tool_manager
@@ -390,7 +378,6 @@ if __name__ == "__main__":
 
         print("\n=== Example: Generate data for a single query ===")
         # single_query = "What's my schedule look like on June 7th after 1 PM?"
-        
         single_query = "Search for volunteer opportunities in Austin and block time for Habitat for Humanity on September 21st."
         single_result = generator.generate_for_query(single_query)
         
@@ -400,9 +387,6 @@ if __name__ == "__main__":
         else:
             print("\nFailed to generate data for the single query.") 
 
-    except ImportError as e:
-        print(f"Error: Missing one of the core modules (LLMClient, ToolManager, QGenerator): {e}")
-        print("Please ensure these modules are correctly defined and importable in your PYTHONPATH.")
     except Exception as e:
         print(f"An error occurred during execution with actual components: {e}")
         import traceback
