@@ -17,6 +17,7 @@ class GeneratedData(BaseModel):
     o_gt: str
     verification_result: Dict[str, Any]
     llm_review: Optional[str] = None
+    messages: Optional[List[Dict[str, Any]]] = None
 
 
 class APIGenMTGenerator:
@@ -129,9 +130,22 @@ Ensure your entire response is a single JSON object within a markdown code block
             return None
 
 
-    def _execute_and_verify_a_gt(self, a_gt: List[ToolCallInternal]) -> Dict[str, Any]:
+    def _execute_and_verify_a_gt(self, q: str, a_gt: List[ToolCallInternal], o_gt: str) -> Dict[str, Any]:
         executed_trajectory: List[Dict[str, Any]] = []
+        conversation_messages: List[Dict[str, Any]] = []
         overall_status = "success" # Assume success until a failure
+
+        # Add initial system message to conversation flow
+        conversation_messages.append({
+            "role": "system", 
+            "content": "You are a helpful assistant that uses tools to fulfill user requests."
+        })
+        
+        # Add initial user message based on the actual query
+        conversation_messages.append({
+            "role": "user",
+            "content": q
+        })
 
         for i, tool_call in enumerate(a_gt):
             try:
@@ -144,6 +158,32 @@ Ensure your entire response is a single JSON object within a markdown code block
                     "status": "success",
                     "result": result 
                 })
+                
+                # Add assistant message with tool call to conversation flow
+                assistant_message = {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": f"call_{i}",
+                            "type": "function",
+                            "function": {
+                                "name": tool_call.tool_name,
+                                "arguments": json.dumps(tool_call.tool_input)
+                            }
+                        }
+                    ]
+                }
+                conversation_messages.append(assistant_message)
+                
+                # Add tool response message to conversation flow
+                conversation_messages.append({
+                    "role": "tool",
+                    "tool_call_id": f"call_{i}",
+                    "name": tool_call.tool_name,
+                    "content": result
+                })
+                
             except Exception as e:
                 overall_status = "error"
                 executed_trajectory.append({
@@ -157,7 +197,20 @@ Ensure your entire response is a single JSON object within a markdown code block
                 # For now, let's break as subsequent tools might depend on the failed one.
                 break 
         
-        return {"overall_status": overall_status, "trajectory": executed_trajectory}
+        # Add final assistant response using the expected outcome
+        if overall_status == "success":
+            conversation_messages.append({
+                "role": "assistant",
+                "content": o_gt
+            })
+        
+        # Only return verification result without messages in the verification_result
+        result = {
+            "overall_status": overall_status, 
+            "trajectory": executed_trajectory
+        }
+            
+        return result
 
     def _review_blueprint_with_llm(self, q: str, a_gt: List[ToolCallInternal], o_gt: str, verification_result: Dict[str, Any]) -> Optional[str]:
         a_gt_json_str = json.dumps([call.model_dump() for call in a_gt], indent=2)
@@ -221,8 +274,65 @@ Provide your review as a structured text.
             
         a_gt, o_gt = generation_result
         
-        # 2. Execute and Verify A_GT
-        verification_result = self._execute_and_verify_a_gt(a_gt)
+        # 2. Execute and Verify A_GT - also store conversation messages
+        conversation_messages: List[Dict[str, Any]] = []
+        
+        # Add initial system message to conversation flow
+        conversation_messages.append({
+            "role": "system", 
+            "content": "You are a helpful assistant that uses tools to fulfill user requests."
+        })
+        
+        # Add initial user message based on the actual query
+        conversation_messages.append({
+            "role": "user",
+            "content": q
+        })
+        
+        # Execute tools and get verification result
+        verification_result = self._execute_and_verify_a_gt(q, a_gt, o_gt)
+        
+        # Populate conversation messages for successful verifications
+        if verification_result.get("overall_status") == "success":
+            # Add messages for each tool call
+            for i, tool_call in enumerate(a_gt):
+                # Add assistant message with tool call
+                assistant_message = {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": f"call_{i}",
+                            "type": "function",
+                            "function": {
+                                "name": tool_call.tool_name,
+                                "arguments": json.dumps(tool_call.tool_input)
+                            }
+                        }
+                    ]
+                }
+                conversation_messages.append(assistant_message)
+                
+                # Get the result from the verification trajectory
+                result = None
+                for step in verification_result.get("trajectory", []):
+                    if step.get("step") == i + 1 and step.get("status") == "success":
+                        result = step.get("result")
+                        break
+                
+                # Add tool response message
+                conversation_messages.append({
+                    "role": "tool",
+                    "tool_call_id": f"call_{i}",
+                    "name": tool_call.tool_name,
+                    "content": result
+                })
+            
+            # Add final assistant response
+            conversation_messages.append({
+                "role": "assistant",
+                "content": o_gt
+            })
         
         # 3. (Optional) Review with LLM
         llm_review = None
@@ -233,13 +343,21 @@ Provide your review as a structured text.
                 print(f"Error during LLM review for query: {q}: {e}")
                 # Continue without review if it fails
 
-        generated_data = GeneratedData(
-            q=q,
-            a_gt=a_gt,
-            o_gt=o_gt,
-            verification_result=verification_result,
-            llm_review=llm_review
-        )
+        # Prepare data for GeneratedData object
+        data_kwargs = {
+            "q": q,
+            "a_gt": a_gt,
+            "o_gt": o_gt,
+            "verification_result": verification_result,
+            "llm_review": llm_review
+        }
+        
+        # Add messages to the data if verification was successful
+        if verification_result.get("overall_status") == "success":
+            data_kwargs["messages"] = conversation_messages
+            print("Added conversation messages to generated data.")
+        
+        generated_data = GeneratedData(**data_kwargs)
         print(f"--- Finished processing query ---")
         
         return generated_data
