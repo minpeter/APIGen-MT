@@ -223,7 +223,7 @@ Provide your review as a structured text.
                 print(f"Warning: Empty or whitespace-only question string at index {i}. Skipping.")
                 continue
 
-            print(f"\\n--- Processing Q {i+1}/{len(batch_qs_objects)}: {current_q} ---")
+            print(f"\n--- Processing Q {i+1}/{len(batch_qs_objects)}: {current_q} ---")
 
             # 2. Generate A_GT and O_GT based on Q
             generation_result = self._generate_a_gt_o_gt(current_q)
@@ -291,10 +291,10 @@ if __name__ == "__main__":
         generated_data_instance = generator.generate()
 
         if generated_data_instance:
-            print("\\n--- Generated Data (Actual Components) ---")
+            print("\n--- Generated Data (Actual Components) ---")
             print(generated_data_instance.model_dump_json(indent=2))
         else:
-            print("\\nFailed to generate data with actual components.")
+            print("\nFailed to generate data with actual components.")
 
     except ImportError as e:
         print(f"Error: Missing one of the core modules (LLMClient, ToolManager, QGenerator): {e}")
@@ -304,4 +304,4 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
 
-    print("\\nExample finished.")
+    print("\nExample finished.")
