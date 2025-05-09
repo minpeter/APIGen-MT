@@ -1,6 +1,7 @@
 from function_schema import get_function_schema
 
-import json, datetime
+import json
+import datetime
 from typing import Annotated, Any
 
 # >>>>> exmple function >>>>>
@@ -86,12 +87,11 @@ class ToolManager:
     def __virtual_tool_executor(
         self, tool_name: str, params: dict, schema: dict
     ) -> Any:
-
         prompt = f"""You are an expert function simulator. Based on the following function description and the provided arguments, simulate the execution of this function call.
 
         Function Name: {tool_name}
 
-        Function Description: {schema['description']}
+        Function Description: {schema["description"]}
 
         Function Schema:
         {json.dumps(schema, indent=2)}
@@ -99,7 +99,7 @@ class ToolManager:
         Arguments Provided:
         {json.dumps(params, indent=2)}
 
-        Current Date/Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Assume this is the time of execution)
+        Current Date/Time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} (Assume this is the time of execution)
 
         Task:
         Generate a plausible JSON response string that represents what the function '{tool_name}' would return if it were actually executed with the given arguments.
@@ -120,7 +120,7 @@ class ToolManager:
 
 
 if __name__ == "__main__":
-    from .llm_client import LLMClient
+    from llm_client import LLMClient
 
     tool_manager = ToolManager(llm_client=LLMClient())
 
