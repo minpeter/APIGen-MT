@@ -77,6 +77,40 @@ class ToolManager:
     def get_tools_json_schema(self):
         return self.tool_schemas
 
+    def get_tool_schema(self, tool_name: str) -> dict:
+        """
+        Get the schema for a specific tool by name.
+
+        Args:
+            tool_name: The name of the tool to get the schema for
+
+        Returns:
+            dict: The schema for the tool
+
+        Raises:
+            ValueError: If the tool does not exist
+        """
+        for tool in self.tool_schemas:
+            if tool["name"] == tool_name:
+                return tool
+
+        available_tools = [tool["name"] for tool in self.tool_schemas]
+        raise ValueError(
+            f"Tool '{tool_name}' not found. Available tools: {', '.join(available_tools)}"
+        )
+
+    def tool_exists(self, tool_name: str) -> bool:
+        """
+        Check if a tool with the given name exists in the available tools.
+
+        Args:
+            tool_name: The name of the tool to check
+
+        Returns:
+            bool: True if the tool exists, False otherwise
+        """
+        return any(tool["name"] == tool_name for tool in self.tool_schemas)
+
     def invoke_tool(self, tool_name: str, params: dict) -> Any:
         for tool in self.tool_schemas:
             if tool["name"] == tool_name:

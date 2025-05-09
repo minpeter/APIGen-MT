@@ -144,6 +144,89 @@ Remember to properly structure a_gt_steps for parallel or sequential tool calls.
             print(f"Unexpected error during parsing/validation for q: {q}: {e}")
             print(f"Raw blueprint: {parsed_blueprint}")
             return None
+    
+    def _execute_and_verify_a_gt_steps(self, q: str, a_gt_steps: List[aGTStep], o_gt: str) -> Dict[str, Any]:
+        """
+        Execute and verify the ground truth steps.
+        
+        Args:
+            q: Original query
+            a_gt_steps: List of steps with tool calls to execute
+            o_gt: Expected outcome
+            
+        Returns:
+            Verification result dictionary
+        """
+        executed_trajectory: List[Dict[str, Any]] = []
+        conversation_messages: List[Dict[str, Any]] = []
+        overall_status = "success"  # Assume success until a failure
+        execution_context = {}  # Store results from previous tool calls for placeholder substitution
+        
+        # Add initial system message to conversation flow
+        conversation_messages.append({
+            "role": "system", 
+            "content": "You are a helpful assistant that uses tools to fulfill user requests."
+        })
+        
+        # Add initial user message based on the actual query
+        conversation_messages.append({
+            "role": "user",
+            "content": q
+        })
+        
+        # Process each step (turn) in sequence
+        for step_index, step in enumerate(a_gt_steps):
+            # Execute all tool calls in this step
+            for tool_index, tool_call in enumerate(step.a_gt):
+                try:
+                    # Process any placeholders in arguments using execution context
+                    processed_arguments = self._process_placeholders(tool_call.arguments, execution_context)
+                    
+                    # Execute the tool with processed arguments
+                    result = self.tool_manager.invoke_tool(tool_call.tool_name, processed_arguments)
+                    
+                    # Store result in execution context for future steps
+                    execution_context[f"{tool_call.tool_name}.output"] = result
+                    
+                    # Record successful execution
+                    executed_trajectory.append({
+                        "step_index": step_index,
+                        "tool_index": tool_index,
+                        "tool_name": tool_call.tool_name,
+                        "arguments": processed_arguments,
+                        "status": "success",
+                        "result": result
+                    })
+                    
+                    # Add assistant message with tool call to conversation flow (will be done in generate_for_query)
+                    # Add tool response message to conversation flow (will be done in generate_for_query)
+                    
+                except Exception as e:
+                    overall_status = "error"
+                    executed_trajectory.append({
+                        "step_index": step_index,
+                        "tool_index": tool_index,
+                        "tool_name": tool_call.tool_name,
+                        "arguments": tool_call.arguments,
+                        "status": "error",
+                        "error_message": str(e)
+                    })
+                    # Break on error as subsequent tools might depend on the failed one
+                    break
+            
+            # If we encountered an error in this step, stop processing further steps
+            if overall_status == "error":
+                break
+        
+        # Add final assistant response using the expected outcome (will be done in generate_for_query)
+        
+        # Return verification result
+        result = {
+            "overall_status": overall_status, 
+            "trajectory": executed_trajectory
+        }
+            
+        return result
 
     def _execute_and_verify_a_gt(self, q: str, a_gt: List[ToolCallInternal], o_gt: str) -> Dict[str, Any]:
         executed_trajectory: List[Dict[str, Any]] = []
@@ -434,88 +517,6 @@ Provide your review as a structured text.
         
         return processed_args
 
-    def _execute_and_verify_a_gt_steps(self, q: str, a_gt_steps: List[aGTStep], o_gt: str) -> Dict[str, Any]:
-        """
-        Execute and verify the ground truth steps.
-        
-        Args:
-            q: Original query
-            a_gt_steps: List of steps with tool calls to execute
-            o_gt: Expected outcome
-            
-        Returns:
-            Verification result dictionary
-        """
-        executed_trajectory: List[Dict[str, Any]] = []
-        conversation_messages: List[Dict[str, Any]] = []
-        overall_status = "success"  # Assume success until a failure
-        execution_context = {}  # Store results from previous tool calls for placeholder substitution
-        
-        # Add initial system message to conversation flow
-        conversation_messages.append({
-            "role": "system", 
-            "content": "You are a helpful assistant that uses tools to fulfill user requests."
-        })
-        
-        # Add initial user message based on the actual query
-        conversation_messages.append({
-            "role": "user",
-            "content": q
-        })
-        
-        # Process each step (turn) in sequence
-        for step_index, step in enumerate(a_gt_steps):
-            # Execute all tool calls in this step
-            for tool_index, tool_call in enumerate(step.a_gt):
-                try:
-                    # Process any placeholders in arguments using execution context
-                    processed_arguments = self._process_placeholders(tool_call.arguments, execution_context)
-                    
-                    # Execute the tool with processed arguments
-                    result = self.tool_manager.invoke_tool(tool_call.tool_name, processed_arguments)
-                    
-                    # Store result in execution context for future steps
-                    execution_context[f"{tool_call.tool_name}.output"] = result
-                    
-                    # Record successful execution
-                    executed_trajectory.append({
-                        "step_index": step_index,
-                        "tool_index": tool_index,
-                        "tool_name": tool_call.tool_name,
-                        "arguments": processed_arguments,
-                        "status": "success",
-                        "result": result
-                    })
-                    
-                    # Add assistant message with tool call to conversation flow (will be done in generate_for_query)
-                    # Add tool response message to conversation flow (will be done in generate_for_query)
-                    
-                except Exception as e:
-                    overall_status = "error"
-                    executed_trajectory.append({
-                        "step_index": step_index,
-                        "tool_index": tool_index,
-                        "tool_name": tool_call.tool_name,
-                        "arguments": tool_call.arguments,
-                        "status": "error",
-                        "error_message": str(e)
-                    })
-                    # Break on error as subsequent tools might depend on the failed one
-                    break
-            
-            # If we encountered an error in this step, stop processing further steps
-            if overall_status == "error":
-                break
-        
-        # Add final assistant response using the expected outcome (will be done in generate_for_query)
-        
-        # Return verification result
-        result = {
-            "overall_status": overall_status, 
-            "trajectory": executed_trajectory
-        }
-            
-        return result
 
 if __name__ == "__main__":
     print("Starting APIGenMTGenerator with actual components...")
