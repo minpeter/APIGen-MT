@@ -279,7 +279,14 @@ Available Tools and their Schemas:
 
         system_prompt = """당신은 AI 에이전트 개발을 위한 데이터 품질 관리 전문가입니다. 
 제공된 작업 청사진(blueprint), 생성 시 LLM의 사고 과정(reasoning), 그리고 자동 검증 결과(validation_result)를 면밀히 검토해주십시오. 
-당신의 목표는 이 청사진이 고품질 학습 데이터를 생성하는 데 적합한지 평가하고, 개선을 위한 구체적이고 실행 가능한 피드백을 제공하는 것입니다."""
+당신의 목표는 이 청사진이 고품질 학습 데이터를 생성하는 데 적합한지 평가하고, 개선을 위한 구체적이고 실행 가능한 피드백을 제공하는 것입니다.
+
+※ 참고: 플레이스홀더(`{{tool_name.output.field_name}}`)의 사용은 다중 단계 및 의존성 구현을 위한 필수적인 요소입니다. 
+플레이스홀더가 규칙에 맞게 사용되었다면, 이에 대해 페널티를 부여하지 마십시오. 
+오히려 플레이스홀더를 올바르게 사용한 경우는 긍정적으로 평가해도 됩니다.
+
+또한, 아래의 프롬프트 규칙을 준수하였다면 고품질 데이터라고 평가해도 괜찮습니다.
+"""
         user_prompt = f"""다음은 검토할 작업 청사진 및 관련 정보입니다:
 
 1.  **사용자 초기 요청 (q)**:
@@ -312,7 +319,7 @@ Available Tools and their Schemas:
 
 **출력 형식:**
 Pydantic 모델 `LLMReview`의 JSON 형식을 따라주십시오. `quality_assessment`는 필수이며, "Poor" 또는 "Fair"인 경우 `feedback_summary`와 `suggested_corrections`를 구체적으로 작성해주십시오.
-```json
+        ```json
 {{
   "quality_assessment": "...",
   "feedback_summary": "...",
