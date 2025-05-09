@@ -125,8 +125,10 @@ class QGenerator:
             all_embeddings_for_compare = self.sentence_model.encode(all_qs_for_compare_strings, convert_to_tensor=True)
 
         attempts_count = 0
+        print(f"DEBUG: Starting generate_batch_qs. Target: {num_to_generate}, Existing: {len(existing_qs_list)}, Similarity Threshold: {similarity_threshold}") # ADDED
         while len(accepted_query_objects) < num_to_generate and attempts_count < max_attempts:
             attempts_count += 1
+            print(f"DEBUG: Attempt {attempts_count}/{max_attempts}. Accepted so far: {len(accepted_query_objects)}/{num_to_generate}") # ADDED
             
             num_still_needed = num_to_generate - len(accepted_query_objects)
             # Determine how many to request from LLM in this attempt
@@ -134,21 +136,24 @@ class QGenerator:
             num_to_request_this_attempt = min(llm_batch_size, num_still_needed + 5)
 
             if num_to_request_this_attempt <= 0:
+                 print(f"DEBUG: No more queries needed or num_to_request_this_attempt is {num_to_request_this_attempt}. Breaking.") # ADDED
                  break # Should only happen if num_still_needed became <=0 due to concurrent modification or error
 
             # Generate candidate strings
             # Pass current `all_qs_for_compare_strings` to LLM to avoid generating similar ones to already accepted/existing
-            # print(f"Attempt {attempts_count}: Requesting {num_to_request_this_attempt} queries from LLM. Total needed: {num_still_needed}.")
+            print(f"DEBUG: Attempt {attempts_count}: Requesting {num_to_request_this_attempt} queries from LLM. Total needed: {num_still_needed}.") # MODIFIED (was commented)
             candidate_qs_strings = self.generate_candidate_qs_with_llm(
                 num_to_request_this_attempt,
                 all_qs_for_compare_strings # Pass the most up-to-date list for LLM's awareness
             )
 
             if not candidate_qs_strings:
-                # print(f"Warning: LLM generated no candidates in attempt {attempts_count}.")
+                print(f"DEBUG: LLM generated no candidates in attempt {attempts_count}.") # MODIFIED (was commented)
                 if attempts_count == 1 and not accepted_query_objects and not existing_qs_list:
-                    print(f"Warning: LLM generated no candidates on first attempt with no existing/accepted queries.")
+                    print(f"DEBUG: LLM generated no candidates on first attempt with no existing/accepted queries.") # MODIFIED (was commented)
                 continue # Try next attempt if any left
+            
+            print(f"DEBUG: LLM generated {len(candidate_qs_strings)} candidates. First 3: {candidate_qs_strings[:3]}") # ADDED
 
             # Embed new candidates
             if not candidate_qs_strings: # Should be caught above, but defensive check
@@ -157,7 +162,7 @@ class QGenerator:
                 candidate_embeddings = self.sentence_model.encode(candidate_qs_strings, convert_to_tensor=True)
             
             if candidate_embeddings.nelement() == 0: # Check if tensor is empty
-                # print(f"Warning: No valid embeddings for candidates in attempt {attempts_count}.")
+                print(f"DEBUG: No valid embeddings for candidates in attempt {attempts_count}.") # MODIFIED (was commented)
                 continue
 
             newly_accepted_this_attempt_count = 0
@@ -176,11 +181,13 @@ class QGenerator:
 
                 is_exact_duplicate = any(q_new_lower == q_old.lower() for q_old in all_qs_for_compare_strings)
                 if is_exact_duplicate:
+                    print(f"DEBUG: Query '{q_new}' is an exact duplicate. Skipping.") # ADDED
                     continue
 
                 max_similarity = 0.0
                 avg_similarity = 0.0
                 similarities_list_for_heap = []
+                most_similar_existing_q = "N/A" # ADDED
 
                 if all_embeddings_for_compare is not None and all_embeddings_for_compare.shape[0] > 0:
                     cosine_scores = util.pytorch_cos_sim(current_cand_embedding, all_embeddings_for_compare)[0]
@@ -191,9 +198,18 @@ class QGenerator:
                         avg_similarity = np.mean(cosine_scores_cpu)
                         # Use a slice of all_qs_for_compare_strings that matches all_embeddings_for_compare
                         # This assumes all_qs_for_compare_strings and all_embeddings_for_compare are kept in sync
-                        similarities_list_for_heap = list(zip(cosine_scores_cpu, all_qs_for_compare_strings[:all_embeddings_for_compare.shape[0]]))
+                        relevant_comparison_qs = all_qs_for_compare_strings[:all_embeddings_for_compare.shape[0]] # ADDED for safety
+                        similarities_list_for_heap = list(zip(cosine_scores_cpu, relevant_comparison_qs)) # MODIFIED
+                        if similarities_list_for_heap: 
+                            # Find the index of the max score to correctly identify the most similar query
+                            max_score_idx = np.argmax(cosine_scores_cpu)
+                            if max_score_idx < len(relevant_comparison_qs):
+                                most_similar_existing_q = relevant_comparison_qs[max_score_idx]
+                
+                print(f"DEBUG: Candidate '{q_new}'. Max similarity: {max_similarity:.4f} (Threshold: {similarity_threshold}). Most similar to: '{most_similar_existing_q}'") # ADDED
                 
                 if max_similarity > similarity_threshold:
+                    print(f"DEBUG: Query '{q_new}' rejected due to high similarity.") # ADDED
                     continue
 
                 # Passed filters, accept this query
@@ -219,14 +235,16 @@ class QGenerator:
                 else:
                     all_embeddings_for_compare = torch.cat((all_embeddings_for_compare, current_cand_embedding), dim=0)
             
-            # if newly_accepted_this_attempt_count == 0 and attempts_count > 1 and len(candidate_qs_strings) > 0 :
-            #     print(f"Warning: No new diverse queries accepted in attempt {attempts_count} from {len(candidate_qs_strings)} candidates.")
-            # elif newly_accepted_this_attempt_count > 0:
-            #     print(f"Accepted {newly_accepted_this_attempt_count} queries in attempt {attempts_count}.")
+            if newly_accepted_this_attempt_count == 0 and len(candidate_qs_strings) > 0 : # MODIFIED (was commented)
+                print(f"DEBUG: No new diverse queries accepted in attempt {attempts_count} from {len(candidate_qs_strings)} candidates.") # MODIFIED (was commented)
+            elif newly_accepted_this_attempt_count > 0:
+                print(f"DEBUG: Accepted {newly_accepted_this_attempt_count} queries in attempt {attempts_count}.") # MODIFIED (was commented)
 
         # End of while loop for attempts
-        # if len(accepted_query_objects) < num_to_generate:
-        #    print(f"Warning: Could only generate {len(accepted_query_objects)} out of {num_to_generate} desired queries after {max_attempts} attempts.")
+        if len(accepted_query_objects) < num_to_generate: # MODIFIED (was commented)
+           print(f"DEBUG: Could only generate {len(accepted_query_objects)} out of {num_to_generate} desired queries after {max_attempts} attempts.") # MODIFIED (was commented)
+        else: # ADDED
+           print(f"DEBUG: Successfully generated {len(accepted_query_objects)}/{num_to_generate} queries.") # ADDED
         return accepted_query_objects
 
     def __is_valid_query_line(self, q_text: str) -> bool:
@@ -313,7 +331,7 @@ if __name__ == "__main__":
         existing_qs_list=existing_queries_for_test,
         llm_batch_size=15,
         # llm_overgen_factor=1.8, # This argument is no longer used
-        similarity_threshold=0.75,
+        similarity_threshold=0.85,
         top_n_similar=3
     )
 
