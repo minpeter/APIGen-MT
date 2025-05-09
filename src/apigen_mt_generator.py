@@ -61,12 +61,14 @@ Generate the tool calls and expected outcome based on this query and the availab
 Ensure your entire response is a single JSON object within a markdown code block.
 '''
         
-        # Combine prompts if your LLM client takes a single prompt string
-        # or use appropriate method if it handles system/user prompts separately
-        full_prompt = f"System: {system_prompt}\\nUser: {user_prompt}" # Adjust if LLMClient handles this differently
+        # Use the chat method of LLMClient with proper message structure
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
 
         # Using a low temperature for more deterministic output for generation tasks
-        raw_llm_response = self.llm.generate(full_prompt, temperature=0.1) 
+        raw_llm_response, _ = self.llm.chat(messages=messages, kwargs={"temperature": 0.1})
         
         if raw_llm_response:
             return self._extract_json_from_markdown(raw_llm_response)
@@ -170,8 +172,12 @@ Please review the following aspects:
 
 Provide your review as a structured text.
 '''
-        full_prompt = f"System: {system_prompt}\\nUser: {user_prompt}"
-        review = self.llm.generate(full_prompt, temperature=0.5) # Higher temp for more nuanced review
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        review, _ = self.llm.chat(messages=messages, kwargs={"temperature": 0.5}) # Higher temp for more nuanced review
         return review
 
     def generate(self) -> List[GeneratedData]:
