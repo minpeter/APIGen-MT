@@ -129,7 +129,6 @@ Ensure your entire response is a single JSON object within a markdown code block
             print(f"Raw blueprint_dict: {blueprint_dict}")
             return None
 
-
     def _execute_and_verify_a_gt(self, q: str, a_gt: List[ToolCallInternal], o_gt: str) -> Dict[str, Any]:
         executed_trajectory: List[Dict[str, Any]] = []
         conversation_messages: List[Dict[str, Any]] = []
@@ -361,36 +360,6 @@ Provide your review as a structured text.
         print(f"--- Finished processing query ---")
         
         return generated_data
-        
-    def generate(self, queries: List[str], with_review: bool = True) -> List[GeneratedData]:
-        """
-        Generate data for multiple queries.
-        
-        Args:
-            queries: List of queries to process
-            with_review: Whether to include LLM review of the generated data
-            
-        Returns:
-            List of GeneratedData objects
-        """
-        all_generated_data: List[GeneratedData] = []
-        
-        print(f"Processing {len(queries)} queries...")
-        
-        for i, q in enumerate(queries):
-            print(f"\n--- Processing Q {i+1}/{len(queries)}: {q} ---")
-            generated_data = self.generate_for_query(q, with_review)
-            
-            if generated_data:
-                all_generated_data.append(generated_data)
-                print(f"--- Finished processing Q {i+1}/{len(queries)} ---")
-            else:
-                print(f"Failed to generate data for query: {q}")
-
-        if not all_generated_data:
-            print("No data was successfully generated for any of the queries.")
-        
-        return all_generated_data
 
 if __name__ == "__main__":
     # --- Instantiate actual components ---
@@ -419,8 +388,7 @@ if __name__ == "__main__":
         )
         print("APIGenMTGenerator initialized with actual components.")
 
-        # Example 1: Generate data for a single query
-        print("\n=== Example 1: Generate data for a single query ===")
+        print("\n=== Example: Generate data for a single query ===")
         # single_query = "What's my schedule look like on June 7th after 1 PM?"
         
         single_query = "Search for volunteer opportunities in Austin and block time for Habitat for Humanity on September 21st."
@@ -430,24 +398,7 @@ if __name__ == "__main__":
             print("\n--- Single Query Result ---")
             print(single_result.model_dump_json(indent=2))
         else:
-            print("\nFailed to generate data for the single query.")
-
-        # # Example 2: Generate data for multiple predefined queries
-        # print("\n=== Example 2: Generate data for multiple predefined queries ===")
-        # predefined_queries = [
-        #     "Send an email to John about the meeting tomorrow",
-        #     "Set a reminder to buy groceries at 6 PM",
-        #     "What time is my first meeting tomorrow?"
-        # ]
-        # predefined_results = generator.generate(queries=predefined_queries)
-        
-        # if predefined_results:
-        #     print(f"\n--- Predefined Queries Results - {len(predefined_results)} items generated ---")
-        #     for i, instance in enumerate(predefined_results):
-        #         print(f"\n--- Item {i+1}/{len(predefined_results)} ---")
-        #         print(instance.model_dump_json(indent=2))
-        # else:
-        #     print("\nFailed to generate data for predefined queries.")
+            print("\nFailed to generate data for the single query.") 
 
     except ImportError as e:
         print(f"Error: Missing one of the core modules (LLMClient, ToolManager, QGenerator): {e}")
