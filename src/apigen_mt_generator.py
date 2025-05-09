@@ -421,7 +421,9 @@ if __name__ == "__main__":
 
         # Example 1: Generate data for a single query
         print("\n=== Example 1: Generate data for a single query ===")
-        single_query = "What's my schedule look like on June 7th after 1 PM?"
+        # single_query = "What's my schedule look like on June 7th after 1 PM?"
+        
+        single_query = "Search for volunteer opportunities in Austin and block time for Habitat for Humanity on September 21st."
         single_result = generator.generate_for_query(single_query)
         
         if single_result:
