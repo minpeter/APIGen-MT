@@ -1,5 +1,8 @@
 # APIGen-MT Simulation (Python Implementation)
 
+> [!NOTE]
+> WIP: I probably won't be able to finish this task :/
+
 This project provides a Python implementation simulating the core concepts of the **APIGen-MT** framework described in the paper "[APIGen-MT: Agentic PIpeline for Multi-Turn Data Generation via Simulated Agent-Human Interplay](https://arxiv.org/abs/2504.03601v2)" (arXiv:2504.03601).
 
 The goal is to generate synthetic multi-turn conversational data for training AI agents capable of tool use, following the two-phase approach outlined in the paper:
