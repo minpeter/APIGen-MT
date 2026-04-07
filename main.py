@@ -22,9 +22,9 @@ def main():
 
     executor = VirtualToolExecutor(tool_mgr.load_tools())
     if executor.verify(output):
-        print("검증 통과:\n", output)
+        print("Verification passed:\n", output)
     else:
-        print("검증 실패")
+        print("Verification failed")
 
 
 if __name__ == "__main__":

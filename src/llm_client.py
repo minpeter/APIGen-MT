@@ -150,6 +150,138 @@ class LLMClient:
         return parsed, reasoning_str
 
 
+class LocalOpenAILLMClient(LLMClient):
+    """
+    An alternative LLMClient designed to work with local LLM studio servers
+    or any OpenAI-compatible API endpoints.
+    """
+    def __init__(
+        self,
+        url: str = "http://localhost:1234/v1",
+        api_key: str = "lm-studio",
+        api_model: str = "local-model",
+        hf_tokenizer_id: str = None,
+    ):
+        self.url = url
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        self.api_model = api_model
+        
+        if hf_tokenizer_id:
+            token = os.environ.get("HF_TOKEN")
+            kwargs = {"legacy": False}
+            if token:
+                kwargs["token"] = token
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                hf_tokenizer_id,
+                **kwargs
+            )
+        else:
+            self.tokenizer = None
+
+    def chat(self, messages, kwargs) -> str:
+        if messages[-1]["role"] == "assistant" and self.tokenizer is not None:
+            # Fall back to base class prefill logic using tokenizer and /completions
+            return super().chat(messages, kwargs)
+        
+        payload = {
+            "model": self.api_model,
+            "messages": messages,
+            **kwargs,
+        }
+        
+        response_obj = requests.request(
+            "POST",
+            url=f"{self.url}/chat/completions",
+            headers=self.headers,
+            json=payload,
+        ).json()
+        
+        if "choices" not in response_obj:
+            raise RuntimeError(f"Unexpected response from API: {response_obj}")
+            
+        response = response_obj["choices"][0]["message"]["content"]
+
+        think_match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
+        reasoning = think_match.group(1).strip() if think_match else ""
+        response_wo_think = re.sub(
+            r"<think>.*?</think>", "", response, flags=re.DOTALL
+        ).strip()
+
+        return response_wo_think, reasoning
+
+    def json_output(
+        self,
+        prompt: str,
+        system_prompt: str = None,
+        schema: BaseModel = None,
+        reasoning: bool = True,
+    ):
+        if not system_prompt and schema is not None:
+            system_prompt = f"""Extract the information.
+            follow the schema: {schema.model_json_schema()}
+            """
+
+        if system_prompt is None:
+            system_prompt = (
+                "You are an information extraction assistant. "
+                "Extract the required information from the user's input and respond ONLY with a valid, minified JSON object. "
+                "Do not include any explanations or extra text. "
+            )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+        if reasoning:
+            reasoning_messages = [
+                *messages,
+                {
+                    "role": "assistant",
+                    "content": "<think>\n",
+                },
+            ]
+            reasoning_str, _ = self.chat(
+                messages=reasoning_messages,
+                kwargs={
+                    "stop": ["</think>"],
+                },
+            )
+        else:
+            reasoning_str = ""
+
+        final_messages = [
+            *messages,
+            {
+                "role": "assistant",
+                "content": "<think>\n" + reasoning_str + "\n</think>\n",
+            },
+        ]
+
+        if schema is not None:
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "json_schema_response",
+                    "schema": schema.model_json_schema(),
+                    "strict": True
+                },
+            }
+        else:
+            response_format = {
+                "type": "json_object",
+            }
+
+        raw_json, _ = self.chat(
+            messages=final_messages,
+            kwargs={"response_format": response_format},
+        )
+        parsed = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+        return parsed, reasoning_str
+
+
 if __name__ == "__main__":
     # Example usage
     llm_client = LLMClient()

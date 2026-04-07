@@ -1,2 +1,7 @@
 __pycache__
 .venv
+
+# Environment files - DO NOT COMMIT
+.env
+.env.local
+.env.*.local

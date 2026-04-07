@@ -6,16 +6,16 @@ import json
 import re
 
 class ToolCallInternal(BaseModel):
-    tool_name: str = Field(..., description="호출할 도구의 이름")
-    arguments: Dict[str, Any] = Field(..., description="도구 호출에 필요한 인자들 (딕셔너리 형태)")
+    tool_name: str = Field(..., description="Name of the tool to call")
+    arguments: Dict[str, Any] = Field(..., description="Arguments required for the tool call (dictionary format)")
 
 class aGTStep(BaseModel):
-    a_gt: List[ToolCallInternal] = Field(..., description="Ground Truth: 에이전트가 수행해야 할 도구 호출")
+    a_gt: List[ToolCallInternal] = Field(..., description="Ground Truth: Tool calls that the agent should perform")
 
 class Blueprint(BaseModel):
-    q: str = Field(..., description="사용자의 초기 질문 또는 요청")
-    a_gt_steps: List[aGTStep] = Field(..., description="Ground Truth Steps: 에이전트가 수행해야할 도구들의 호출 순서를 나타내는 리스트, 같은 순서에 있는 도구는 동시에 실행됩니다, 논리적으로 실행될 수 있는 도구들로 구성되어야 합니다.")
-    o_gt: str = Field(..., description="예상되는 최종 결과에 대한 설명 (문자열)")
+    q: str = Field(..., description="User's initial question or request")
+    a_gt_steps: List[aGTStep] = Field(..., description="Ground Truth Steps: A list representing the order of tool calls the agent should perform. Tools in the same step are executed in parallel, and should consist of logically executable tools.")
+    o_gt: str = Field(..., description="Description of the expected final result (string)")
 
 class GeneratedData(BaseModel):
     q: str
@@ -59,15 +59,15 @@ class APIGenMTGenerator:
             print("Error: Could not retrieve tool schema.")
             return None
 
-        system_prompt = f'''당신은 APIGen-MT 파이프라인의 1단계를 위한 '작업 청사진 생성자'입니다. 당신의 목표는 사용자와 AI 에이전트 간의 **현실적이고 검증 가능한 다중 턴 상호작용 시나리오**를 나타내는 상세한 청사진을 만드는 것입니다. 주어진 도구 설명을 바탕으로 다음 구성요소를 포함하는 **JSON 객체**를 생성해야 합니다.
+        system_prompt = f'''You are the 'Task Blueprint Generator' for Step 1 of the APIGen-MT pipeline. Your goal is to create a detailed blueprint representing a **realistic and verifiable multi-turn interaction scenario** between a user and an AI agent. Based on the provided tool descriptions, you need to generate a **JSON object** with the following components:
 
-1.  `q` (string): 사용자의 초기 질문/요청입니다. **구체적이고 자연스러워야 하며**, 에이전트가 정보를 조회하고, 상태를 변경하고, 사용자에게 다시 확인하는 등 **여러 단계의 상호작용이 필요할 수 있는** 시나리오를 나타내는 것이 좋습니다.
-2.  `a_gt_steps` (list): 사용자의 요청 `q`를 **완전히, 그리고 정확한 순서대로** 해결하기 위해 에이전트가 호출해야 하는 **Ground Truth 도구 호출 리스트**입니다. 각 요소는 `{{"tool_name": "도구명", "arguments": {{"인자명": "값", ...}}}}` 형식이어야 합니다. 사용 가능한 도구 설명과 반드시 일치해야 합니다. **최소 1개 이상의 도구 호출**을 포함해야 하며, 가능하면 **2개 이상의 순차적 도구 호출**이 필요한 시나리오를 만드세요.
-   - 만약 이전 도구 호출의 결과를 다음 도구 호출에서 사용해야 하는 경우, 인자값에 `{{도구명.output.필드명}}` 형식의 placeholder를 사용하세요.
-3.  `o_gt` (string): 모든 `a_gt_steps`가 성공적으로 실행되었다고 가정했을 때, 에이전트가 사용자에게 최종적으로 제공해야 할 **결과 요약 또는 응답 메시지에 대한 자연스러운 설명**입니다. 모든 도구 호출 결과를 반영해야 합니다.
+1. `q` (string): The user's initial question/request. **Should be specific and natural**, and it's good to represent a scenario that **may require multiple steps of interaction**, such as the agent retrieving information, changing state, and confirming back to the user.
+2. `a_gt_steps` (list): The **Ground Truth tool call list** that the agent should call to completely and in correct order resolve the user's request `q`. Each element should be in the format `{{"tool_name": "tool_name", "arguments": {{"arg_name": "value", ...}}}}`. Must match the available tool descriptions. Must include **at least 1 or more tool calls**, and if possible, create a scenario that requires **2 or more sequential tool calls**.
+   - If the result of a previous tool call needs to be used in the next tool call, use a placeholder in the format `{{tool_name.output.field_name}}` for the argument value.
+3. `o_gt` (string): A **natural description of the result summary or response message** that the agent should finally provide to the user, assuming all `a_gt_steps` were successfully executed. Should reflect all tool call results.
 
-**사고 과정 (Optional but Recommended):**
-- 최종 JSON을 생성하기 전에, 당신의 **사고 과정 (어떤 시나리오를 구상했고, 왜 특정 도구와 순서를 선택했는지 등)을 `<think>...</think>` 태그 안에 작성**할 수 있습니다.
+**Thinking Process (Optional but Recommended):**
+- Before generating the final JSON, you can **write your thinking process (what scenario you envisioned, why you chose certain tools and order, etc.) inside ` HDC...DCH` tags**.
 
 Available Tools and their Schemas:
 {tool_schema_json}
@@ -538,7 +538,7 @@ if __name__ == "__main__":
 
         print("\n=== Example: Generate data for a single query with multi-turn steps ===")
         # Example with multi-turn interaction
-        multi_turn_query = "ADEX 2025 행사일을 검색한 후, 행사 일정을 캘린더에 등록해줘"
+        multi_turn_query = "Search for the ADEX 2025 event date, then register the event schedule in the calendar"
         single_result = generator.generate_for_query(multi_turn_query)
         
         if single_result:
