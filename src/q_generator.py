@@ -16,7 +16,7 @@ class QGenerator:
         self,
         tool_manager: ToolManager,
         llm: LLMClient,
-        sentence_model_id: str = "snunlp/KR-SBERT-V40K-klueNLI-augSTS",
+        sentence_model_id: str = "all-MiniLM-L6-v2",
     ):
         raw_tools = tool_manager.get_tools_json_schema()
         self.tool_schemas_json_str = json.dumps(raw_tools, indent=2) # Store as JSON string

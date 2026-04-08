@@ -4,6 +4,7 @@ import os
 import json
 import re
 from transformers import AutoTokenizer
+from llm_debug_logger import log_llm_call
 
 
 class LLMClient:
@@ -13,6 +14,7 @@ class LLMClient:
         api_key: str = None,
         api_model: str = "deepseek-r1",
         hf_tokenizer_id: str = "deepseek-ai/deepseek-v3",
+        debug_mode: bool = False,
     ):
         self.url = url
         token = api_key or os.getenv("FRIENDLI_TOKEN")
@@ -21,6 +23,7 @@ class LLMClient:
             "Content-Type": "application/json",
         }
         self.api_model = api_model
+        self.debug_mode = debug_mode
         self.tokenizer = AutoTokenizer.from_pretrained(
             hf_tokenizer_id,
             token=os.environ.get("HF_TOKEN"),
@@ -34,6 +37,17 @@ class LLMClient:
         return prompt
 
     def chat(self, messages, kwargs) -> str:
+        # Log the call if debug mode is enabled
+        if self.debug_mode:
+            log_llm_call(
+                debug_mode=True,
+                call_type='chat',
+                model=self.api_model,
+                endpoint=f'{self.url}/chat/completions',
+                messages=messages,
+                kwargs=kwargs
+            )
+        
         if messages[-1]["role"] == "assistant":
             # prefill = True
             prompt = self.__apply_chat_template(messages, prefill=True)
@@ -50,12 +64,26 @@ class LLMClient:
                 "messages": messages,
                 **kwargs,
             }
-            response = requests.request(
+            response_obj = requests.request(
                 "POST",
                 url=f"{self.url}/chat/completions",
                 headers=self.headers,
                 json=payload,
-            ).json()["choices"][0]["message"]["content"]
+            ).json()
+            
+            response = response_obj["choices"][0]["message"]["content"]
+
+            # Log the raw response if debug mode is enabled  
+            if self.debug_mode:
+                log_llm_call(
+                    debug_mode=True,
+                    call_type='chat_response',
+                    model=self.api_model,
+                    endpoint=f'{self.url}/chat/completions',
+                    messages=messages,
+                    kwargs=kwargs,
+                    response=response
+                )
 
             think_match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
             reasoning = think_match.group(1).strip() if think_match else ""
@@ -87,6 +115,12 @@ class LLMClient:
         schema: BaseModel = None,
         reasoning: bool = True,
     ):
+        # Prepare messages for potential logging
+        messages_for_log = [
+            {"role": "system", "content": system_prompt or ""},
+            {"role": "user", "content": prompt}
+        ]
+        
         if not system_prompt and schema is not None:
             system_prompt = f"""Extract the information.
             follow the schema: {schema.model_json_schema()}
@@ -147,6 +181,21 @@ class LLMClient:
             kwargs={"response_format": response_format},
         )
         parsed = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+        
+        # Log the final output if debug mode is enabled
+        if self.debug_mode:
+            log_llm_call(
+                debug_mode=True,
+                call_type='json_output',
+                model=self.api_model,
+                endpoint=f'{self.url}/chat/completions',
+                messages=final_messages,
+                kwargs={"response_format": response_format},
+                response=raw_json,
+                reasoning=reasoning_str,
+                parsed_output=parsed
+            )
+        
         return parsed, reasoning_str
 
 
@@ -161,6 +210,7 @@ class LocalOpenAILLMClient(LLMClient):
         api_key: str = "lm-studio",
         api_model: str = "local-model",
         hf_tokenizer_id: str = None,
+        debug_mode: bool = False,
     ):
         self.url = url
         self.headers = {
@@ -219,6 +269,12 @@ class LocalOpenAILLMClient(LLMClient):
         schema: BaseModel = None,
         reasoning: bool = True,
     ):
+        # Prepare messages for potential logging
+        messages_for_log = [
+            {"role": "system", "content": system_prompt or ""},
+            {"role": "user", "content": prompt}
+        ]
+        
         if not system_prompt and schema is not None:
             system_prompt = f"""Extract the information.
             follow the schema: {schema.model_json_schema()}

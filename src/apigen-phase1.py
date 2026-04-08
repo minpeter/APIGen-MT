@@ -86,9 +86,10 @@ class VerifiedBlueprint(BaseModel):
 
 
 class APIGenMTPhase1Generator:
-    def __init__(self, llm_client: LLMClient, tool_manager: ToolManager):
+    def __init__(self, llm_client: LLMClient, tool_manager: ToolManager, num_actions: int = 2):
         self.llm = llm_client
         self.tool_manager = tool_manager
+        self.num_actions = num_actions
 
     def _process_placeholders(
         self, arguments: Dict[str, Any], execution_context: Dict[str, Any]
@@ -167,7 +168,7 @@ Based on the given tool descriptions, you must generate a **JSON object** contai
 
 1. `q` (string): The user's initial question/request. It should be **specific and natural**, preferably representing a scenario that requires **multiple steps of interaction**, such as retrieving information, changing state, and re-confirming with the user.
 
-2. `a_gt_steps` (list): A **Ground Truth tool call list** that the agent must call to **completely and in the correct order** resolve the user's request `q`. Each element must be in the format `{{"tool_name": "tool_name", "arguments": {{"arg_name": "value", ...}}}}` and must strictly match the available tool descriptions. It must include **at least one tool call**, and preferably scenarios requiring **two or more sequential tool calls**.
+2. `a_gt_steps` (list): A **Ground Truth tool call list** that the agent must call to **completely and in the correct order** resolve the user's request `q`. Each element must be in the format `{{"tool_name": "tool_name", "arguments": {{"arg_name": "value", ...}}}}` and must strictly match the available tool descriptions. **IMPORTANT: The list must contain exactly {self.num_actions} step(s)**, where each step can contain one or more tool calls that should be executed together.
 
 3. `o_gt` (string): A **natural description of the final summary or response message** that the agent should provide to the user, assuming all `a_gt` were executed successfully. It must reflect all results of `a_gt`.
 
@@ -219,6 +220,12 @@ Available Tools and their Schemas:
         executability_checks: List[Dict[str, Any]] = []
         is_overall_executable = True
         current_execution_context: Dict[str, Any] = {}
+
+        # Validate number of steps matches num_actions
+        if len(blueprint.a_gt_steps) != self.num_actions:
+            format_errors.append(
+                f"Expected exactly {self.num_actions} step(s), but got {len(blueprint.a_gt_steps)}."
+            )
 
         for step_idx, agt_step in enumerate(blueprint.a_gt_steps):
             step_executable = True

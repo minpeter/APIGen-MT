@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 """
-Generate 100 unique datapoints using the BFCL tool pool.
+Generate datapoints using the BFCL tool pool.
 This script selects random subsets of tools with uniform category coverage.
+
+Usage:
+    python generate_datapoints_bfcl.py [OPTIONS]
+
+Options:
+--num-datapoints N       Number of datapoints to generate (default: 100)
+--num-actions N         Number of actions/steps to generate per datapoint (default: 2)
+--debug                 Enable debug mode to print LLM blueprint generation calls
+    --output FILE         Output file path for generated datapoints (default: apigen_phase1_100_datapoints_bfcl.jsonl)
+    --help               Show this help message
 """
 
 import json
 import os
 import random
+import argparse
 from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
@@ -27,6 +38,63 @@ spec = importlib.util.spec_from_file_location(
 apigen_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(apigen_module)
 APIGenMTPhase1Generator = apigen_module.APIGenMTPhase1Generator
+
+# Global debug flag
+DEBUG_MODE = False
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description='Generate datapoints using the BFCL tool pool with uniform category coverage.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    # Generate 100 datapoints (default)
+    python generate_datapoints_bfcl.py
+
+    # Generate 50 datapoints
+    python generate_datapoints_bfcl.py --num-datapoints 50
+
+# Generate 10 datapoints with 3 actions each
+python generate_datapoints_bfcl.py --num-datapoints 10 --num-actions 3
+
+# Generate 10 datapoints with debug output
+python generate_datapoints_bfcl.py --num-datapoints 10 --debug
+
+# Generate datapoints with custom output file
+python generate_datapoints_bfcl.py --output my_datapoints.jsonl
+        """
+    )
+
+    parser.add_argument(
+        '--num-datapoints', '-n',
+        type=int,
+        default=100,
+        help='Number of datapoints to generate (default: 100)'
+    )
+
+    parser.add_argument(
+        '--num-actions', '-a',
+        type=int,
+        default=2,
+        help='Number of actions/steps to generate per datapoint (default: 2)'
+    )
+
+    parser.add_argument(
+        '--debug', '-d',
+        action='store_true',
+        help='Enable debug mode to print LLM blueprint generation calls and tool execution details'
+    )
+
+    parser.add_argument(
+        '--output', '-o',
+        type=str,
+        default='apigen_phase1_100_datapoints_bfcl.jsonl',
+        help='Output file path for generated datapoints (default: apigen_phase1_100_datapoints_bfcl.jsonl)'
+    )
+
+    return parser.parse_args()
 
 
 def load_tool_categories(tool_pool_path: str) -> dict:
@@ -150,8 +218,19 @@ def get_category_from_tool(tool: dict) -> str:
 
 
 def main():
+    # Parse command line arguments
+    args = parse_args()
+    
+    # Set global debug flag
+    global DEBUG_MODE
+    DEBUG_MODE = args.debug
+    
+    target_count = args.num_datapoints
+    
     print("=" * 60)
-    print("Generating 100 unique datapoints using BFCL tool pool")
+    print(f"Generating {target_count} unique datapoints using BFCL tool pool")
+    if DEBUG_MODE:
+        print("🔧 DEBUG MODE ENABLED")
     print("=" * 60)
 
     # Configuration
@@ -160,8 +239,16 @@ def main():
     tool_pool_path = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl"
     output_dir = "/home/ishalyminov/data/APIGen-MT/data/generated"
     temp_pool_dir = "/home/ishalyminov/data/APIGen-MT/data/generated"
-    existing_file = os.path.join(output_dir, "apigen_phase1_31_datapoints.jsonl")
-    final_output_file = os.path.join(output_dir, "apigen_phase1_100_datapoints_bfcl.jsonl")
+    
+    # Use output file from command line argument
+    output_filename = args.output
+    if not os.path.isabs(output_filename):
+        # If it's not an absolute path, make it relative to output_dir
+        final_output_file = os.path.join(output_dir, output_filename)
+    else:
+        final_output_file = output_filename
+    
+    existing_file = final_output_file  # Use the same file for existing datapoints
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -192,8 +279,6 @@ def main():
     for cat, tools in sorted(tools_by_category.items()):
         print(f"  {cat:30s}: {len(tools):4d} tools")
 
-    # Generate datapoints until we have 100
-    target_count = 100
     attempt = 0
     max_attempts = (target_count - len(datapoints)) * 3  # Allow for some failures
     temp_pool_path = os.path.join(temp_pool_dir, "temp_tool_pool.jsonl")
@@ -218,7 +303,7 @@ def main():
 
         # Initialize generator with temp tool pool
         tool_manager = ToolManager(llm=llm_client, tool_pool_path=temp_pool_path)
-        phase1_generator = APIGenMTPhase1Generator(llm_client=llm_client, tool_manager=tool_manager)
+        phase1_generator = APIGenMTPhase1Generator(llm_client=llm_client, tool_manager=tool_manager, num_actions=args.num_actions)
 
         # Generate query based on available tools and their categories
         # Pick a random category to focus the query on
@@ -230,9 +315,32 @@ def main():
 
         # Generate blueprint
         try:
+            if DEBUG_MODE:
+                print("\n" + "=" * 70)
+                print("🔧 DEBUG: Generating blueprint...")
+                print(f"   Query: {query}")
+                print(f"   Focus category: {focus_category}")
+                print(f"   Tools available: {len(selected_tools)}")
+                print(f"   Categories in pool: {', '.join(sorted(selected_categories))}")
+                print("=" * 70)
+            
             verified_bp = phase1_generator.generate_verified_blueprint(query, max_attempts=2)
 
             if verified_bp:
+                if DEBUG_MODE:
+                    print("\n" + "=" * 70)
+                    print("🔧 DEBUG: Blueprint generated successfully")
+                    print(f"   Blueprint query: {verified_bp.blueprint.q}")
+                    print(f"   Number of steps: {len(verified_bp.blueprint.a_gt_steps)}")
+                    if verified_bp.llm_review_history:
+                        print(f"   Quality: {verified_bp.llm_review_history[-1].quality_assessment}")
+                    print("   Tool calls:")
+                    for idx, step in enumerate(verified_bp.blueprint.a_gt_steps):
+                        print(f"     Step {idx}:")
+                        for tc in step.tool_calls:
+                            print(f"       - {tc.tool_name}({json.dumps(tc.arguments)})")
+                    print("=" * 70 + "\n")
+                
                 print("✓ Successfully generated blueprint")
 
                 data_point = {
