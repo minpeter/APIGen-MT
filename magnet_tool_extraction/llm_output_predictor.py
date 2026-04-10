@@ -28,7 +28,7 @@ class LLMOutputPredictor:
     Uses LLM to predict output type and description for tools based on:
     - Tool schema (name, description, parameters)
     - Invocation contexts (how the tool is used in practice)
-    
+
     Note: This class only supports NVIDIA LLM client.
     """
 
@@ -43,11 +43,11 @@ class LLMOutputPredictor:
         Note: client_type parameter is kept for backward compatibility but only 'nvidia' is supported.
         """
         self.debug = debug
-        
+
         # Only NVIDIA client is supported
         if client_type != "nvidia":
             print(f"⚠️ Warning: client_type '{client_type}' is deprecated. Using 'nvidia' instead.")
-        
+
         # Use OpenAI-compatible client with NVIDIA API
         api_key = os.getenv("OPENAI_API_KEY")
         base_url = os.getenv("OPENAI_API_BASE", "https://integrate.api.nvidia.com/v1")
@@ -66,7 +66,8 @@ class LLMOutputPredictor:
         self,
         tool_schema: Dict[str, Any],
         invocation_contexts: List[Dict[str, Any]],
-        max_contexts: int = 5
+        max_contexts: int = 5,
+        max_retries: int = 3
     ) -> OutputPrediction:
         """
         Predict output type and description for a tool.
@@ -75,6 +76,7 @@ class LLMOutputPredictor:
             tool_schema: Tool definition schema
             invocation_contexts: List of invocation contexts
             max_contexts: Maximum number of contexts to include
+            max_retries: Maximum number of retry attempts on LLM failure (default: 3)
 
         Returns:
             OutputPrediction with output_type and output_description
@@ -91,57 +93,63 @@ class LLMOutputPredictor:
             print(f"\nUser prompt:\n{prompt}")
             print(f"{'='*80}\n")
 
-        try:
-            if self.client_type == "nvidia":
-                # Use OpenAI client directly
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=500
-                )
-                
-                content = response.choices[0].message.content
-                
-                if self.debug:
-                    print(f"LLM Response: {content}")
-                
-                # Parse JSON from response
-                # Try to extract JSON from the response
-                import re
-                json_match = re.search(r'\{[^{}]*"output_type"[^{}]*"output_description"[^{}]*\}', content, re.DOTALL)
-                if json_match:
-                    prediction_dict = json.loads(json_match.group())
+        # Retry loop
+        for attempt in range(1, max_retries + 1):
+            try:
+                if self.client_type == "nvidia":
+                    # Use OpenAI client directly
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=500
+                    )
+
+                    content = response.choices[0].message.content
+
+                    if self.debug:
+                        print(f"LLM Response (attempt {attempt}): {content}")
+
+                    # Parse JSON from response
+                    # Try to extract JSON from the response
+                    import re
+                    json_match = re.search(r'\{[^{}]*"output_type"[^{}]*"output_description"[^{}]*\}', content, re.DOTALL)
+                    if json_match:
+                        prediction_dict = json.loads(json_match.group())
+                    else:
+                        # Try parsing the whole response
+                        prediction_dict = json.loads(content)
+
+                    return OutputPrediction(**prediction_dict)
                 else:
-                    # Try parsing the whole response
-                    prediction_dict = json.loads(content)
-                
-                return OutputPrediction(**prediction_dict)
-            else:
-                # Use existing LLM client
-                prediction, reasoning = self.llm.json_output(
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    schema=OutputPrediction,
-                    reasoning=True
-                )
+                    # Use existing LLM client
+                    prediction, reasoning = self.llm.json_output(
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                        schema=OutputPrediction,
+                        reasoning=True
+                    )
 
-                if self.debug:
-                    print(f"Reasoning: {reasoning}")
-                    print(f"Prediction: {prediction}")
+                    if self.debug:
+                        print(f"Reasoning: {reasoning}")
+                        print(f"Prediction: {prediction}")
 
-                return OutputPrediction(**prediction)
+                    return OutputPrediction(**prediction)
 
-        except Exception as e:
-            print(f"Error predicting output: {e}")
-            # Return default values
-            return OutputPrediction(
-                output_type="unknown",
-                output_description="Failed to predict output description"
-            )
+            except Exception as e:
+                if attempt < max_retries:
+                    print(f"Attempt {attempt}/{max_retries} failed for {tool_schema.get('api_name', 'unknown')}: {e}")
+                    print(f"Retrying...")
+                else:
+                    print(f"Error predicting output after {max_retries} attempts: {e}")
+                    # Return default values
+                    return OutputPrediction(
+                        output_type="unknown",
+                        output_description="Failed to predict output description"
+                    )
 
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the LLM"""
@@ -308,7 +316,7 @@ if __name__ == "__main__":
     # Test the predictor
     from dotenv import load_dotenv
     load_dotenv()
-    
+
     test_tool = {
         "tool_name": "weather_api",
         "api_name": "get_weather",
@@ -324,7 +332,7 @@ if __name__ == "__main__":
             "required": ["location"]
         }
     }
-    
+
     test_contexts = [
         {
             "user_message": "What's the weather in San Francisco?",
@@ -337,10 +345,10 @@ if __name__ == "__main__":
             ]
         }
     ]
-    
+
     predictor = LLMOutputPredictor(client_type="nvidia", debug=True)
     prediction = predictor.predict_output(test_tool, test_contexts)
-    
+
     print(f"\n{'='*80}")
     print("PREDICTION RESULT")
     print(f"{'='*80}")

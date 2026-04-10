@@ -1,6 +1,6 @@
 # BFCL_v3 Extraction - Sample Outputs
 
-This file contains sample tool definitions and invocation examples extracted from BFCL_v3.
+This file contains sample tool definitions and invocation examples extracted from BFCL.
 
 ## Part 1: Tool Definitions
 
