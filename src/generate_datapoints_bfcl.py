@@ -236,7 +236,7 @@ def main():
     # Configuration
     api_key = os.getenv("OPENAI_API_KEY")
     api_base = os.getenv("OPENAI_API_BASE")
-    tool_pool_path = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl"
+    tool_pool_path = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl"
     output_dir = "/home/ishalyminov/data/APIGen-MT/data/generated"
     temp_pool_dir = "/home/ishalyminov/data/APIGen-MT/data/generated"
     

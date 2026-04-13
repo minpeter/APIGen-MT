@@ -182,7 +182,7 @@ Based on the given tool descriptions, you must generate a **JSON object** contai
 {llm_review_prompt}{validation_prompt}
 
 **Tool Descriptions:**
-Available Tools and their Schemas:
+Available Tools and their Schemas (each tool includes 'output_type' and 'output_description' fields that describe what the tool returns):
 {tool_schema_json_str}
 """
 
@@ -328,9 +328,27 @@ Available Tools and their Schemas:
 
 Your goal is to evaluate whether this blueprint is suitable for generating high-quality training data, and to provide specific, actionable feedback for improvement.
 
-Note: The use of placeholders (`{{tool_name.output.field_name}}`) is essential for multi-step and dependency implementations. If placeholders are used correctly according to the rules, do not penalize for this. In fact, correct use of placeholders may be evaluated positively.
+CRITICAL QUALITY CHECKS:
 
-Also, if the following prompt rules are followed, you may evaluate it as high-quality data.
+1. **Tool-Query Relevance (MOST IMPORTANT)**: The selected tools MUST be directly relevant and capable of addressing the user's request. If the tools are irrelevant, inappropriate, or cannot fulfill the request, the quality MUST be rated as "Poor".
+
+Examples of POOR tool-query relevance:
+- User asks for weather information, but tools are only file system operations → Poor
+- User asks to create a calendar event, but no calendar tools available → Poor
+- User asks to search the web, but only math tools available → Poor
+- The blueprint uses fallback/no-op tools because appropriate tools are unavailable → Poor
+
+2. **Semantic Correctness**: The tool calls should actually accomplish what the user requested, not just be syntactically valid.
+
+3. **Placeholders**: The use of placeholders (`{{tool_name.output.field_name}}`) is essential for multi-step and dependency implementations. If placeholders are used correctly according to the rules, evaluate positively.
+
+QUALITY RATING GUIDELINES:
+- **Excellent**: Tools perfectly match the request, correct execution order, proper placeholders for dependencies
+- **Good**: Tools match the request well, minor issues that don't affect correctness
+- **Fair**: Tools are somewhat relevant but have significant issues (missing placeholders, wrong order)
+- **Poor**: Tools are NOT relevant to the request OR cannot fulfill the request OR are fallback/no-op operations
+
+If tool-query relevance is violated, ALWAYS rate as "Poor" regardless of other factors.
 """
 
         user_prompt = f"""Below is the task blueprint and related information to be reviewed:
@@ -356,6 +374,7 @@ Also, if the following prompt rules are followed, you may evaluate it as high-qu
 ```
 
 **Review Items and Evaluation Criteria:**
+* **CRITICAL: Tool-Query Relevance** - Are the selected tools capable of addressing the user's request? If NO, rate as "Poor"
 * **Clarity and Realism of Request (q)**
 * **Logical Coherence and Accuracy (a_gt_steps)** (order, parallelism, placeholder usage)
 * **Appropriateness of Tool Usage** (selected tools, argument values)

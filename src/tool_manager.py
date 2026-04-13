@@ -175,11 +175,14 @@ class ToolManager:
                     "description": ""
                 }
         
-        # Create the tool schema
+        # Create the tool schema with output information
         schema = {
             "name": tool_name,
             "description": tool_data.get('api_description') or tool_data.get('tool_description') or '',
-            "parameters": param_schema
+            "parameters": param_schema,
+            # Include output type and description for new format
+            "output_type": tool_data.get('output_type', 'unknown'),
+            "output_description": tool_data.get('output_description', '')
         }
         
         self.tool_schemas.append(schema)
@@ -305,15 +308,26 @@ class ToolManager:
     ) -> Any:
         """
         Simulate tool execution using LLM.
-        
+
         Args:
             tool_name: Name of the tool
             params: Parameters for the tool
             schema: Tool schema
-            
+
         Returns:
             Simulated tool output
         """
+        # Extract output type and description from schema
+        output_type = schema.get('output_type', 'unknown')
+        output_description = schema.get('output_description', '')
+        
+        # Build output guidance based on declared output type and description
+        output_guidance = ""
+        if output_type and output_type != 'unknown':
+            output_guidance += f"\n- Expected Output Type: {output_type}"
+        if output_description:
+            output_guidance += f"\n- Output Description: {output_description}"
+        
         prompt = f"""You are an expert function simulator. Based on the following function description and the provided arguments, simulate the execution of this function call.
 
 Function Name: {tool_name}
@@ -322,7 +336,7 @@ Function Description: {schema["description"]}
 
 Function Schema:
 {json.dumps(schema, indent=2)}
-
+{output_guidance}
 Arguments Provided:
 {json.dumps(params, indent=2)}
 
@@ -332,6 +346,7 @@ Task:
 Generate a plausible JSON response string that represents what the function '{tool_name}' would return if it were actually executed with the given arguments.
 - Consider the function's description (e.g., does it fetch data, create something, authorize, search?).
 - Consider the argument values (e.g., dates, search terms).
+- IMPORTANT: If Output Type and Output Description are provided above, ensure your response matches those specifications exactly.
 - If the function description mentions potential errors (like needing authorization for 'fetch_calendar_events'), sometimes simulate those error responses.
 - If the function returns nothing on success (like 'create_calendar_event' or 'authorize_calendar_access'), return a JSON indicating success, like '{{"status": "success"}}' or an empty JSON object '{{}}'.
 - For functions returning data (like 'fetch_calendar_events' or 'web_search'), generate realistic-looking example data formatted as a JSON string.
@@ -343,7 +358,106 @@ Generate a plausible JSON response string that represents what the function '{to
             prompt=prompt,
             reasoning=True,
         )
-        return response
+        
+        # Validate the response against declared output type
+        validated_response = self._validate_tool_output(
+            tool_name, response, output_type, output_description
+        )
+        
+        return validated_response
+
+    def _validate_tool_output(
+        self, 
+        tool_name: str, 
+        output: Any, 
+        expected_type: str, 
+        output_description: str
+    ) -> Any:
+        """
+        Validate that the simulated tool output matches the declared output type and description.
+        
+        Args:
+            tool_name: Name of the tool
+            output: The simulated output to validate
+            expected_type: The declared output type
+            output_description: The declared output description
+            
+        Returns:
+            The validated output (unchanged if valid)
+        """
+        if expected_type == 'unknown' or not expected_type:
+            # No validation if type is unknown
+            return output
+            
+        # Basic type checking
+        type_mapping = {
+            'string': str,
+            'integer': int,
+            'float': (int, float),
+            'boolean': bool,
+            'list': list,
+            'dict': dict,
+            'number': (int, float),
+        }
+        
+        # Handle compound types like "integer or string"
+        base_type = expected_type.split()[0].lower()  # Take first word
+        expected_python_type = type_mapping.get(base_type, None)
+        
+        if expected_python_type:
+            if not isinstance(output, expected_python_type):
+                # Try to convert if possible
+                try:
+                    if base_type in ('integer', 'float', 'number'):
+                        if isinstance(output, str):
+                            output = float(output) if '.' in output else int(output)
+                    elif base_type == 'string':
+                        output = str(output)
+                    elif base_type == 'boolean':
+                        if isinstance(output, str):
+                            output = output.lower() in ('true', 'yes', '1')
+                    elif base_type == 'list':
+                        if isinstance(output, dict):
+                            output = list(output.values())
+                    elif base_type == 'dict':
+                        if isinstance(output, str):
+                            output = json.loads(output)
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    # If conversion fails, return as-is but log warning
+                    print(f"Warning: Output type mismatch for {tool_name}. Expected {expected_type}, got {type(output).__name__}")
+        
+        # Use LLM to verify output matches description
+        if output_description and output_description != 'Failed to predict output description':
+            validation_prompt = f"""You are an output validator. Given the following tool output and its expected description, determine if the output is plausible and matches the description.
+
+Tool Name: {tool_name}
+Expected Output Description: {output_description}
+Actual Output: {json.dumps(output, default=str) if isinstance(output, (dict, list)) else str(output)}
+
+Does the output plausibly match the description? Answer YES or NO, followed by a brief explanation.
+
+Response format:
+{{
+    "VALID": "YES" or "NO",
+    "REASON": "<brief explanation>"
+}}"""
+
+            try:
+                validation_response, _ = self.llm.json_output(
+                    system_prompt="You are an output validator. Respond with VALID and REASON fields.",
+                    prompt=validation_prompt,
+                    reasoning=False,
+                )
+                
+                if validation_response:
+                    is_valid = validation_response.get('VALID', 'YES').upper() == 'YES'
+                    if not is_valid:
+                        print(f"Warning: LLM validation flagged output for {tool_name} as not matching description: {validation_response.get('REASON', 'No reason provided')}")
+            except Exception as e:
+                # If validation fails, just log and continue
+                print(f"Warning: Could not validate output for {tool_name}: {e}")
+        
+        return output
 
 
 # Default tools for backward compatibility (can be imported if needed)

@@ -161,6 +161,11 @@ def main():
         help="Limit number of tools to process (for testing)"
     )
     parser.add_argument(
+        "--frequent",
+        action="store_true",
+        help="Process top 100 most frequent tools (from frequency analysis)"
+    )
+    parser.add_argument(
         "--force-download",
         action="store_true",
         help="Force re-download of BFCL data"
@@ -195,6 +200,28 @@ def main():
     if args.limit:
         tools = tools[:args.limit]
         print(f"\n⚠️ Limiting to {args.limit} tools for testing")
+
+    # Filter by most frequent tools
+    if args.frequent:
+        frequent_tools_file = Path(__file__).parent / "top_100_frequent_tools.txt"
+        if frequent_tools_file.exists():
+            with open(frequent_tools_file, 'r') as f:
+                frequent_tool_names = [line.strip() for line in f if line.strip()]
+            
+            # Filter tools to only include frequent ones
+            filtered_tools = []
+            for tool in tools:
+                tool_name = tool.get('tool_name', '')
+                api_name = tool.get('api_name', '')
+                full_name = f"{tool_name}.{api_name}" if tool_name else api_name
+            
+                if full_name in frequent_tool_names:
+                    filtered_tools.append(tool)
+            
+            tools = filtered_tools
+            print(f"\n📊 Filtered to {len(tools)} most frequent tools")
+        else:
+            print(f"\n⚠️ Warning: {frequent_tools_file} not found, ignoring --frequent flag")
 
     # Predict outputs using LLM (always uses NVIDIA client)
     enhanced_tools = predict_outputs_for_tools(

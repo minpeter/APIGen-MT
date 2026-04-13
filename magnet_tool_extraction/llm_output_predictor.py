@@ -6,6 +6,7 @@ Uses LLM-as-a-judge to predict what a tool returns based on its schema and invoc
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel
@@ -123,6 +124,8 @@ class LLMOutputPredictor:
                         # Try parsing the whole response
                         prediction_dict = json.loads(content)
 
+                    # Add 5-second timeout after successful LLM call
+                    time.sleep(5)
                     return OutputPrediction(**prediction_dict)
                 else:
                     # Use existing LLM client
@@ -137,6 +140,8 @@ class LLMOutputPredictor:
                         print(f"Reasoning: {reasoning}")
                         print(f"Prediction: {prediction}")
 
+                    # Add 5-second timeout after successful LLM call
+                    time.sleep(5)
                     return OutputPrediction(**prediction)
 
             except Exception as e:
