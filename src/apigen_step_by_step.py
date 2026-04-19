@@ -85,6 +85,34 @@ class StepByStepGenerator:
             schemas = [s for s in schemas if s['name'] in tools_subset]
         return json.dumps(schemas, indent=2, ensure_ascii=False)
 
+    def _get_tools_with_descriptions_str(self, category: Optional[str] = None) -> str:
+        """Get a formatted string of tools with their full descriptions, organized by category."""
+        tools = self.tool_manager.get_tools_json_schema()
+        
+        if category:
+            tools = [t for t in tools if t.get('category') == category]
+        
+        # Group by category
+        tools_by_cat = {}
+        for tool in tools:
+            cat = tool.get('category', 'Unknown')
+            if cat not in tools_by_cat:
+                tools_by_cat[cat] = []
+            tools_by_cat[cat].append(tool)
+        
+        result = []
+        for cat, cat_tools in sorted(tools_by_cat.items()):
+            result.append(f"\n{cat}:")
+            for tool in cat_tools:
+                name = tool['name']
+                desc = tool.get('description', 'No description available.')
+                # Truncate very long descriptions
+                if len(desc) > 200:
+                    desc = desc[:197] + "..."
+                result.append(f"  - {name}: {desc}")
+        
+        return "\n".join(result)
+
     def _process_placeholders(self, arguments: Dict[str, Any], execution_context: Dict[str, Any]) -> Dict[str, Any]:
         processed_args = copy.deepcopy(arguments)
         for arg_name, arg_value in processed_args.items():
@@ -108,73 +136,228 @@ class StepByStepGenerator:
                             processed_args[arg_name] = arg_value.replace(placeholder_tag, str(current_value))
         return processed_args
 
-    def generate_user_query(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None) -> QueryGenerationResult:
-        categories = list(self.tool_manager.get_categories())
-        tools_by_cat = {}
-        for cat in categories:
-            tools = self.tool_manager.get_tools_by_category(cat)
-            if tools:
-                tools_by_cat[cat] = [t['name'] for t in tools[:10]]
+    def validate_expected_tools(self, query: str, expected_tools: List[str], intent: str) -> tuple[bool, str]:
+        """Validate expected_tools: count must match num_actions and sequence must make sense."""
+        if len(expected_tools) != self.num_actions:
+            return False, f"Expected tools count {len(expected_tools)} != required {self.num_actions}"
 
-        prompt = """You are generating a realistic user query for testing a tool-calling system.
+        tool_schemas = self._get_tool_schemas_str(expected_tools)
 
-Generate a natural, realistic user query that would require using multiple tools to fulfill.
+        prompt = f"""You are validating a tool sequence plan for a user query.
 
-Requirements:
-1. The query should be specific and actionable
-2. It should mention concrete entities (names, IDs, dates, etc.)
-3. It should require at least 2-3 tool calls to complete
+User Query: {query}
+Intent: {intent}
 
-Available tool categories:
-"""
-        for cat, tools in tools_by_cat.items():
-            prompt += f"\n{cat}:\n"
-            for tool in tools[:5]:
-                prompt += f"  - {tool}\n"
+Planned Tool Sequence: {json.dumps(expected_tools)}
 
-        if focus_category and focus_category in tools_by_cat:
-            prompt += f"\nFocus category: {focus_category}\n"
+Tool Schemas:
+{tool_schemas}
 
-        if context_hint:
-            prompt += f"\nContext: {context_hint}\n"
-
-        prompt += """
-Generate a query that is natural and would require tools to fulfill.
+Evaluate if the sequence logically fits the query intent.
 
 Respond with JSON:
-{
-    "query": "the generated user query",
-    "intent": "brief description of what the user wants",
-    "expected_tools": ["tool1", "tool2", ...]
-}"""
+{{
+    "is_valid": true/false,
+    "issues": ["list of issues if any"]
+}}"""
 
-        try:
-            response = self.llm.generate([{"role": "user", "content": prompt}])
-            response_text = response.strip()
+        response = self.llm.generate([{"role": "user", "content": prompt}])
+        response_text = response.strip()
 
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0]
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0]
-            elif response_text.startswith("{"):
-                start = response_text.find("{")
-                end = response_text.rfind("}") + 1
-                response_text = response_text[start:end]
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0]
+        elif response_text.startswith("{"):
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            response_text = response_text[start:end]
 
-            result = json.loads(response_text)
-            return QueryGenerationResult(
-                query=result.get("query", ""),
-                intent=result.get("intent", ""),
-                expected_tools=result.get("expected_tools", [])
-            )
-        except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
-            return QueryGenerationResult(query="", intent="", expected_tools=[])
-        except Exception as e:
-            print(f"Error generating query: {e}")
-            return QueryGenerationResult(query="", intent="", expected_tools=[])
+        result = json.loads(response_text)
+        is_valid = result.get("is_valid", False)
+        issues = result.get("issues", [])
 
-    def _generate_next_step(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any], expected_tools: List[str]) -> StepSelectionResult:
+        if not is_valid:
+            return False, f"Tool sequence validation failed: {'; '.join(issues)}"
+        return True, ""
+
+    def _get_example_queries(self) -> str:
+        """Return few-shot examples of valid queries with correct tool sequences."""
+        examples = [
+            {
+                "category": "Travel Booking",
+                "num_tools": 3,
+                "query": "I need to book a flight from JFK to London Heathrow on June 15, 2024 for 2 passengers in business class. Please authenticate first, then get the flight cost, and book the flight.",
+                "intent": "User wants to book a business class flight and needs to authenticate, check pricing, and complete the booking",
+                "expected_tools": ["authenticate_travel", "get_flight_cost", "book_flight"]
+            },
+            {
+                "category": "Finance",
+                "num_tools": 3,
+                "query": "Buy 50 shares of Apple stock at market price, then add AAPL to my watchlist and notify me when the price changes by more than 5%.",
+                "intent": "User wants to purchase Apple stock, monitor it, and receive price alerts",
+                "expected_tools": ["get_symbol_by_name", "place_order", "add_to_watchlist"]
+            },
+            {
+                "category": "Events",
+                "num_tools": 4,
+                "query": "My order #12345 never arrived. Create a ticket about this issue, get the ticket details, and update it with high priority since it's been 2 weeks.",
+                "intent": "User has a delivery issue and wants to create and manage a support ticket",
+                "expected_tools": ["create_ticket", "get_ticket", "edit_ticket", "get_user_tickets"]
+            },
+            {
+                "category": "Storage",
+                "num_tools": 3,
+                "query": "Navigate to the project directory, check the disk usage of all files, and then display the contents of config.json.",
+                "intent": "User wants to browse a directory, check file sizes, and view a configuration file",
+                "expected_tools": ["cd", "du", "cat"]
+            },
+            {
+                "category": "Communication",
+                "num_tools": 2,
+                "query": "Send a message to user john_doe saying 'Meeting at 3pm', but first get their user ID from their username.",
+                "intent": "User wants to send a message to another user, requiring ID lookup first",
+                "expected_tools": ["get_user_id", "send_message"]
+            }
+        ]
+        
+        # Filter examples by num_actions if possible
+        filtered_examples = [ex for ex in examples if ex["num_tools"] <= self.num_actions + 1 and ex["num_tools"] >= self.num_actions - 1]
+        if not filtered_examples:
+            filtered_examples = examples[:3]  # Just take first 3
+        
+        result = []
+        for i, ex in enumerate(filtered_examples, 1):
+            result.append(f"\n=== EXAMPLE {i} ({ex['category']}, {ex['num_tools']} tools) ===")
+            result.append(f"Query: \"{ex['query']}\"")
+            result.append(f"Intent: {ex['intent']}")
+            result.append(f"Expected tools: {ex['expected_tools']}")
+        
+        return "\n".join(result)
+
+    def generate_user_query(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3) -> QueryGenerationResult:
+        # Get tools with full descriptions
+        tools_with_descriptions = self._get_tools_with_descriptions_str(category=focus_category)
+        
+        accumulated_feedback = validation_feedback or ""
+        example_queries = self._get_example_queries()
+
+        for attempt in range(max_retries + 1):
+            prompt = f"""You are generating a realistic user query for testing a tool-calling system.
+
+Generate a natural, realistic user query that would require using EXACTLY {self.num_actions} tools to fulfill.
+
+=== REQUIREMENTS ===
+1. The query should be specific and actionable
+2. It should mention concrete entities (names, IDs, dates, locations, etc.)
+3. It should require EXACTLY {self.num_actions} tool calls to complete - not more, not less
+4. The expected_tools list must contain EXACTLY {self.num_actions} tool names
+5. CRITICAL: Use ONLY the exact tool names from the AVAILABLE TOOLS section below
+6. CRITICAL: Do NOT invent tool names - only use tools that exist in the list
+7. The tools should logically fit together to accomplish the query
+
+=== AVAILABLE TOOLS WITH DESCRIPTIONS ===
+{tools_with_descriptions}
+{example_queries}
+"""
+            if focus_category:
+                prompt += f"\n=== FOCUS CATEGORY ===\nPrimary category: {focus_category} (select tools primarily from this category)\n"
+
+            if accumulated_feedback:
+                prompt += f"\n=== PREVIOUS ATTEMPT FEEDBACK ===\n{accumulated_feedback}\n=== END FEEDBACK ===\n"
+
+            prompt += f"""
+=== YOUR TASK ===
+Generate a query for category: {focus_category or 'any'} that requires EXACTLY {self.num_actions} tools from the AVAILABLE TOOLS list above.
+
+The query should be realistic and the expected_tools must be EXACT names from the available tools list.
+
+Respond ONLY with valid JSON in this exact format:
+{{
+    "query": "the generated user query - be specific with names, dates, IDs",
+    "intent": "brief description of what the user wants to accomplish",
+    "expected_tools": ["tool_name_1", "tool_name_2", ...] // EXACTLY {self.num_actions} tools from AVAILABLE TOOLS
+}}"""
+
+            try:
+                response = self.llm.generate([{"role": "user", "content": prompt}])
+                response_text = response.strip()
+
+                if "```json" in response_text:
+                    response_text = response_text.split("```json")[1].split("```")[0]
+                elif "```" in response_text:
+                    response_text = response_text.split("```")[1].split("```")[0]
+                elif response_text.startswith("{"):
+                    start = response_text.find("{")
+                    end = response_text.rfind("}") + 1
+                    response_text = response_text[start:end]
+
+                result = json.loads(response_text)
+                expected_tools = result.get("expected_tools", [])
+
+                # Validate tool count
+                if len(expected_tools) != self.num_actions:
+                    accumulated_feedback += f"\nAttempt {attempt + 1}: Expected {self.num_actions} tools, but got {len(expected_tools)}: {expected_tools}. Please generate EXACTLY {self.num_actions} tools."
+                    print(f" Query generation attempt {attempt + 1}: Wrong tool count ({len(expected_tools)}/{self.num_actions})")
+                    continue
+
+                # Validate that tools exist
+                all_tools_valid = True
+                invalid_tools = []
+                for tool in expected_tools:
+                    if not self.tool_manager.tool_exists(tool):
+                        all_tools_valid = False
+                        invalid_tools.append(tool)
+
+                if not all_tools_valid:
+                # Get available tools in the focus category or all categories
+                    available_tools = []
+                    if focus_category:
+                        cat_tools = self.tool_manager.get_tools_by_category(focus_category)
+                        available_tools = [t['name'] for t in cat_tools[:20]]
+                    else:
+                        for cat in self.tool_manager.get_categories():
+                            cat_tools = self.tool_manager.get_tools_by_category(cat)
+                            available_tools.extend([t['name'] for t in cat_tools[:5]])
+
+                # Build helpful feedback with suggestions
+                    feedback_msg = f"\nAttempt {attempt + 1}: INVALID TOOLS: {invalid_tools}\n"
+                    feedback_msg += f"\nThese tools do NOT exist. You MUST choose from the available tools.\n"
+                    feedback_msg += f"\nAvailable tools (sample): {available_tools[:15]}\n"
+                    feedback_msg += f"\nPlease select ONLY tools from the AVAILABLE TOOLS list with exact names.\n"
+
+                    accumulated_feedback += feedback_msg
+                    print(f" Query generation attempt {attempt + 1}: Invalid tools {invalid_tools}")
+                    continue
+
+                # Validate tool sequence makes sense for the query
+                is_valid, validation_msg = self.validate_expected_tools(
+                    result.get("query", ""),
+                    expected_tools,
+                    result.get("intent", "")
+                )
+
+                if not is_valid:
+                    accumulated_feedback += f"\nAttempt {attempt + 1}: Tool sequence validation failed: {validation_msg}"
+                    print(f" Query generation attempt {attempt + 1}: Tool sequence invalid")
+                    continue
+
+                print(f" Query generation successful after {attempt + 1} attempt(s)")
+                return QueryGenerationResult(
+                    query=result.get("query", ""),
+                    intent=result.get("intent", ""),
+                    expected_tools=expected_tools
+                )
+
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error on attempt {attempt + 1}: {e}")
+                accumulated_feedback += f"\nAttempt {attempt + 1}: JSON parsing error. Please ensure valid JSON output."
+            except Exception as e:
+                print(f"Error generating query on attempt {attempt + 1}: {e}")
+                accumulated_feedback += f"\nAttempt {attempt + 1}: Error occurred: {str(e)}"
+
+        print(f"Failed to generate valid query after {max_retries + 1} attempts")
+        return QueryGenerationResult(query="", intent="", expected_tools=[])
+
+    def _generate_next_step(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any], expected_tools: List[str], step_num: int = 1) -> StepSelectionResult:
         trajectory_str = ""
         for i, step in enumerate(trajectory):
             trajectory_str += f"\nStep {i+1}:"
@@ -192,27 +375,43 @@ Respond with JSON:
         if not tools_remaining:
             return StepSelectionResult(tool_name="__FINAL_RESPONSE__", arguments={}, reasoning="All expected tools have been used.")
 
-        tool_schemas_str = self._get_tool_schemas_str(tools_remaining)
+        # Get tools with descriptions for remaining expected tools
+        tool_descriptions_str = ""
+        for tool_name in tools_remaining:
+            try:
+                schema = self.tool_manager.get_tool_schema(tool_name)
+                desc = schema.get('description', 'No description available.')[:150]
+                tool_descriptions_str += f"  - {tool_name}: {desc}\n"
+            except:
+                tool_descriptions_str += f"  - {tool_name}: (no description)\n"
 
         prompt = f"""You are selecting the next tool to call based on the conversation context.
 
-User Query: {query}
+=== USER QUERY ===
+{query}
 
-Current Trajectory:{trajectory_str}
+=== CURRENT TRAJECTORY ===
+{trajectory_str}
 
-Available tools (only use tools from this list):
-{tool_schemas_str}
+=== EXPECTED TOOLS REMAINING ===
+{tool_descriptions_str}
 
-Execution context (outputs from previous steps):
+=== EXECUTION CONTEXT (previous tool outputs) ===
 {json.dumps(execution_context, indent=2, default=str)[:1000]}
 
-Select the next tool to call.
+=== YOUR TASK ===
+Select the NEXT tool to call from the EXPECTED TOOLS REMAINING list above.
 
-Respond with JSON:
+CRITICAL:
+- You MUST select a tool name EXACTLY as shown in EXPECTED TOOLS REMAINING
+- The tool must logically follow from the current trajectory and context
+- Use values from Execution Context when available (e.g., user_id from previous step)
+
+Respond ONLY with valid JSON:
 {{
-    "tool_name": "name of the tool to call",
-    "arguments": {{"arg1": "value1", ...}},
-    "reasoning": "why this tool is the right next step"
+    "tool_name": "exact_name_from_expected_tools_list",
+    "arguments": {{"arg1": "value1", "arg2": "value2"}},
+    "reasoning": "brief explanation of why this tool and these arguments"
 }}"""
 
         try:
@@ -243,22 +442,26 @@ Respond with JSON:
 
     def _simulate_tool_execution(self, tool_name: str, arguments: Dict[str, Any], execution_context: Dict[str, Any]) -> Any:
         processed_args = self._process_placeholders(arguments, execution_context)
-        return self.tool_manager.simulate_tool_call(tool_name=tool_name, arguments=processed_args)
+        return self.tool_manager.invoke_tool(tool_name=tool_name, params=processed_args)
 
-    def generate_datapoint(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None) -> Optional[StepByStepDatapoint]:
+    def generate_datapoint(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None, max_retries: int = 3) -> Optional[StepByStepDatapoint]:
         print("\n" + "=" * 60)
         print("STEP-BY-STEP DATAPOINT GENERATION")
         print("=" * 60)
 
-        print(f"\n[Step 1/{self.num_actions + 2}] Generating user query...")
-        query_result = self.generate_user_query(focus_category, context_hint)
-        if not query_result.query:
-            print("Failed to generate query")
-            return None
+        accumulated_feedback = context_hint or ""
 
-        print(f"Query: {query_result.query}")
-        print(f"Intent: {query_result.intent}")
-        print(f"Expected tools: {query_result.expected_tools}")
+        for attempt in range(max_retries + 1):
+            print(f"\n[Attempt {attempt + 1}/{max_retries + 1}] Generating user query...")
+            query_result = self.generate_user_query(focus_category, accumulated_feedback)
+            if not query_result.query:
+                print("Failed to generate query")
+                accumulated_feedback += f"\nAttempt {attempt + 1}: Failed to generate a valid query. Please try again with a clear, actionable request."
+                continue
+
+            print(f"Query: {query_result.query}")
+            print(f"Intent: {query_result.intent}")
+            print(f"Expected tools: {query_result.expected_tools}")
 
         trajectory = []
         execution_context = {}
@@ -306,64 +509,72 @@ Respond with JSON:
             trajectory.append(trajectory_step)
             steps_completed += 1
 
-        print(f"\n[Step {steps_completed + 2}/{self.num_actions + 2}] Generating final response...")
-        final_response = self._generate_final_response(query_result.query, trajectory, execution_context)
-        print(f"Final response: {final_response[:200]}...")
+            print(f"\n[Step {steps_completed + 2}/{self.num_actions + 2}] Generating final response...")
+            final_response = self._generate_final_response(query_result.query, trajectory, execution_context)
+            print(f"Final response: {final_response[:200]}...")
 
-        tools_used = []
-        categories_used = set()
-        for step in trajectory:
-            for tc in step.tool_calls:
-                if tc.tool_name not in tools_used:
-                    tools_used.append(tc.tool_name)
+            tools_used = []
+            categories_used = set()
+            for step in trajectory:
+                for tc in step.tool_calls:
+                    if tc.tool_name not in tools_used:
+                        tools_used.append(tc.tool_name)
                     cat = self.tool_manager.get_tool_category(tc.tool_name)
                     if cat:
                         categories_used.add(cat)
 
-        conv_trajectory = ConversationTrajectory(
-            query=query_result.query,
-            steps=trajectory,
-            final_response=final_response,
-            tools_used=tools_used,
-            categories_used=list(categories_used)
-        )
+            conv_trajectory = ConversationTrajectory(
+                query=query_result.query,
+                steps=trajectory,
+                final_response=final_response,
+                tools_used=tools_used,
+                categories_used=list(categories_used)
+            )
 
-        metadata = {
-            "num_actions": steps_completed,
-            "focus_category": focus_category,
-            "query_intent": query_result.intent,
-            "expected_tools": query_result.expected_tools
-        }
+            metadata = {
+                "num_actions": steps_completed,
+                "focus_category": focus_category,
+                "query_intent": query_result.intent,
+                "expected_tools": query_result.expected_tools
+            }
 
-        print("\n" + "=" * 60)
-        print("RUNNING VERIFICATION")
-        print("=" * 60)
+            print("\n" + "=" * 60)
+            print("RUNNING VERIFICATION")
+            print("=" * 60)
 
-        # Run full verification
-        verification_result = self.run_full_verification(
-            query=query_result.query,
-            trajectory=trajectory,
-            execution_context=execution_context
-        )
+            # Run full verification
+            verification_result = self.run_full_verification(
+                query=query_result.query,
+                trajectory=trajectory,
+                execution_context=execution_context
+            )
 
-        # Convert VerificationResult to dict for storage
-        verification_dict = verification_result.model_dump()
+            # Convert VerificationResult to dict for storage
+            verification_dict = verification_result.model_dump()
 
-        # Create the datapoint with verification results
-        datapoint = StepByStepDatapoint(
-            trajectory=conv_trajectory,
-            generation_metadata=metadata,
-            verification_result=verification_dict
-        )
+            # Create the datapoint with verification results
+            datapoint = StepByStepDatapoint(
+                trajectory=conv_trajectory,
+                generation_metadata=metadata,
+                verification_result=verification_dict
+            )
 
-        print("\n" + "=" * 60)
-        print("DATAPOINT GENERATION COMPLETE")
-        print("=" * 60)
-        print(f"Tools used: {tools_used}")
-        print(f"Categories: {categories_used}")
-        print(f"Verification: {'PASSED' if verification_result.overall_verification_passed else 'FAILED'}")
+            print("\n" + "=" * 60)
+            print("DATAPOINT GENERATION COMPLETE")
+            print("=" * 60)
+            print(f"Tools used: {tools_used}")
+            print(f"Categories: {categories_used}")
+            print(f"Verification: {'PASSED' if verification_result.overall_verification_passed else 'FAILED'}")
 
-        return datapoint
+            # Only return the datapoint if all steps were completed
+            if steps_completed == self.num_actions:
+                return datapoint
+            else:
+                accumulated_feedback += f"\nAttempt {attempt + 1}: Only completed {steps_completed} steps instead of {self.num_actions}. Generate a query that clearly requires all {self.num_actions} tools."
+                continue
+
+        print(f"\nFailed to generate valid datapoint after {max_retries + 1} attempts")
+        return None
 
     def _generate_final_response(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any]) -> str:
         actions_summary = []

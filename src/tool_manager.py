@@ -182,7 +182,9 @@ class ToolManager:
             "parameters": param_schema,
             # Include output type and description for new format
             "output_type": tool_data.get('output_type', 'unknown'),
-            "output_description": tool_data.get('output_description', '')
+            "output_description": tool_data.get('output_description', ''),
+            # Include category for grouping
+            "category": tool_data.get('category', 'Unknown')
         }
         
         self.tool_schemas.append(schema)
@@ -223,17 +225,71 @@ class ToolManager:
                 "func": tool_func
             }
     
+    def get_categories(self) -> List[str]:
+        """
+        Get a list of unique categories across all tools.
+
+        Returns:
+            List[str]: List of unique category names
+        """
+        categories = set()
+        for tool in self.tool_schemas:
+            category = tool.get('category', 'Unknown')
+            categories.add(category)
+        return sorted(list(categories))
+
+    def get_tools_by_category(self, category: str) -> List[Dict[str, Any]]:
+        """
+        Get a list of tools that belong to the specified category.
+
+        Args:
+            category: The category to filter tools by
+
+        Returns:
+            List[Dict[str, Any]]: List of tool schemas in the specified category
+        """
+        return [tool for tool in self.tool_schemas if tool.get('category') == category]
+
+    def get_tool_category(self, tool_name: str) -> Optional[str]:
+        """
+        Get the category for a specific tool.
+
+        Args:
+            tool_name: The name of the tool
+
+        Returns:
+            Optional[str]: The category of the tool, or None if not found
+        """
+        for tool in self.tool_schemas:
+            if tool.get('name') == tool_name:
+                return tool.get('category')
+        return None
+
     def get_tools_json_schema(self) -> List[Dict[str, Any]]:
         """Get all tool schemas in JSON format."""
         return self.tool_schemas
-    
+
+    def get_tools_with_descriptions(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get tools with their full descriptions.
+
+        Args:
+            category: Optional category to filter by
+
+        Returns:
+            List[Dict[str, Any]]: List of tools with descriptions
+        """
+        if category:
+            return self.get_tools_by_category(category)
+        return self.tool_schemas
+
     def get_tool_schema(self, tool_name: str) -> Dict[str, Any]:
         """
         Get the schema for a specific tool by name.
-        
+
         Args:
             tool_name: The name of the tool to get the schema for
-            
+
         Returns:
             dict: The schema for the tool
             

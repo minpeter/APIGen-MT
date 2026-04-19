@@ -3,6 +3,7 @@ import requests
 import os
 import json
 import re
+import time
 from transformers import AutoTokenizer
 from llm_debug_logger import log_llm_call
 
@@ -85,13 +86,28 @@ class LLMClient:
                     response=response
                 )
 
-            think_match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
-            reasoning = think_match.group(1).strip() if think_match else ""
-            response_wo_think = re.sub(
-                r"<think>.*?</think>", "", response, flags=re.DOTALL
-            ).strip()
+        think_match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
+        reasoning = think_match.group(1).strip() if think_match else ""
+        response_wo_think = re.sub(
+            r"<think>.*?</think>", "", response, flags=re.DOTALL
+        ).strip()
 
-            return response_wo_think, reasoning
+        return response_wo_think, reasoning
+
+    def generate(self, messages, **kwargs) -> str:
+        """
+        Generate a response from the LLM given a list of messages.
+        This method is a simplified interface that returns only the response string.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            **kwargs: Additional keyword arguments to pass to the chat method
+
+        Returns:
+            str: The generated response text
+        """
+        response, _ = self.chat(messages, kwargs)
+        return response
 
     def completions(self, prompt: str, kwargs) -> str:
         payload = {
@@ -235,29 +251,67 @@ class LocalOpenAILLMClient(LLMClient):
         if messages[-1]["role"] == "assistant" and self.tokenizer is not None:
             # Fall back to base class prefill logic using tokenizer and /completions
             return super().chat(messages, kwargs)
-        
+
         payload = {
             "model": self.api_model,
             "messages": messages,
             **kwargs,
         }
-        
-        response_obj = requests.request(
-            "POST",
-            url=f"{self.url}/chat/completions",
-            headers=self.headers,
-            json=payload,
-        ).json()
-        
-        if "choices" not in response_obj:
-            raise RuntimeError(f"Unexpected response from API: {response_obj}")
-            
-        response = response_obj["choices"][0]["message"]["content"]
 
-        think_match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
+        max_retries = 5
+        base_delay = 2
+        request_timeout = kwargs.get("timeout", 120)
+        rate_limit_retry_count = 0
+        attempt = 0
+
+        while attempt < max_retries:
+            try:
+                response = requests.request(
+                    "POST",
+                    url=f"{self.url}/chat/completions",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=request_timeout,
+                )
+                response_obj = response.json()
+
+                if "choices" not in response_obj:
+                    # Check for rate limiting (429) and retry infinitely
+                    if response.status_code == 429:
+                        rate_limit_retry_count += 1
+                        delay = min(base_delay * (2 ** min(rate_limit_retry_count, 10)), 300)  # Cap at 300s
+                        print(f"[LLMClient] Rate limited (429), retrying in {delay}s... (rate limit retry #{rate_limit_retry_count})")
+                        time.sleep(delay)
+                        continue  # Don't increment attempt, just retry
+                    raise RuntimeError(f"Unexpected response from API: {response_obj}")
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[LLMClient] Request timeout (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...")
+                    time.sleep(delay)
+                    attempt += 1
+                    continue
+                else:
+                    print(f"[LLMClient] Request failed after {max_retries} attempts due to timeout")
+                    raise
+            except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    print(f"[LLMClient] Request error (attempt {attempt + 1}/{max_retries}): {e}, retrying in {delay}s...")
+                    time.sleep(delay)
+                    attempt += 1
+                    continue
+                else:
+                    raise
+            attempt += 1
+
+        response_text = response_obj["choices"][0]["message"]["content"]
+
+        think_match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
         reasoning = think_match.group(1).strip() if think_match else ""
         response_wo_think = re.sub(
-            r"<think>.*?</think>", "", response, flags=re.DOTALL
+            r"<think>.*?</think>", "", response_text, flags=re.DOTALL
         ).strip()
 
         return response_wo_think, reasoning

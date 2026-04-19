@@ -152,16 +152,15 @@ def main():
     datapoints = []
     categories = list(tools_by_category.keys())
     
-    # Generation loop
+    # Generation loop - run until target number of datapoints is reached
     attempt = 0
-    max_attempts = args.num_datapoints * 3  # Allow for failures
-    
-    while len(datapoints) < args.num_datapoints and attempt < max_attempts:
+
+    while len(datapoints) < args.num_datapoints:
         attempt += 1
         remaining = args.num_datapoints - len(datapoints)
-        
+
         print(f"\n{'='*70}")
-        print(f"Attempt {attempt}/{max_attempts} | Generated: {len(datapoints)}/{args.num_datapoints} | Remaining: {remaining}")
+        print(f"Attempt {attempt} | Generated: {len(datapoints)}/{args.num_datapoints} | Remaining: {remaining}")
         print("=" * 70)
         
         # Select random category to focus on
