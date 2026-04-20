@@ -4,8 +4,16 @@ import os
 import json
 import re
 import time
+from typing import List, Dict, Any
 from transformers import AutoTokenizer
 from llm_debug_logger import log_llm_call
+
+# Import tiktoken for local token counting
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
 
 
 class TokenUsage:
@@ -27,6 +35,95 @@ class TokenUsage:
             "completion_tokens": self.completion_tokens,
             "total_tokens": self.total_tokens
         }
+
+
+class TokenCounter:
+    """Local token counter using tiktoken (no model download required).
+    
+    Uses the cl100k_base encoding which is the same as GPT-4 and GPT-3.5-Turbo.
+    This provides accurate token counting without requiring any API calls or model downloads.
+    """
+    
+    def __init__(self, encoding_name: str = "cl100k_base"):
+        """Initialize the token counter.
+        
+        Args:
+            encoding_name: The tiktoken encoding to use (default: cl100k_base for GPT-4/GPT-3.5)
+        """
+        if not TIKTOKEN_AVAILABLE:
+            raise ImportError(
+                "tiktoken is required for local token counting. "
+                "Install it with: pip install tiktoken"
+            )
+        self.encoding = tiktoken.get_encoding(encoding_name)
+    
+    def count_tokens(self, text: str) -> int:
+        """Count tokens in a single text string.
+        
+        Args:
+            text: The text to count tokens for
+            
+        Returns:
+            Number of tokens
+        """
+        if not text:
+            return 0
+        return len(self.encoding.encode(text, disallowed_special=()))
+    
+    def count_chat_tokens(self, messages: List[Dict[str, Any]]) -> int:
+        """Count tokens for a chat conversation.
+        
+        Following OpenAI's token counting guidelines:
+        - Every message follows <|start|>{role/name}\n{content}<|end|>\n
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+            
+        Returns:
+            Total number of tokens for the conversation
+        """
+        if not messages:
+            return 0
+            
+        total_tokens = 0
+        
+        # Every reply is primed with <|start|>assistant<|message|>
+        tokens_per_message = 3  # account for <|start|>{role}\n{content}<|end|>\n
+        for message in messages:
+            total_tokens += tokens_per_message
+            content = message.get("content", "")
+            if content:
+                total_tokens += self.count_tokens(content)
+            
+            # Add tokens for role name
+            role = message.get("role", "")
+            total_tokens += self.count_tokens(role)
+        
+        # Add 3 tokens for assistant priming
+        total_tokens += 3
+        
+        return total_tokens
+    
+    def count_prompt_tokens(self, messages: List[Dict[str, Any]]) -> int:
+        """Count tokens in the prompt (messages sent to the API).
+        
+        Args:
+            messages: List of message dictionaries
+            
+        Returns:
+            Number of prompt tokens
+        """
+        return self.count_chat_tokens(messages)
+    
+    def count_completion_tokens(self, response_text: str) -> int:
+        """Count tokens in the completion response.
+        
+        Args:
+            response_text: The text response from the model
+            
+        Returns:
+            Number of completion tokens
+        """
+        return self.count_tokens(response_text)
 
 
 class LLMClient:
@@ -244,6 +341,8 @@ class LocalOpenAILLMClient(LLMClient):
     """
     An alternative LLMClient designed to work with local LLM studio servers
     or any OpenAI-compatible API endpoints.
+    
+    Uses local token counting with tiktoken (no model download required).
     """
     def __init__(
         self,
@@ -264,6 +363,9 @@ class LocalOpenAILLMClient(LLMClient):
         # Token usage tracking
         self.total_calls = 0
         self.token_usage = TokenUsage()
+        
+        # Initialize local token counter (no model download required)
+        self.token_counter = TokenCounter()
 
         if hf_tokenizer_id:
             token = os.environ.get("HF_TOKEN")
@@ -290,9 +392,20 @@ class LocalOpenAILLMClient(LLMClient):
         self.token_usage = TokenUsage()
 
     def chat(self, messages, kwargs) -> tuple[str, str]:
+        # Count tokens in the prompt before sending to API
+        prompt_tokens = self.token_counter.count_prompt_tokens(messages)
+        
         if messages[-1]["role"] == "assistant" and self.tokenizer is not None:
             # Fall back to base class prefill logic using tokenizer and /completions
             response = super().chat(messages, kwargs)
+            # Count completion tokens
+            completion_tokens = self.token_counter.count_completion_tokens(response[0] if isinstance(response, tuple) else response)
+            self.token_usage.add(
+                prompt=prompt_tokens,
+                completion=completion_tokens,
+                total=prompt_tokens + completion_tokens
+            )
+            self.total_calls += 1
             return response, ""
 
         payload = {
@@ -355,11 +468,9 @@ class LocalOpenAILLMClient(LLMClient):
         if response_text is None:
             response_text = ""
 
-        # Track token usage from response
-        usage = response_obj.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-        total_tokens = usage.get("total_tokens", 0)
+        # Count completion tokens using local tokenizer
+        completion_tokens = self.token_counter.count_completion_tokens(response_text)
+        total_tokens = prompt_tokens + completion_tokens
 
         self.token_usage.add(
             prompt=prompt_tokens,

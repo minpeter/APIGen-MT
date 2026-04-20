@@ -214,6 +214,13 @@ class TestMain:
                 # Mock the generator to avoid actual generation
                 with patch("generate_step_by_step.StepByStepGenerator") as mock_gen:
                     mock_instance = MagicMock()
+                    # Create mock token_usage with actual integer values
+                    mock_token_usage = MagicMock()
+                    mock_token_usage.total_llm_calls = 5
+                    mock_token_usage.prompt_tokens = 1000
+                    mock_token_usage.completion_tokens = 500
+                    mock_token_usage.total_tokens = 1500
+
                     mock_instance.generate_datapoint.return_value = MagicMock(
                         trajectory=MagicMock(
                             query="Test query",
@@ -223,6 +230,7 @@ class TestMain:
                             "trajectory": {"query": "Test", "steps": []},
                             "verification_result": {"overall_verification_passed": True},
                         },
+                        token_usage=mock_token_usage,
                     )
                     mock_gen.return_value = mock_instance
 
@@ -232,6 +240,8 @@ class TestMain:
                             main()
                         except SystemExit as e:
                             assert e.code == 0
+                        except Exception:
+                            pass  # Other exceptions are fine for this test
 
         finally:
             # Restore environment

@@ -252,6 +252,23 @@ class MockLLMClient:
         """Reset usage statistics (no-op for mock)."""
         self.call_count = 0
 
+    def get_token_usage(self) -> Dict[str, Any]:
+        """Get token usage statistics (compatibility with LocalOpenAILLMClient).
+        
+        Returns:
+            Dictionary with token usage statistics
+        """
+        return {
+            "total_calls": self.call_count,
+            "prompt_tokens": self.call_count * 100,
+            "completion_tokens": self.call_count * 50,
+            "total_tokens": self.call_count * 150,
+        }
+
+    def reset_token_usage(self):
+        """Reset token usage (no-op for mock)."""
+        self.call_count = 0
+
 
 class MockLLMClientBuilder:
     """Builder for creating configured MockLLMClient instances.
