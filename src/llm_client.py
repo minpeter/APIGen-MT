@@ -8,6 +8,27 @@ from transformers import AutoTokenizer
 from llm_debug_logger import log_llm_call
 
 
+class TokenUsage:
+    """Tracks token usage for LLM calls."""
+    def __init__(self):
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_tokens = 0
+
+    def add(self, prompt: int = 0, completion: int = 0, total: int = 0):
+        """Add token counts from a single LLM call."""
+        self.prompt_tokens += prompt
+        self.completion_tokens += completion
+        self.total_tokens += total
+
+    def to_dict(self) -> dict:
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens
+        }
+
+
 class LLMClient:
     def __init__(
         self,
@@ -30,6 +51,10 @@ class LLMClient:
             token=os.environ.get("HF_TOKEN"),
             legacy=False,
         )
+
+    def get_token_usage(self) -> dict:
+        """Get token usage statistics. Override in subclasses."""
+        return {"total_calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def __apply_chat_template(self, messages, prefill: bool = True) -> str:
         prompt = self.tokenizer.apply_chat_template(
@@ -234,7 +259,12 @@ class LocalOpenAILLMClient(LLMClient):
             "Content-Type": "application/json",
         }
         self.api_model = api_model
-        
+        self.debug_mode = debug_mode
+
+        # Token usage tracking
+        self.total_calls = 0
+        self.token_usage = TokenUsage()
+
         if hf_tokenizer_id:
             token = os.environ.get("HF_TOKEN")
             kwargs = {"legacy": False}
@@ -247,10 +277,23 @@ class LocalOpenAILLMClient(LLMClient):
         else:
             self.tokenizer = None
 
-    def chat(self, messages, kwargs) -> str:
+    def get_token_usage(self) -> dict:
+        """Get accumulated token usage statistics."""
+        return {
+            "total_calls": self.total_calls,
+            **self.token_usage.to_dict()
+        }
+
+    def reset_token_usage(self):
+        """Reset token usage counters."""
+        self.total_calls = 0
+        self.token_usage = TokenUsage()
+
+    def chat(self, messages, kwargs) -> tuple[str, str]:
         if messages[-1]["role"] == "assistant" and self.tokenizer is not None:
             # Fall back to base class prefill logic using tokenizer and /completions
-            return super().chat(messages, kwargs)
+            response = super().chat(messages, kwargs)
+            return response, ""
 
         payload = {
             "model": self.api_model,
@@ -307,6 +350,23 @@ class LocalOpenAILLMClient(LLMClient):
             attempt += 1
 
         response_text = response_obj["choices"][0]["message"]["content"]
+
+        # Handle None response (API may return null content)
+        if response_text is None:
+            response_text = ""
+
+        # Track token usage from response
+        usage = response_obj.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", 0)
+
+        self.token_usage.add(
+            prompt=prompt_tokens,
+            completion=completion_tokens,
+            total=total_tokens
+        )
+        self.total_calls += 1
 
         think_match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
         reasoning = think_match.group(1).strip() if think_match else ""

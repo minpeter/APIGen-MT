@@ -1,1 +1,14 @@
-[project] name = "apigen-mt" version = "0.1.0" description = "Add your description here" readme = "README.md" requires-python = ">=3.13" dependencies = [ "function-schema>=0.4.5", "jinja2>=3.1.6", "pydantic>=2.11.4", "python-dotenv>=1.0.0", "sentence-transformers>=4.1.0", "transformers>=4.51.3", ]
+[project]
+name = "apigen-mt"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "function-schema>=0.4.5",
+    "jinja2>=3.1.6",
+    "pydantic>=2.11.4",
+    "python-dotenv>=1.0.0",
+    "sentence-transformers>=4.1.0",
+    "transformers>=4.51.3",
+]

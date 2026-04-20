@@ -37,11 +37,20 @@ class ConversationTrajectory(BaseModel):
     categories_used: List[str] = []
 
 
+class TokenUsageStats(BaseModel):
+    """Token usage statistics for a single datapoint."""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    total_llm_calls: int = 0
+
+
 class StepByStepDatapoint(BaseModel):
     """Complete datapoint generated step-by-step."""
     trajectory: ConversationTrajectory
     generation_metadata: Dict[str, Any] = {}
     verification_result: Optional[Dict[str, Any]] = None
+    token_usage: TokenUsageStats = Field(default_factory=TokenUsageStats)
 
 
 class VerificationResult(BaseModel):
@@ -448,6 +457,10 @@ Respond ONLY with valid JSON:
         print("\n" + "=" * 60)
         print("STEP-BY-STEP DATAPOINT GENERATION")
         print("=" * 60)
+
+        # Capture starting token usage from LLM client
+        start_usage = self.llm.get_token_usage()
+        start_calls = start_usage["total_calls"]
 
         accumulated_feedback = context_hint or ""
 

@@ -204,20 +204,35 @@ def main():
     print("=" * 70)
     print(f"Total generated: {len(datapoints)}/{args.num_datapoints}")
     print(f"Output file: {args.output}")
-    
+
     if datapoints:
-        # Statistics
+        # Tool statistics
         tools_used_all = []
         for dp in datapoints:
             tools_used_all.extend(dp.trajectory.tools_used)
-        
+
         from collections import Counter
         tool_counts = Counter(tools_used_all)
-        
+
         print(f"\nTop 10 tools used:")
         for tool, count in tool_counts.most_common(10):
             print(f"  {tool}: {count}")
-    
+
+        # Token usage statistics
+        total_llm_calls = sum(dp.token_usage.total_llm_calls for dp in datapoints)
+        total_prompt_tokens = sum(dp.token_usage.prompt_tokens for dp in datapoints)
+        total_completion_tokens = sum(dp.token_usage.completion_tokens for dp in datapoints)
+        total_tokens = sum(dp.token_usage.total_tokens for dp in datapoints)
+
+        print(f"\nToken Usage Statistics:")
+        print(f"  Total LLM calls: {total_llm_calls}")
+        print(f"  Total tokens: {total_tokens:,}")
+        print(f"    - Prompt tokens: {total_prompt_tokens:,}")
+        print(f"    - Completion tokens: {total_completion_tokens:,}")
+        print(f"  Average per datapoint:")
+        print(f"    - LLM calls: {total_llm_calls / len(datapoints):.1f}")
+        print(f"    - Tokens: {total_tokens / len(datapoints):.0f}")
+
     print("=" * 70)
 
 
