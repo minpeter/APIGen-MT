@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 Extract aggregated token statistics from APIGen conversation log files.
+Aggregates the token_usage field from each datapoint.
 
 Usage:
-    python extract_token_statistics.py <input_file> [--output <output_file>]
+python extract_token_statistics.py <input_file> [--output <output_file>]
 
 Example:
-    python extract_token_statistics.py data/generated/step_by_step_10datapoints_3actions.jsonl
-    python extract_token_statistics.py data/generated/step_by_step_100_datapoints.jsonl --output stats.json
+python extract_token_statistics.py data/generated/step_by_step_10datapoints_3actions.jsonl
+python extract_token_statistics.py data/generated/step_by_step_100_datapoints.jsonl --output stats.json
 """
 
 import argparse
@@ -18,96 +19,29 @@ from pathlib import Path
 from typing import Any
 
 
-def estimate_tokens(text: str) -> int:
-    """
-    Estimate token count using a simple approximation.
-    This is a rough estimate: ~4 characters per token on average.
-    For more accurate counts, tiktoken can be used.
-    """
-    if not text:
-        return 0
-    # Rough estimate: 1 token ≈ 4 characters for English text
-    return len(text) // 4
-
-
-def count_json_tokens(obj: Any) -> int:
-    """Count tokens in a JSON-serializable object."""
-    if obj is None:
-        return 0
-    if isinstance(obj, str):
-        return estimate_tokens(obj)
-    if isinstance(obj, (int, float, bool)):
-        return estimate_tokens(str(obj))
-    if isinstance(obj, dict):
-        return sum(count_json_tokens(k) + count_json_tokens(v) for k, v in obj.items())
-    if isinstance(obj, list):
-        return sum(count_json_tokens(item) for item in obj)
-    return 0
-
-
 def analyze_trajectory(datapoint: dict, index: int) -> dict:
     """Analyze a single trajectory datapoint and return token statistics."""
+    trajectory = datapoint.get("trajectory", {})
+    token_usage = datapoint.get("token_usage", {})
+    metadata = datapoint.get("generation_metadata", {})
+
     stats = {
         "datapoint_index": index,
-        "query_tokens": 0,
-        "tool_calls_tokens": 0,
-        "tool_outputs_tokens": 0,
-        "final_response_tokens": 0,
-        "num_steps": 0,
-        "num_tool_calls": 0,
-        "tools_used": [],
-        "categories_used": [],
+        "num_steps": len(trajectory.get("steps", [])),
+        "num_tool_calls": sum(
+            len(step.get("tool_calls", []))
+            for step in trajectory.get("steps", [])
+        ),
+        "tools_used": trajectory.get("tools_used", []),
+        "categories_used": trajectory.get("categories_used", []),
+        "focus_category": metadata.get("focus_category", "unknown"),
+        "expected_actions": metadata.get("num_actions", 0),
+        # Token counts from token_usage field
+        "prompt_tokens": token_usage.get("prompt_tokens", 0),
+        "completion_tokens": token_usage.get("completion_tokens", 0),
+        "total_tokens": token_usage.get("total_tokens", 0),
+        "total_llm_calls": token_usage.get("total_llm_calls", 0),
     }
-
-    trajectory = datapoint.get("trajectory", {})
-
-    # Count query tokens
-    query = trajectory.get("query", "")
-    stats["query_tokens"] = estimate_tokens(query)
-
-    # Count final response tokens
-    final_response = trajectory.get("final_response", "")
-    stats["final_response_tokens"] = estimate_tokens(final_response)
-
-    # Analyze steps
-    steps = trajectory.get("steps", [])
-    stats["num_steps"] = len(steps)
-
-    for step in steps:
-        tool_calls = step.get("tool_calls", [])
-        stats["num_tool_calls"] += len(tool_calls)
-
-        for tc in tool_calls:
-            # Count tool call tokens (tool name + arguments)
-            tool_name = tc.get("tool_name", "")
-            arguments = tc.get("arguments", {})
-            stats["tool_calls_tokens"] += estimate_tokens(tool_name)
-            stats["tool_calls_tokens"] += count_json_tokens(arguments)
-
-            # Count tool output tokens
-            output = tc.get("output", "")
-            if isinstance(output, str):
-                stats["tool_outputs_tokens"] += estimate_tokens(output)
-            else:
-                stats["tool_outputs_tokens"] += count_json_tokens(output)
-
-    # Extract tools and categories
-    stats["tools_used"] = trajectory.get("tools_used", [])
-    stats["categories_used"] = trajectory.get("categories_used", [])
-
-    # Get generation metadata if available
-    metadata = datapoint.get("generation_metadata", {})
-    stats["focus_category"] = metadata.get("focus_category", "unknown")
-    stats["expected_actions"] = metadata.get("num_actions", 0)
-
-    # Calculate totals
-    stats["total_input_tokens"] = (
-        stats["query_tokens"] +
-        stats["tool_calls_tokens"] +
-        stats["tool_outputs_tokens"]
-    )
-    stats["total_output_tokens"] = stats["final_response_tokens"]
-    stats["total_tokens"] = stats["total_input_tokens"] + stats["total_output_tokens"]
 
     return stats
 
@@ -122,23 +56,19 @@ def aggregate_statistics(all_stats: list[dict]) -> dict:
         "total_steps": sum(s["num_steps"] for s in all_stats),
         "total_tool_calls": sum(s["num_tool_calls"] for s in all_stats),
 
-        # Token sums
-        "total_query_tokens": sum(s["query_tokens"] for s in all_stats),
-        "total_tool_calls_tokens": sum(s["tool_calls_tokens"] for s in all_stats),
-        "total_tool_outputs_tokens": sum(s["tool_outputs_tokens"] for s in all_stats),
-        "total_final_response_tokens": sum(s["final_response_tokens"] for s in all_stats),
-        "total_input_tokens": sum(s["total_input_tokens"] for s in all_stats),
-        "total_output_tokens": sum(s["total_output_tokens"] for s in all_stats),
-        "grand_total_tokens": sum(s["total_tokens"] for s in all_stats),
+        # Token sums from token_usage
+        "total_prompt_tokens": sum(s["prompt_tokens"] for s in all_stats),
+        "total_completion_tokens": sum(s["completion_tokens"] for s in all_stats),
+        "total_tokens": sum(s["total_tokens"] for s in all_stats),
+        "total_llm_calls": sum(s["total_llm_calls"] for s in all_stats),
 
         # Averages per datapoint
         "avg_steps_per_datapoint": sum(s["num_steps"] for s in all_stats) / len(all_stats),
         "avg_tool_calls_per_datapoint": sum(s["num_tool_calls"] for s in all_stats) / len(all_stats),
-        "avg_query_tokens": sum(s["query_tokens"] for s in all_stats) / len(all_stats),
-        "avg_tool_calls_tokens": sum(s["tool_calls_tokens"] for s in all_stats) / len(all_stats),
-        "avg_tool_outputs_tokens": sum(s["tool_outputs_tokens"] for s in all_stats) / len(all_stats),
-        "avg_final_response_tokens": sum(s["final_response_tokens"] for s in all_stats) / len(all_stats),
-        "avg_total_tokens_per_datapoint": sum(s["total_tokens"] for s in all_stats) / len(all_stats),
+        "avg_prompt_tokens": sum(s["prompt_tokens"] for s in all_stats) / len(all_stats),
+        "avg_completion_tokens": sum(s["completion_tokens"] for s in all_stats) / len(all_stats),
+        "avg_total_tokens": sum(s["total_tokens"] for s in all_stats) / len(all_stats),
+        "avg_llm_calls": sum(s["total_llm_calls"] for s in all_stats) / len(all_stats),
 
         # Min/Max
         "min_total_tokens": min(s["total_tokens"] for s in all_stats),
@@ -182,39 +112,35 @@ def print_statistics(aggregated: dict, detailed_stats: list[dict] = None):
 
     print("📊 OVERVIEW")
     print("-" * 40)
-    print(f"  Total Datapoints:      {format_number(aggregated['total_datapoints'])}")
-    print(f"  Total Steps:           {format_number(aggregated['total_steps'])}")
-    print(f"  Total Tool Calls:      {format_number(aggregated['total_tool_calls'])}")
+    print(f" Total Datapoints: {format_number(aggregated['total_datapoints'])}")
+    print(f" Total Steps: {format_number(aggregated['total_steps'])}")
+    print(f" Total Tool Calls: {format_number(aggregated['total_tool_calls'])}")
     print()
 
     print("📝 TOKEN COUNTS (Aggregated)")
     print("-" * 40)
-    print(f"  Query Tokens:          {format_number(aggregated['total_query_tokens']):>15}")
-    print(f"  Tool Calls Tokens:     {format_number(aggregated['total_tool_calls_tokens']):>15}")
-    print(f"  Tool Outputs Tokens:   {format_number(aggregated['total_tool_outputs_tokens']):>15}")
-    print(f"  Final Response Tokens: {format_number(aggregated['total_final_response_tokens']):>15}")
+    print(f" Prompt Tokens: {format_number(aggregated['total_prompt_tokens']):>15}")
+    print(f" Completion Tokens: {format_number(aggregated['total_completion_tokens']):>15}")
     print("-" * 40)
-    print(f"  Total Input Tokens:    {format_number(aggregated['total_input_tokens']):>15}")
-    print(f"  Total Output Tokens:   {format_number(aggregated['total_output_tokens']):>15}")
-    print("-" * 40)
-    print(f"  GRAND TOTAL:           {format_number(aggregated['grand_total_tokens']):>15}")
+    print(f" Total Tokens: {format_number(aggregated['total_tokens']):>15}")
+    print()
+    print(f" Total LLM Calls: {format_number(aggregated['total_llm_calls']):>15}")
     print()
 
     print("📈 AVERAGES (Per Datapoint)")
     print("-" * 40)
-    print(f"  Steps per Datapoint:     {aggregated['avg_steps_per_datapoint']:>10.2f}")
-    print(f"  Tool Calls per Datapoint: {aggregated['avg_tool_calls_per_datapoint']:>10.2f}")
-    print(f"  Query Tokens:            {aggregated['avg_query_tokens']:>10.2f}")
-    print(f"  Tool Calls Tokens:       {aggregated['avg_tool_calls_tokens']:>10.2f}")
-    print(f"  Tool Outputs Tokens:     {aggregated['avg_tool_outputs_tokens']:>10.2f}")
-    print(f"  Final Response Tokens:   {aggregated['avg_final_response_tokens']:>10.2f}")
-    print(f"  Total Tokens:            {aggregated['avg_total_tokens_per_datapoint']:>10.2f}")
+    print(f" Steps per Datapoint: {aggregated['avg_steps_per_datapoint']:>10.2f}")
+    print(f" Tool Calls per Datapoint: {aggregated['avg_tool_calls_per_datapoint']:>10.2f}")
+    print(f" Prompt Tokens: {aggregated['avg_prompt_tokens']:>10.2f}")
+    print(f" Completion Tokens: {aggregated['avg_completion_tokens']:>10.2f}")
+    print(f" Total Tokens: {aggregated['avg_total_tokens']:>10.2f}")
+    print(f" LLM Calls: {aggregated['avg_llm_calls']:>10.2f}")
     print()
 
     print("📉 MIN/MAX")
     print("-" * 40)
-    print(f"  Min Total Tokens:  {format_number(aggregated['min_total_tokens']):>15}")
-    print(f"  Max Total Tokens:  {format_number(aggregated['max_total_tokens']):>15}")
+    print(f" Min Total Tokens: {format_number(aggregated['min_total_tokens']):>15}")
+    print(f" Max Total Tokens: {format_number(aggregated['max_total_tokens']):>15}")
     print()
 
     if aggregated.get("tool_usage_counts"):
@@ -226,7 +152,7 @@ def print_statistics(aggregated: dict, detailed_stats: list[dict] = None):
             reverse=True
         )
         for tool, count in sorted_tools:
-            print(f"  {tool:.<30} {count:>5}")
+            print(f" {tool:.<30} {count:>5}")
         print()
 
     if aggregated.get("category_usage_counts"):
@@ -238,7 +164,7 @@ def print_statistics(aggregated: dict, detailed_stats: list[dict] = None):
             reverse=True
         )
         for category, count in sorted_categories:
-            print(f"  {category:.<30} {count:>5}")
+            print(f" {category:.<30} {count:>5}")
         print()
 
     if aggregated.get("focus_category_counts"):
@@ -250,7 +176,7 @@ def print_statistics(aggregated: dict, detailed_stats: list[dict] = None):
             reverse=True
         )
         for category, count in sorted_focus:
-            print(f"  {category:.<30} {count:>5}")
+            print(f" {category:.<30} {count:>5}")
         print()
 
     print("=" * 80)
