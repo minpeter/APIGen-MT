@@ -71,8 +71,8 @@ def parse_args():
     parser.add_argument(
         '--model', '-m',
         type=str,
-        default='minimaxai/minimax-m2.7',
-        help='Model to use for generation (default: minimaxai/minimax-m2.7)'
+        default='moonshotai/kimi-k2.5',
+        help='Model to use for generation (default: moonshotai/kimi-k2.5)'
     )
 
     return parser.parse_args()
@@ -156,47 +156,38 @@ def main():
     attempt = 0
 
     while len(datapoints) < args.num_datapoints:
-        attempt += 1
         remaining = args.num_datapoints - len(datapoints)
 
         print(f"\n{'='*70}")
-        print(f"Attempt {attempt} | Generated: {len(datapoints)}/{args.num_datapoints} | Remaining: {remaining}")
+        print(f"Generated: {len(datapoints)}/{args.num_datapoints} | Remaining: {remaining}")
         print("=" * 70)
         
         # Select random category to focus on
         focus_category = random.choice(categories)
         print(f"Focus category: {focus_category}")
         
-        try:
-            # Generate datapoint
-            datapoint = generator.generate_datapoint(
-                focus_category=focus_category
-            )
-            
-            if datapoint:
-                # Add timestamp
-                datapoint_dict = datapoint.model_dump()
-                datapoint_dict['timestamp'] = datetime.now().isoformat()
-                datapoint_dict['generation_attempt'] = attempt
-                
-                # Save immediately
-                with open(args.output, 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(datapoint_dict, ensure_ascii=False) + '\n')
-                
-                datapoints.append(datapoint)
-                print(f"\n✓ Successfully generated datapoint {len(datapoints)}")
-                print(f"  Query: {datapoint.trajectory.query[:80]}...")
-                print(f"  Tools used: {datapoint.trajectory.tools_used}")
-            else:
-                print(f"\n✗ Failed to generate datapoint")
-                
-        except Exception as e:
-            print(f"\n✗ Error: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            # Continue to next attempt instead of stopping
-            continue
+        # Generate datapoint
+        datapoint = generator.generate_datapoint(
+            focus_category=focus_category
+        )
+
+        if datapoint:
+            # Add timestamp
+            datapoint_dict = datapoint.model_dump()
+            datapoint_dict['timestamp'] = datetime.now().isoformat()
+            datapoint_dict['generation_attempt'] = attempt
+
+            # Save immediately - only verified datapoints
+            with open(args.output, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(datapoint_dict, ensure_ascii=False) + '\n')
+
+            datapoints.append(datapoint)
+            print(f"\n✓ Successfully generated and verified datapoint {len(datapoints)}")
+            print(f" Query: {datapoint.trajectory.query}")
+            print(f" Tools used: {datapoint.trajectory.tools_used}")
+        else:
+            # Generation failed or verification failed - don't count towards target
+            print(f"\n✗ Failed to generate datapoint (verification failed or generation error)")
     
     # Summary
     print(f"\n{'='*70}")

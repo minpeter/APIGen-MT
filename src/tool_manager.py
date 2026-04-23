@@ -363,7 +363,7 @@ class ToolManager:
         self, tool_name: str, params: dict, schema: dict
     ) -> Any:
         """
-        Simulate tool execution using LLM.
+        Simulate tool execution using LLM with enhanced prompts and retry logic.
 
         Args:
             tool_name: Name of the tool
@@ -376,51 +376,49 @@ class ToolManager:
         # Extract output type and description from schema
         output_type = schema.get('output_type', 'unknown')
         output_description = schema.get('output_description', '')
-        
-        # Build output guidance based on declared output type and description
-        output_guidance = ""
-        if output_type and output_type != 'unknown':
-            output_guidance += f"\n- Expected Output Type: {output_type}"
-        if output_description:
-            output_guidance += f"\n- Output Description: {output_description}"
-        
-        prompt = f"""You are an expert function simulator. Based on the following function description and the provided arguments, simulate the execution of this function call.
 
-Function Name: {tool_name}
+        # Build enhanced output guidance with type-specific examples
+        output_guidance = self._build_output_guidance(output_type, output_description)
 
-Function Description: {schema["description"]}
-
-Function Schema:
-{json.dumps(schema, indent=2)}
-{output_guidance}
-Arguments Provided:
-{json.dumps(params, indent=2)}
-
-Current Date/Time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} (Assume this is the time of execution)
-
-Task:
-Generate a plausible JSON response string that represents what the function '{tool_name}' would return if it were actually executed with the given arguments.
-- Consider the function's description (e.g., does it fetch data, create something, authorize, search?).
-- Consider the argument values (e.g., dates, search terms).
-- IMPORTANT: If Output Type and Output Description are provided above, ensure your response matches those specifications exactly.
-- If the function description mentions potential errors (like needing authorization for 'fetch_calendar_events'), sometimes simulate those error responses.
-- If the function returns nothing on success (like 'create_calendar_event' or 'authorize_calendar_access'), return a JSON indicating success, like '{{"status": "success"}}' or an empty JSON object '{{}}'.
-- For functions returning data (like 'fetch_calendar_events' or 'web_search'), generate realistic-looking example data formatted as a JSON string.
-- Ensure your entire output is ONLY the JSON string, without any introductory text, explanations, or markdown formatting like ```json ... ```. Just the raw JSON string.
-"""
-
-        response, _ = self.llm.json_output(
-            system_prompt="You are an expert function simulator outputting only JSON strings.",
-            prompt=prompt,
-            reasoning=True,
+        # Build the enhanced prompt with few-shot examples
+        prompt = self._build_simulation_prompt(
+            tool_name=tool_name,
+            params=params,
+            schema=schema,
+            output_guidance=output_guidance
         )
-        
-        # Validate the response against declared output type
-        validated_response = self._validate_tool_output(
-            tool_name, response, output_type, output_description
-        )
-        
-        return validated_response
+
+        # Try with retries for validation failures
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response, _ = self.llm.json_output(
+                    prompt=prompt,
+                    reasoning=True,
+                )
+
+                # Validate the response
+                validated_response = self._validate_tool_output(
+                    tool_name, response, output_type, output_description
+                )
+
+                # Check if validation passed
+                if self._is_output_valid(validated_response, output_type, output_description):
+                    return validated_response
+
+                if attempt < max_retries:
+                    print(f"    Tool simulation validation failed for {tool_name}, retrying ({attempt + 1}/{max_retries})...")
+                    # Add correction guidance for retry
+                    prompt += f"\n\n=== CORRECTION NEEDED ===\nYour previous output did not match the expected type '{output_type}'.\nPlease regenerate ensuring the output is of type {output_type} and matches the description.\n"
+
+            except Exception as e:
+                print(f"    Error simulating tool {tool_name}: {e}")
+                if attempt < max_retries:
+                    continue
+                # Return a sensible default on final failure
+                return self._get_default_output(output_type)
+
+        return validated_response if 'validated_response' in locals() else self._get_default_output(output_type)
 
     def _validate_tool_output(
         self, 
@@ -500,7 +498,6 @@ Response format:
 
             try:
                 validation_response, _ = self.llm.json_output(
-                    system_prompt="You are an output validator. Respond with VALID and REASON fields.",
                     prompt=validation_prompt,
                     reasoning=False,
                 )
@@ -508,12 +505,277 @@ Response format:
                 if validation_response:
                     is_valid = validation_response.get('VALID', 'YES').upper() == 'YES'
                     if not is_valid:
-                        print(f"Warning: LLM validation flagged output for {tool_name} as not matching description: {validation_response.get('REASON', 'No reason provided')}")
+                        reason = validation_response.get('REASON', 'No reason provided')
+                        print(f"Warning: LLM validation flagged output for {tool_name} as not matching description: {reason}")
+                        # Return error to trigger retry instead of returning invalid output
+                        return {"error": f"Output validation failed: {reason}", "error_type": "validation_failure"}
             except Exception as e:
                 # If validation fails, just log and continue
                 print(f"Warning: Could not validate output for {tool_name}: {e}")
-        
+
         return output
+
+    def _build_output_guidance(self, output_type: str, output_description: str) -> str:
+        """Build enhanced output guidance with type-specific examples and field requirements."""
+        guidance = ""
+
+        if output_type and output_type != 'unknown':
+            guidance += f"\n\n=== REQUIRED OUTPUT TYPE ==="
+            guidance += f"\nType: {output_type}"
+            guidance += f"\nCRITICAL: You MUST return output of exactly this type. No exceptions."
+
+            # Add type-specific examples
+            type_examples = {
+                'dict': '{"key": "value", "id": 123, "name": "example"}',
+                'list': '[{"item": 1}, {"item": 2}, {"item": 3}]',
+                'string': '"your string value here"',
+                'integer': '42',
+                'float': '3.14',
+                'number': '42 or 3.14',
+                'boolean': 'true or false',
+            }
+
+            base_type = output_type.split()[0].lower()
+            if base_type in type_examples:
+                guidance += f"\nExample of correct {output_type} output: {type_examples[base_type]}"
+
+        if output_description and output_description != 'Failed to predict output description':
+            guidance += f"\n\n=== OUTPUT DESCRIPTION ==="
+            guidance += f"\n{output_description}"
+            guidance += f"\n"
+            guidance += f"\nYOUR OUTPUT MUST SATISFY THIS DESCRIPTION:"
+            guidance += f"\n- Study the description carefully and include ALL fields/values mentioned"
+            guidance += f"\n- The output content must realistically match what the description promises"
+            guidance += f"\n- For dict outputs, ensure all keys mentioned in the description are present"
+            guidance += f"\n- Do NOT invent fields that aren't mentioned in the description"
+
+            # Parse description for common field patterns and add explicit requirements
+            desc_lower = output_description.lower()
+            if 'message_id' in desc_lower or 'message id' in desc_lower:
+                guidance += f"\n- MUST include 'message_id' field"
+            if 'success' in desc_lower:
+                guidance += f"\n- MUST include 'success' field (boolean)"
+            if 'timestamp' in desc_lower:
+                guidance += f"\n- MUST include 'timestamp' field with ISO format"
+            if 'status' in desc_lower:
+                guidance += f"\n- MUST include 'status' field"
+            if 'id' in desc_lower and base_type == 'dict':
+                guidance += f"\n- MUST include an 'id' or identifier field"
+
+        return guidance
+
+    def _get_output_format_instructions(self, output_type: str, output_description: str = "") -> str:
+        """Get specific formatting instructions based on the output type and description."""
+        base_type = output_type.split()[0].lower() if output_type else 'unknown'
+
+        # Common instructions about matching description
+        desc_check = ""
+        if output_description and output_description != 'Failed to predict output description':
+            desc_check = f"""
+
+MANDATORY OUTPUT CONTENT CHECK:
+- Your output MUST match this description: {output_description}
+- Include ALL fields mentioned in the description
+- Values must be realistic and appropriate for the described output"""
+
+        if base_type == 'dict':
+            return f"""REQUIREMENTS:
+1. CRITICAL: Return ONLY a JSON OBJECT (dictionary) - NOT a string, NOT a list, NOT a number
+2. The JSON object MUST have key-value pairs: {{"field1": "value1", "field2": "value2"}}
+3. Example: {{"user_id": "U12345", "name": "John", "status": "active"}}
+4. NO markdown formatting, NO code blocks (no ```), NO explanations - output ONLY the raw JSON object
+5. For error cases ONLY, return: {{"error": "description", "error_description": "details"}}{desc_check}"""
+        elif base_type == 'list':
+            return f"""REQUIREMENTS:
+1. CRITICAL: Return ONLY a JSON ARRAY (list) - NOT a dict, NOT a string, NOT a number
+2. The JSON array MUST be wrapped in square brackets: [item1, item2, item3]
+3. Example: [{{"id": 1}}, {{"id": 2}}] or ["item1", "item2"]
+4. NO markdown formatting, NO code blocks (no ```), NO explanations - output ONLY the raw JSON array
+5. For error cases ONLY, return: {{"error": "description", "error_description": "details"}}{desc_check}"""
+        elif base_type == 'string':
+            return f"""REQUIREMENTS:
+1. CRITICAL: Return ONLY a PLAIN STRING value - NOT a JSON object, NOT a JSON array, NOT a number
+2. Example: "U12345" or "Operation completed successfully" or just Hello World (without quotes is also acceptable)
+3. The output should be the string value itself, optionally wrapped in quotes
+4. NO markdown formatting, NO code blocks (no ```), NO explanations - output ONLY the raw string
+5. CRITICAL: Do NOT wrap the string in a dict like {{"result": "string"}} - return ONLY the string
+6. For error cases ONLY, return a JSON object: {{"error": "description"}}{desc_check}"""
+        elif base_type in ('integer', 'float', 'number'):
+            return f"""REQUIREMENTS:
+1. CRITICAL: Return ONLY a NUMERIC value (integer or float) - NOT a string, NOT a dict, NOT a list
+2. Example: 42 or 3.14
+3. NO quotes around the number - output the raw number only
+4. NO markdown formatting, NO code blocks, NO explanations - output ONLY the raw number
+5. For error cases ONLY, return: {{"error": "description", "error_description": "details"}}{desc_check}"""
+        elif base_type == 'boolean':
+            return f"""REQUIREMENTS:
+1. CRITICAL: Return ONLY a BOOLEAN value: true or false (lowercase, no quotes) - NOT a string "true"
+2. Example: true (NOT "true", NOT {{"result": true}})
+3. NO markdown formatting, NO code blocks, NO explanations - output ONLY the raw boolean
+4. For error cases ONLY, return: {{"error": "description", "error_description": "details"}}{desc_check}"""
+        else:
+            return f"""REQUIREMENTS:
+1. CRITICAL: Return a value matching the REQUIRED OUTPUT TYPE specified above
+2. NO markdown formatting, NO code blocks, NO explanations - output ONLY the raw value
+3. For error cases, return: {{"error": "description", "error_description": "details"}}{desc_check}"""
+
+    def _build_simulation_prompt(self, tool_name: str, params: dict, schema: dict, output_guidance: str) -> str:
+        """Build the enhanced simulation prompt with examples."""
+
+        # Build few-shot examples based on tool type
+        examples = self._get_few_shot_examples(tool_name, schema)
+
+        # Determine output format instructions based on output type and description
+        output_type = schema.get('output_type', 'unknown')
+        output_description = schema.get('output_description', '')
+        output_format_instructions = self._get_output_format_instructions(output_type, output_description)
+
+        prompt = f"""You are an expert function simulator. Simulate the execution of the following function call.
+
+=== FUNCTION DETAILS ===
+Function Name: {tool_name}
+
+Function Description: {schema.get('description', 'No description available')}
+
+Function Parameters Schema:
+{json.dumps(schema.get('parameters', {}), indent=2)}
+{output_guidance}
+
+=== ARGUMENTS PROVIDED ===
+{json.dumps(params, indent=2, default=str)}
+
+Current Date/Time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+{examples}
+
+=== YOUR TASK ===
+Generate the return value that '{tool_name}' would produce if executed with the given arguments.
+
+{output_format_instructions}
+
+Generate the output now:"""
+
+        return prompt
+
+    def _get_few_shot_examples(self, tool_name: str, schema: dict) -> str:
+        """Generate few-shot examples based on the tool type."""
+        output_type = schema.get('output_type', 'unknown')
+
+        # Examples for common tool patterns
+        examples = {
+            'dict': '''
+=== EXAMPLES ===
+
+Example 1 - Tool returning user info (dict):
+Function: get_user
+Arguments: {"user_id": "U123"}
+Expected Type: dict
+Expected Description: Returns user information including user_id, username, email, created_at
+Output:
+{"user_id": "U123", "username": "john_doe", "email": "john@example.com", "created_at": "2024-01-15T10:30:00Z", "status": "active"}
+
+Example 2 - Tool creating a resource (dict):
+Function: create_ticket
+Arguments: {"title": "Issue with login", "priority": "high"}
+Expected Type: dict
+Expected Description: Returns created ticket details with ticket_id, status
+Output:
+{"ticket_id": "TKT-2024-001", "title": "Issue with login", "priority": "high", "status": "open", "created_at": "2024-01-20T14:30:00Z"}''',
+
+            'list': '''
+=== EXAMPLES ===
+
+Example 1 - Tool returning list of items:
+Function: list_files
+Arguments: {"directory": "/home/user"}
+Expected Type: list
+Expected Description: Returns list of filenames in the directory
+Output:
+["document.txt", "photo.jpg", "data.csv", "notes.md"]
+
+Example 2 - Tool returning list of objects:
+Function: get_tweet_comments
+Arguments: {"tweet_id": "12345"}
+Expected Type: list
+Expected Description: Returns list of comments with user info and text
+Output:
+[{"comment_id": "C001", "user": "@alice", "text": "Great post!", "timestamp": "2024-01-20T10:00:00Z"}, {"comment_id": "C002", "user": "@bob", "text": "Thanks for sharing", "timestamp": "2024-01-20T11:30:00Z"}]''',
+
+            'string': '''
+=== EXAMPLES ===
+
+Example 1 - Tool returning a message:
+Function: generate_welcome_message
+Arguments: {"username": "Alice"}
+Expected Type: string
+Expected Description: Returns a personalized welcome message
+Output:
+"Welcome to our platform, Alice! We're excited to have you join us."''',
+
+            'integer': '''
+=== EXAMPLES ===
+
+Example 1 - Tool returning a count:
+Function: count_lines
+Arguments: {"file": "data.txt"}
+Expected Type: integer
+Expected Description: Returns the number of lines in the file
+Output:
+42''',
+
+            'float': '''
+=== EXAMPLES ===
+
+Example 1 - Tool returning a price:
+Function: calculate_exchange_rate
+Arguments: {"from": "USD", "to": "EUR"}
+Expected Type: float
+Expected Description: Returns the current exchange rate
+Output:
+0.9234'''
+        }
+
+        base_type = output_type.split()[0].lower() if output_type else 'unknown'
+        return examples.get(base_type, "")
+
+    def _is_output_valid(self, output: Any, expected_type: str, expected_description: str) -> bool:
+        """Quick validation check to see if output matches expected type."""
+        if expected_type == 'unknown' or not expected_type:
+            return True
+
+        # Basic type checking
+        base_type = expected_type.split()[0].lower()
+
+        type_checks = {
+            'dict': lambda x: isinstance(x, dict),
+            'list': lambda x: isinstance(x, list),
+            'string': lambda x: isinstance(x, str),
+            'integer': lambda x: isinstance(x, int) and not isinstance(x, bool),
+            'float': lambda x: isinstance(x, float),
+            'number': lambda x: isinstance(x, (int, float)) and not isinstance(x, bool),
+            'boolean': lambda x: isinstance(x, bool),
+        }
+
+        check_func = type_checks.get(base_type)
+        if check_func:
+            return check_func(output)
+
+        return True
+
+    def _get_default_output(self, output_type: str) -> Any:
+        """Return a sensible default output for the given type."""
+        defaults = {
+            'dict': {"status": "success", "message": "Operation completed"},
+            'list': [],
+            'string': "success",
+            'integer': 0,
+            'float': 0.0,
+            'number': 0,
+            'boolean': True,
+        }
+
+        base_type = output_type.split()[0].lower() if output_type else 'unknown'
+        return defaults.get(base_type, {"status": "completed"})
 
 
 # Default tools for backward compatibility (can be imported if needed)

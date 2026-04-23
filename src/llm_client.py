@@ -414,7 +414,7 @@ class LocalOpenAILLMClient(LLMClient):
             **kwargs,
         }
 
-        max_retries = 5
+        max_retries = 999999
         base_delay = 2
         request_timeout = kwargs.get("timeout", 120)
         rate_limit_retry_count = 0
@@ -460,7 +460,6 @@ class LocalOpenAILLMClient(LLMClient):
                     continue
                 else:
                     raise
-            attempt += 1
 
         response_text = response_obj["choices"][0]["message"]["content"]
 

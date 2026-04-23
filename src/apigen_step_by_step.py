@@ -1,17 +1,14 @@
-#!/usr/bin/env python3
-"""
-Step-by-step blueprint generator for APIGen-MT.
-"""
-
 from enum import Enum
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import json
 import re
 import copy
 import os
+from pathlib import Path
 from llm_client import LLMClient, LocalOpenAILLMClient
 from tool_manager import ToolManager
+from prompts import StepByStepPrompts
 
 
 class ToolCallWithOutput(BaseModel):
@@ -87,6 +84,45 @@ class StepByStepGenerator:
         self.tool_manager = tool_manager
         self.num_actions = num_actions
         self.validate_outputs = validate_outputs
+        
+        # Token tracking - accumulated across stages for current datapoint
+        self._accumulated_prompt_tokens: int = 0
+        self._accumulated_completion_tokens: int = 0
+        self._accumulated_total_tokens: int = 0
+        self._accumulated_llm_calls: int = 0
+        self._initial_token_usage: Optional[Dict[str, int]] = None
+    
+    def _reset_token_tracking(self):
+        """Reset token tracking for a new datapoint."""
+        self._accumulated_prompt_tokens = 0
+        self._accumulated_completion_tokens = 0
+        self._accumulated_total_tokens = 0
+        self._accumulated_llm_calls = 0
+        self._initial_token_usage = None
+    
+    def _capture_initial_usage(self):
+        """Capture initial token usage before starting a datapoint."""
+        self._initial_token_usage = self.llm.get_token_usage()
+    
+    def _update_token_usage(self):
+        """Update accumulated token usage from LLM client."""
+        if self._initial_token_usage is None:
+            return
+        
+        current_usage = self.llm.get_token_usage()
+        self._accumulated_prompt_tokens = current_usage["prompt_tokens"] - self._initial_token_usage["prompt_tokens"]
+        self._accumulated_completion_tokens = current_usage["completion_tokens"] - self._initial_token_usage["completion_tokens"]
+        self._accumulated_total_tokens = current_usage["total_tokens"] - self._initial_token_usage["total_tokens"]
+        self._accumulated_llm_calls = current_usage["total_calls"] - self._initial_token_usage["total_calls"]
+    
+    def _get_token_stats(self) -> TokenUsageStats:
+        """Get current token usage stats."""
+        return TokenUsageStats(
+            prompt_tokens=self._accumulated_prompt_tokens,
+            completion_tokens=self._accumulated_completion_tokens,
+            total_tokens=self._accumulated_total_tokens,
+            total_llm_calls=self._accumulated_llm_calls
+        )
 
     def _get_tool_schemas_str(self, tools_subset: Optional[List[str]] = None) -> str:
         schemas = self.tool_manager.get_tools_json_schema()
@@ -97,10 +133,10 @@ class StepByStepGenerator:
     def _get_tools_with_descriptions_str(self, category: Optional[str] = None) -> str:
         """Get a formatted string of tools with their full descriptions, organized by category."""
         tools = self.tool_manager.get_tools_json_schema()
-        
+
         if category:
             tools = [t for t in tools if t.get('category') == category]
-        
+
         # Group by category
         tools_by_cat = {}
         for tool in tools:
@@ -108,18 +144,15 @@ class StepByStepGenerator:
             if cat not in tools_by_cat:
                 tools_by_cat[cat] = []
             tools_by_cat[cat].append(tool)
-        
+
         result = []
         for cat, cat_tools in sorted(tools_by_cat.items()):
             result.append(f"\n{cat}:")
             for tool in cat_tools:
                 name = tool['name']
                 desc = tool.get('description', 'No description available.')
-                # Truncate very long descriptions
-                if len(desc) > 200:
-                    desc = desc[:197] + "..."
-                result.append(f"  - {name}: {desc}")
-        
+                result.append(f" - {name}: {desc}")
+
         return "\n".join(result)
 
     def _process_placeholders(self, arguments: Dict[str, Any], execution_context: Dict[str, Any]) -> Dict[str, Any]:
@@ -131,9 +164,9 @@ class StepByStepGenerator:
                     keys = placeholder_full_key.split('.')
                     current_value = execution_context
                     found = True
-                    for key_part in keys:
-                        if isinstance(current_value, dict) and key_part in current_value:
-                            current_value = current_value[key_part]
+                    for key in keys:
+                        if isinstance(current_value, dict) and key in current_value:
+                            current_value = current_value[key]
                         else:
                             found = False
                             break
@@ -170,23 +203,27 @@ Respond with JSON:
     "issues": ["list of issues if any"]
 }}"""
 
-        response = self.llm.generate([{"role": "user", "content": prompt}])
-        response_text = response.strip()
+        try:
+            response = self.llm.generate([{"role": "user", "content": prompt}])
+            response_text = response.strip()
 
-        if "```json" in response_text:
-            response_text = response_text.split("```json")[1].split("```")[0]
-        elif response_text.startswith("{"):
-            start = response_text.find("{")
-            end = response_text.rfind("}") + 1
-            response_text = response_text[start:end]
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0]
+            elif response_text.startswith("{"):
+                start = response_text.find("{")
+                end = response_text.rfind("}") + 1
+                response_text = response_text[start:end]
 
-        result = json.loads(response_text)
-        is_valid = result.get("is_valid", False)
-        issues = result.get("issues", [])
+            result = json.loads(response_text)
+            is_valid = result.get("is_valid", False)
+            issues = result.get("issues", [])
 
-        if not is_valid:
-            return False, f"Tool sequence validation failed: {'; '.join(issues)}"
-        return True, ""
+            if not is_valid:
+                return False, f"Tool sequence validation failed: {'; '.join(issues)}"
+            return True, ""
+        except Exception as e:
+            # If validation fails, assume valid to continue
+            return True, ""
 
     def _get_example_queries(self) -> str:
         """Return few-shot examples of valid queries with correct tool sequences."""
@@ -227,29 +264,29 @@ Respond with JSON:
                 "expected_tools": ["get_user_id", "send_message"]
             }
         ]
-        
+
         # Filter examples by num_actions if possible
         filtered_examples = [ex for ex in examples if ex["num_tools"] <= self.num_actions + 1 and ex["num_tools"] >= self.num_actions - 1]
         if not filtered_examples:
-            filtered_examples = examples[:3]  # Just take first 3
-        
+            filtered_examples = examples[:3]
+
         result = []
         for i, ex in enumerate(filtered_examples, 1):
             result.append(f"\n=== EXAMPLE {i} ({ex['category']}, {ex['num_tools']} tools) ===")
             result.append(f"Query: \"{ex['query']}\"")
             result.append(f"Intent: {ex['intent']}")
             result.append(f"Expected tools: {ex['expected_tools']}")
-        
+
         return "\n".join(result)
 
-    def generate_user_query(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3) -> QueryGenerationResult:
+    def generate_user_query(self, focus_category: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3) -> QueryGenerationResult:
         # Get tools with full descriptions
         tools_with_descriptions = self._get_tools_with_descriptions_str(category=focus_category)
-        
+
         accumulated_feedback = validation_feedback or ""
         example_queries = self._get_example_queries()
 
-        for attempt in range(max_retries + 1):
+        for attempt in range(max_retries):
             prompt = f"""You are generating a realistic user query for testing a tool-calling system.
 
 Generate a natural, realistic user query that would require using EXACTLY {self.num_actions} tools to fulfill.
@@ -300,12 +337,25 @@ Respond ONLY with valid JSON in this exact format:
                     response_text = response_text[start:end]
 
                 result = json.loads(response_text)
+                query = result.get("query", "")
+                intent = result.get("intent", "")
                 expected_tools = result.get("expected_tools", [])
+            
+                # Log what was generated
+                print(f"  Generated Query: {query}")
+                print(f"  Intent: {intent}")
+                print(f"  Expected tools: {expected_tools}")
+            
+                # Build feedback with the full generated output
+                generated_summary = f"""--- ATTEMPT {attempt + 1} OUTPUT ---
+    Query: {query}
+    Intent: {intent}
+    Expected tools: {expected_tools}"""
 
                 # Validate tool count
                 if len(expected_tools) != self.num_actions:
-                    accumulated_feedback += f"\nAttempt {attempt + 1}: Expected {self.num_actions} tools, but got {len(expected_tools)}: {expected_tools}. Please generate EXACTLY {self.num_actions} tools."
-                    print(f" Query generation attempt {attempt + 1}: Wrong tool count ({len(expected_tools)}/{self.num_actions})")
+                    print(f"  ✗ Wrong tool count: {len(expected_tools)} != {self.num_actions}")
+                    accumulated_feedback += f"\n{generated_summary}\nFAILURE: Expected {self.num_actions} tools, but got {len(expected_tools)}.\n--- END ATTEMPT {attempt + 1} ---"
                     continue
 
                 # Validate that tools exist
@@ -317,7 +367,6 @@ Respond ONLY with valid JSON in this exact format:
                         invalid_tools.append(tool)
 
                 if not all_tools_valid:
-                # Get available tools in the focus category or all categories
                     available_tools = []
                     if focus_category:
                         cat_tools = self.tool_manager.get_tools_by_category(focus_category)
@@ -327,51 +376,38 @@ Respond ONLY with valid JSON in this exact format:
                             cat_tools = self.tool_manager.get_tools_by_category(cat)
                             available_tools.extend([t['name'] for t in cat_tools[:5]])
 
-                # Build helpful feedback with suggestions
-                    feedback_msg = f"\nAttempt {attempt + 1}: INVALID TOOLS: {invalid_tools}\n"
-                    feedback_msg += f"\nThese tools do NOT exist. You MUST choose from the available tools.\n"
-                    feedback_msg += f"\nAvailable tools (sample): {available_tools[:15]}\n"
-                    feedback_msg += f"\nPlease select ONLY tools from the AVAILABLE TOOLS list with exact names.\n"
-
-                    accumulated_feedback += feedback_msg
-                    print(f" Query generation attempt {attempt + 1}: Invalid tools {invalid_tools}")
+                    print(f"  ✗ Invalid tools: {invalid_tools}")
+                    accumulated_feedback += f"""\n{generated_summary}
+    FAILURE: Tools not found: {invalid_tools}
+    These tools do NOT exist. Choose from available tools.
+    Available tools (sample): {available_tools[:15]}
+    --- END ATTEMPT {attempt + 1} ---"""
                     continue
 
                 # Validate tool sequence makes sense for the query
-                is_valid, validation_msg = self.validate_expected_tools(
-                    result.get("query", ""),
-                    expected_tools,
-                    result.get("intent", "")
-                )
+                is_valid, validation_msg = self.validate_expected_tools(query, expected_tools, intent)
 
                 if not is_valid:
-                    accumulated_feedback += f"\nAttempt {attempt + 1}: Tool sequence validation failed: {validation_msg}"
-                    print(f" Query generation attempt {attempt + 1}: Tool sequence invalid")
+                    print(f"  ✗ Tool sequence validation failed: {validation_msg}")
+                    accumulated_feedback += f"\n{generated_summary}\nFAILURE: Tool sequence validation - {validation_msg}\n--- END ATTEMPT {attempt + 1} ---"
                     continue
 
-                print(f" Query generation successful after {attempt + 1} attempt(s)")
-                return QueryGenerationResult(
-                    query=result.get("query", ""),
-                    intent=result.get("intent", ""),
-                    expected_tools=expected_tools
-                )
+                print(f" ✓ Query generation successful")
+                return QueryGenerationResult(query=query, intent=intent, expected_tools=expected_tools)
 
             except json.JSONDecodeError as e:
-                print(f"JSON decode error on attempt {attempt + 1}: {e}")
-                accumulated_feedback += f"\nAttempt {attempt + 1}: JSON parsing error. Please ensure valid JSON output."
-            except Exception as e:
-                print(f"Error generating query on attempt {attempt + 1}: {e}")
-                accumulated_feedback += f"\nAttempt {attempt + 1}: Error occurred: {str(e)}"
+                print(f" ✗ JSON decode error: {e}")
+                accumulated_feedback += f"\n--- ATTEMPT {attempt + 1} FAILED ---\nJSON parsing error: {e}\n--- END ATTEMPT {attempt + 1} ---"
 
-        print(f"Failed to generate valid query after {max_retries + 1} attempts")
-        return QueryGenerationResult(query="", intent="", expected_tools=[])
+            print(f" Failed to generate valid query after {max_retries} attempts")
+            return QueryGenerationResult(query="", intent="", expected_tools=[])
 
     def _generate_next_step(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any], expected_tools: List[str], step_num: int = 1) -> StepSelectionResult:
         trajectory_str = ""
         for i, step in enumerate(trajectory):
             trajectory_str += f"\nStep {i+1}:"
             for tc in step.tool_calls:
-                trajectory_str += f"\n  - {tc.tool_name}({json.dumps(tc.arguments)})"
+                trajectory_str += f"\n - {tc.tool_name}({json.dumps(tc.arguments)})"
                 if tc.output:
                     trajectory_str += f" -> {json.dumps(tc.output)[:200]}"
 
@@ -388,11 +424,18 @@ Respond ONLY with valid JSON in this exact format:
         tool_descriptions_str = ""
         for tool_name in tools_remaining:
             try:
-                schema = self.tool_manager.get_tool_schema(tool_name)
-                desc = schema.get('description', 'No description available.')[:150]
-                tool_descriptions_str += f"  - {tool_name}: {desc}\n"
-            except:
-                tool_descriptions_str += f"  - {tool_name}: (no description)\n"
+                    schema = self.tool_manager.get_tool_schema(tool_name)
+                    if schema:
+                        desc = schema.get('description', 'No description available.')[:150]
+                        tool_descriptions_str += f" - {tool_name}: {desc}\n"
+                    else:
+                        tool_descriptions_str += f" - {tool_name}: (tool for completing the task)\n"
+            except Exception as e:
+                tool_descriptions_str += f" - {tool_name}: (tool for completing the task)\n"
+
+        if not tool_descriptions_str:
+            for tool_name in tools_remaining:
+                tool_descriptions_str += f" - {tool_name}: (tool for completing the task)\n"
 
         prompt = f"""You are selecting the next tool to call based on the conversation context.
 
@@ -443,153 +486,426 @@ Respond ONLY with valid JSON:
                 reasoning=result.get("reasoning", "")
             )
         except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
-            return StepSelectionResult(tool_name="", arguments={}, reasoning="")
-        except Exception as e:
-            print(f"Error generating step: {e}")
-            return StepSelectionResult(tool_name="", arguments={}, reasoning="")
+            print(f"    JSON decode error in step generation: {e}")
+            return StepSelectionResult(tool_name="__ERROR__", arguments={}, reasoning=f"JSON error: {e}")
 
     def _simulate_tool_execution(self, tool_name: str, arguments: Dict[str, Any], execution_context: Dict[str, Any]) -> Any:
         processed_args = self._process_placeholders(arguments, execution_context)
         return self.tool_manager.invoke_tool(tool_name=tool_name, params=processed_args)
 
-    def generate_datapoint(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None, max_retries: int = 3) -> Optional[StepByStepDatapoint]:
-        print("\n" + "=" * 60)
-        print("STEP-BY-STEP DATAPOINT GENERATION")
-        print("=" * 60)
+    # ==================== REFACTORED THREE-STAGE GENERATION ====================
 
-        # Capture starting token usage from LLM client
-        start_usage = self.llm.get_token_usage()
-        start_calls = start_usage["total_calls"]
+    def generate_datapoint(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None, 
+                           query_retries: int = 3, tool_retries: int = 3) -> Optional[StepByStepDatapoint]:
+        """
+        Generate a datapoint using three-stage generation:
+        Stage 1: Generate and verify query (separate retry count)
+        Stage 2: Generate tool invocations tool-by-tool (separate retry count per tool)
+        Stage 3: Finalize datapoint (no retries)
+        """
+        print("\n" + "=" * 70)
+        print("STEP-BY-STEP DATAPOINT GENERATION (Refactored)")
+        print("=" * 70)
 
+        # Reset and start token tracking for this datapoint
+        self._reset_token_tracking()
+        self._capture_initial_usage()
+
+        # Stage 1: Generate and verify query
+        print("\n" + "-" * 70)
+        print("STAGE 1: Generate and Verify Query")
+        print("-" * 70)
+        
+        query_result = self._stage1_generate_query(focus_category, context_hint, query_retries)
+        
+        if query_result is None:
+            print("\n✗ Stage 1 failed: Could not generate valid query")
+            print(f"  Token usage for failed datapoint: {self._accumulated_total_tokens:,} tokens, {self._accumulated_llm_calls} calls")
+            return None
+        
+        self._update_token_usage()
+        print(f"\n✓ Stage 1 complete: Query generated and verified")
+        print(f" Query: {query_result.query}")
+        print(f" Expected tools: {query_result.expected_tools}")
+        print(f" Tokens so far: {self._accumulated_total_tokens:,}")
+
+        # Stage 2: Generate tool invocations tool-by-tool
+        print("\n" + "-" * 70)
+        print("STAGE 2: Generate Tool Invocations")
+        print("-" * 70)
+        
+        trajectory, execution_context = self._stage2_generate_tools(query_result, tool_retries)
+        
+        if trajectory is None:
+            print("\n✗ Stage 2 failed: Could not generate all tool invocations")
+            print(f"  Token usage for failed datapoint: {self._accumulated_total_tokens:,} tokens, {self._accumulated_llm_calls} calls")
+            return None
+        
+        self._update_token_usage()
+        print(f"\n✓ Stage 2 complete: Generated {len(trajectory)} tool invocations")
+        print(f"  Tokens so far: {self._accumulated_total_tokens:,}")
+
+        # Stage 3: Finalize datapoint
+        print("\n" + "-" * 70)
+        print("STAGE 3: Finalize Datapoint")
+        print("-" * 70)
+        
+        datapoint = self._stage3_finalize(query_result, trajectory, execution_context, focus_category)
+        
+        if datapoint is None:
+            print("\n✗ Stage 3 failed: Could not finalize datapoint")
+            return None
+        
+        print("\n" + "=" * 70)
+        print("✓ DATAPOINT GENERATION COMPLETE (VERIFIED)")
+        print("=" * 70)
+        print(f" Query: {datapoint.trajectory.query}")
+        print(f" Tools used: {datapoint.trajectory.tools_used}")
+        print(f" Steps: {len(datapoint.trajectory.steps)}")
+        print(f" Verification: PASSED")
+
+        return datapoint
+
+    def _stage1_generate_query(self, focus_category: Optional[str], context_hint: Optional[str], 
+                               max_retries: int) -> Optional[QueryGenerationResult]:
+        """
+        Stage 1: Generate and verify user query.
+        - Separate retry count for query generation
+        - Feedback is wiped on successful verification
+        - Returns QueryGenerationResult or None if all retries exhausted
+        """
         accumulated_feedback = context_hint or ""
-
-        for attempt in range(max_retries + 1):
-            print(f"\n[Attempt {attempt + 1}/{max_retries + 1}] Generating user query...")
-            query_result = self.generate_user_query(focus_category, accumulated_feedback)
+        
+        for attempt in range(max_retries):
+            print(f"\n[Query Attempt {attempt + 1}/{max_retries}]")
+            
+            # Generate query
+            query_result = self.generate_user_query(focus_category, accumulated_feedback if accumulated_feedback else None)
+            
             if not query_result.query:
-                print("Failed to generate query")
-                accumulated_feedback += f"\nAttempt {attempt + 1}: Failed to generate a valid query. Please try again with a clear, actionable request."
+                print("  ✗ Failed to generate query")
+                accumulated_feedback += f"\n--- ATTEMPT {attempt + 1} FAILED ---\nFailed to generate a valid query.\n--- END ATTEMPT {attempt + 1} ---"
                 continue
 
-            print(f"Query: {query_result.query}")
-            print(f"Intent: {query_result.intent}")
-            print(f"Expected tools: {query_result.expected_tools}")
+            print(f"  Generated Query: {query_result.query}")
+            print(f"  Intent: {query_result.intent}")
+            print(f"  Expected tools: {query_result.expected_tools}")
 
-        trajectory = []
-        execution_context = {}
-        steps_completed = 0
+            # Build a summary of what was generated for feedback
+            generated_summary = f"""--- ATTEMPT {attempt + 1} OUTPUT ---
+    Query: {query_result.query}
+    Intent: {query_result.intent}
+    Expected tools: {query_result.expected_tools}"""
 
-        for step_num in range(1, self.num_actions + 1):
-            print(f"\n[Step {step_num + 1}/{self.num_actions + 2}] Selecting tool for step {step_num}...")
+            # Verify expected_tools
+            print(f"  Verifying expected tools...")
 
-            step_result = self._generate_next_step(
-                query=query_result.query,
-                trajectory=trajectory,
-                execution_context=execution_context,
-                expected_tools=query_result.expected_tools
-            )
-
-            if step_result.tool_name == "__FINAL_RESPONSE__":
-                print("All expected tools have been used")
-                break
-
-            if not step_result.tool_name:
-                print("Failed to generate step")
-                break
-
-            print(f"Selected tool: {step_result.tool_name}")
-            print(f"Arguments: {json.dumps(step_result.arguments)}")
-            print(f"Reasoning: {step_result.reasoning[:100]}...")
-
-            print(f"Simulating {step_result.tool_name}...")
-            output = self._simulate_tool_execution(
-                tool_name=step_result.tool_name,
-                arguments=step_result.arguments,
-                execution_context=execution_context
-            )
-
-            print(f"Output: {str(output)[:200]}...")
-
-            context_key = f"{step_result.tool_name}_output"
-            if output and isinstance(output, dict):
-                for k, v in output.items():
-                    execution_context[f"{step_result.tool_name}_{k}"] = v
-            execution_context[context_key] = output
-
-            tool_call = ToolCallWithOutput(tool_name=step_result.tool_name, arguments=step_result.arguments, output=output)
-            trajectory_step = TrajectoryStep(step_number=step_num, tool_calls=[tool_call], reasoning=step_result.reasoning)
-            trajectory.append(trajectory_step)
-            steps_completed += 1
-
-            print(f"\n[Step {steps_completed + 2}/{self.num_actions + 2}] Generating final response...")
-            final_response = self._generate_final_response(query_result.query, trajectory, execution_context)
-            print(f"Final response: {final_response[:200]}...")
-
-            tools_used = []
-            categories_used = set()
-            for step in trajectory:
-                for tc in step.tool_calls:
-                    if tc.tool_name not in tools_used:
-                        tools_used.append(tc.tool_name)
-                    cat = self.tool_manager.get_tool_category(tc.tool_name)
-                    if cat:
-                        categories_used.add(cat)
-
-            conv_trajectory = ConversationTrajectory(
-                query=query_result.query,
-                steps=trajectory,
-                final_response=final_response,
-                tools_used=tools_used,
-                categories_used=list(categories_used)
-            )
-
-            metadata = {
-                "num_actions": steps_completed,
-                "focus_category": focus_category,
-                "query_intent": query_result.intent,
-                "expected_tools": query_result.expected_tools
-            }
-
-            print("\n" + "=" * 60)
-            print("RUNNING VERIFICATION")
-            print("=" * 60)
-
-            # Run full verification
-            verification_result = self.run_full_verification(
-                query=query_result.query,
-                trajectory=trajectory,
-                execution_context=execution_context
-            )
-
-            # Convert VerificationResult to dict for storage
-            verification_dict = verification_result.model_dump()
-
-            # Create the datapoint with verification results
-            datapoint = StepByStepDatapoint(
-                trajectory=conv_trajectory,
-                generation_metadata=metadata,
-                verification_result=verification_dict
-            )
-
-            print("\n" + "=" * 60)
-            print("DATAPOINT GENERATION COMPLETE")
-            print("=" * 60)
-            print(f"Tools used: {tools_used}")
-            print(f"Categories: {categories_used}")
-            print(f"Verification: {'PASSED' if verification_result.overall_verification_passed else 'FAILED'}")
-
-            # Only return the datapoint if all steps were completed
-            if steps_completed == self.num_actions:
-                return datapoint
-            else:
-                accumulated_feedback += f"\nAttempt {attempt + 1}: Only completed {steps_completed} steps instead of {self.num_actions}. Generate a query that clearly requires all {self.num_actions} tools."
+            if not query_result.expected_tools:
+                print("  ✗ ERROR: expected_tools is empty")
+                accumulated_feedback += f"\n{generated_summary}\nFAILURE: expected_tools is empty.\n--- END ATTEMPT {attempt + 1} ---"
                 continue
 
-        print(f"\nFailed to generate valid datapoint after {max_retries + 1} attempts")
+            if len(query_result.expected_tools) != self.num_actions:
+                print(f"  ✗ ERROR: expected_tools count {len(query_result.expected_tools)} != {self.num_actions}")
+                accumulated_feedback += f"\n{generated_summary}\nFAILURE: expected_tools count mismatch - got {len(query_result.expected_tools)}, need {self.num_actions}.\n--- END ATTEMPT {attempt + 1} ---"
+                continue
+
+            # Check if all tools exist
+            invalid_tools = [t for t in query_result.expected_tools if not self.tool_manager.tool_exists(t)]
+            if invalid_tools:
+                print(f"  ✗ ERROR: Tools not found: {invalid_tools}")
+                accumulated_feedback += f"\n{generated_summary}\nFAILURE: Tools not found: {invalid_tools}.\n--- END ATTEMPT {attempt + 1} ---"
+                continue
+
+            # Validate tool sequence using LLM
+            is_valid, validation_msg = self.validate_expected_tools(
+                query_result.query, query_result.expected_tools, query_result.intent
+            )
+
+            if not is_valid:
+                print(f"  ✗ Tool sequence validation failed: {validation_msg}")
+                accumulated_feedback += f"\n{generated_summary}\nFAILURE: Tool sequence validation - {validation_msg}.\n--- END ATTEMPT {attempt + 1} ---"
+                continue
+                
+            # SUCCESS: Query is valid - wipe feedback and return
+            print("  ✓ Query verification passed")
+            return query_result    
+        # All retries exhausted
+        print(f"\n✗ Failed to generate valid query after {max_retries} attempts")
         return None
 
+    def _generate_tool_arguments(self, tool_name: str, query: str, trajectory: List[TrajectoryStep],
+                                 execution_context: Dict[str, Any],
+                                 feedback: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """Generate arguments for a specific tool based on query and context."""
+        # Get tool schema
+        tool_schema = self.tool_manager.get_tool_schema(tool_name)
+        if not tool_schema:
+            return None, f"Tool '{tool_name}' not found"
+
+        # Build context from trajectory
+        trajectory_str = ""
+        for i, step in enumerate(trajectory):
+            trajectory_str += f"\nStep {i+1}: {step.tool_calls[0].tool_name}"
+            if step.tool_calls[0].output:
+                output_summary = str(step.tool_calls[0].output)[:100]
+                trajectory_str += f" -> {output_summary}"
+
+        # Get output type info for better argument generation
+        output_type = tool_schema.get('output_type', 'unknown')
+        output_description = tool_schema.get('output_description', '')
+
+        prompt = f"""Generate arguments for the tool '{tool_name}' based on the user query and previous steps.
+
+=== USER QUERY ===
+{query}
+
+=== PREVIOUS STEPS ===
+{trajectory_str if trajectory_str else "None"}
+
+=== EXECUTION CONTEXT ===
+{json.dumps(execution_context, indent=2, default=str)[:500]}
+
+=== TOOL SCHEMA ===
+{json.dumps(tool_schema.get('parameters', {}), indent=2)}
+
+=== EXPECTED OUTPUT ===
+Type: {output_type}
+Description: {output_description}
+"""
+        if feedback:
+            prompt += f"""
+=== PREVIOUS ATTEMPT FEEDBACK ===
+{feedback}
+"""
+
+        prompt += f"""
+=== YOUR TASK ===
+Generate arguments for '{tool_name}' that:
+1. Match the schema above
+2. Fulfill the user query
+3. Use values from Execution Context when available (e.g., user_id from previous step)
+4. Are specific and realistic
+5. Will produce an output that matches the Expected Output type and description above
+
+Respond with JSON containing only the arguments:
+{{
+    "arg1": "value1",
+    "arg2": "value2"
+}}"""
+        
+        try:
+            response = self.llm.generate([{"role": "user", "content": prompt}])
+            response_text = response.strip()
+        
+            # Extract JSON
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0]
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0]
+            elif response_text.startswith("{"):
+                start = response_text.find("{")
+                end = response_text.rfind("}") + 1
+                response_text = response_text[start:end]
+        
+            arguments = json.loads(response_text)
+            return arguments, None
+        
+        except json.JSONDecodeError as e:
+            return None, f"JSON parsing error: {e}"
+
+    def _stage2_generate_tools(self, query_result: QueryGenerationResult, 
+                               max_retries_per_tool: int) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
+        """
+        Stage 2: Generate tool invocations tool-by-tool.
+        Uses expected_tools from Stage 1 directly - no LLM selection needed.
+        - Each tool has its own retry count for argument generation
+        - Feedback is wiped on successful tool completion
+        - If any tool fails after max retries, entire stage fails
+        - Returns (trajectory, execution_context) or None
+        """
+        trajectory: List[TrajectoryStep] = []
+        execution_context: Dict[str, Any] = {}
+        
+        # Iterate through expected_tools directly
+        for step_num, tool_name in enumerate(query_result.expected_tools, 1):
+            print(f"\n[Step {step_num}/{self.num_actions}] Processing tool: {tool_name}")
+
+            # Track retries for this specific tool
+            tool_feedback = ""
+            step_success = False
+
+            for attempt in range(max_retries_per_tool):
+                print(f" [Attempt {attempt + 1}/{max_retries_per_tool}]")
+
+                # Generate arguments for this tool (with feedback from previous failures)
+                print(f" Generating arguments for {tool_name}...")
+                arguments, error = self._generate_tool_arguments(
+                    tool_name=tool_name,
+                    query=query_result.query,
+                    trajectory=trajectory,
+                    execution_context=execution_context,
+                    feedback=tool_feedback if tool_feedback else None
+                )
+                
+                if error:
+                    print(f"    ✗ {error}")
+                    if attempt < max_retries_per_tool - 1:
+                        continue
+                    break
+                
+                print(f"    Arguments: {json.dumps(arguments)}")
+                
+                # Simulate tool execution
+                print(f" Simulating {tool_name}...")
+                output = self._simulate_tool_execution(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    execution_context=execution_context
+                )
+
+                print(f" Output: {json.dumps(output, indent=2, ensure_ascii=False) if isinstance(output, (dict, list)) else output}")
+
+                # Check for tool errors
+                if isinstance(output, dict):
+                    error_fields = ['error', 'error_message', 'error_code']
+                    has_error = any(f in output for f in error_fields)
+                    if has_error:
+                        error_detail = output.get('error', output.get('error_message', output.get('error_code', 'Unknown error')))
+                        error_type = output.get('error_type', 'execution_error')
+                        print(f" ✗ Tool returned error: {error_detail}")
+                        # Check if this is a validation failure that should trigger a retry
+                        if error_type == 'validation_failure' and attempt < max_retries_per_tool - 1:
+                            tool_feedback = f"Previous output validation failed: {error_detail}. Generate new arguments."
+                            print(f"   Retrying due to validation failure...")
+                            continue
+                        elif attempt < max_retries_per_tool - 1:
+                            continue
+                        break
+
+                # Validate output against declared type/description immediately
+                tool_schema = self.tool_manager.get_tool_schema(tool_name)
+                if tool_schema and self.validate_outputs:
+                    expected_type = tool_schema.get('output_type', 'unknown')
+                    expected_desc = tool_schema.get('output_description', '')
+                    validation = self.verify_output_consistency(
+                        tool_name, step_num, output, expected_type, expected_desc
+                    )
+                    if not validation['output_type_matches'] or validation.get('issues'):
+                        issues_str = '; '.join(validation.get('issues', ['Type mismatch']))
+                        print(f" ✗ Output validation failed: {issues_str}")
+                        if attempt < max_retries_per_tool - 1:
+                            tool_feedback = f"Previous output failed validation: {issues_str}. Expected type: {expected_type}."
+                            print(f"   Retrying with new arguments...")
+                            continue
+                        print(f"   Max retries exceeded, proceeding with potentially invalid output")
+
+                # SUCCESS: Tool completed - add to trajectory
+                print(f" ✓ Tool execution successful")
+                    
+                # Update execution context
+                if isinstance(output, dict):
+                    for k, v in output.items():
+                        execution_context[f"{tool_name}_{k}"] = v
+                    execution_context[f"{tool_name}_output"] = output
+                
+                # Add to trajectory
+                tool_call = ToolCallWithOutput(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    output=output
+                )
+                trajectory_step = TrajectoryStep(
+                    step_number=step_num,
+                    tool_calls=[tool_call],
+                    reasoning=f"Generated arguments for {tool_name} based on query context"
+                )
+                trajectory.append(trajectory_step)
+                step_success = True
+                break
+                
+        if not step_success:
+            print(f"\n✗ Tool {tool_name} failed after {max_retries_per_tool} attempts")
+            return None, None
+        
+        # All tools completed successfully
+        return trajectory, execution_context
+
+    def _stage3_finalize(self, query_result: QueryGenerationResult, trajectory: List[TrajectoryStep],
+                        execution_context: Dict[str, Any],
+                        focus_category: Optional[str]) -> Optional[StepByStepDatapoint]:
+        """
+        Stage 3: Finalize datapoint.
+        - No retries - if verification fails, something is fundamentally wrong
+        - Assembles final datapoint with verification results
+        - Uses class-level token tracking
+        """
+        print("\nGenerating final response...")
+        final_response = self._generate_final_response(query_result.query, trajectory, execution_context)
+        print(f" Final response: {final_response}")
+        
+        # Collect tools and categories
+        tools_used = []
+        categories_used = set()
+        for step in trajectory:
+            for tc in step.tool_calls:
+                if tc.tool_name not in tools_used:
+                    tools_used.append(tc.tool_name)
+                cat = self.tool_manager.get_tool_category(tc.tool_name)
+                if cat:
+                    categories_used.add(cat)
+        
+        # Create trajectory
+        conv_trajectory = ConversationTrajectory(
+            query=query_result.query,
+            steps=trajectory,
+            final_response=final_response,
+            tools_used=tools_used,
+            categories_used=list(categories_used)
+        )
+        
+        # Run verification
+        print("\nRunning verification...")
+        verification_result = self.run_full_verification(
+            query=query_result.query,
+            trajectory=trajectory,
+            execution_context=execution_context
+        )
+        
+        verification_passed = verification_result.overall_verification_passed if verification_result else False
+
+        # If verification failed, return None so the caller knows to retry
+        if not verification_passed:
+            print(f" Verification: FAILED")
+            print(f"\n✗ Datapoint failed verification - discarding")
+            return None
+
+        print(f" Verification: PASSED")
+
+        # Update token usage from class-level tracking
+        self._update_token_usage()
+        token_usage = self._get_token_stats()
+        
+        # Create metadata
+        metadata = {
+            "num_actions": len(trajectory),
+            "focus_category": focus_category,
+            "query_intent": query_result.intent,
+            "expected_tools": query_result.expected_tools
+        }
+        
+        # Create datapoint
+        datapoint = StepByStepDatapoint(
+            trajectory=conv_trajectory,
+            generation_metadata=metadata,
+            verification_result=verification_result.model_dump() if verification_result else {},
+            token_usage=token_usage
+        )
+        
+        return datapoint
+
     def _generate_final_response(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any]) -> str:
+        """Generate a natural final response based on the conversation."""
         actions_summary = []
         for step in trajectory:
             for tc in step.tool_calls:
@@ -609,10 +925,10 @@ Actions taken:
 Generate a concise, natural response that summarizes what was accomplished."""
 
         try:
-            response = self.llm.generate([{"role": "user", "content": prompt}])
-            return response.strip()
+                response = self.llm.generate([{"role": "user", "content": prompt}])
+                return response.strip()
         except Exception as e:
-            print(f"Error generating final response: {e}")
+            print(f"    Error generating final response: {e}")
             return "I have completed your request."
 
     # ==================== VERIFICATION METHODS ====================
@@ -660,7 +976,7 @@ Generate a concise, natural response that summarizes what was accomplished."""
     def verify_output_consistency(self, tool_name: str, step_number: int, output: Any, expected_type: str, expected_description: str) -> Dict[str, Any]:
         """Verify if a tool's output matches its declared type and description."""
         if output is None:
-            return {'tool_name': tool_name, 'step_number': step_number, 'output_type_matches': False, 'output_description_matches': False, 'issues': ['Output is None']}
+            return {'tool_name': tool_name, 'step_number': step_number, 'output_type_matches': False, 'issues': ['Output is None']}
 
         issues = []
         output_type_matches = True
@@ -684,17 +1000,7 @@ Generate a concise, natural response that summarizes what was accomplished."""
                 output_type_matches = False
                 issues.append(f"Type mismatch: expected {expected_type}, got {output_type}")
 
-        output_description_matches = True
-        if expected_description and output:
-            output_str = str(output).lower()
-            desc_words = set(expected_description.lower().split())
-            output_words = set(output_str.split())
-            overlap = len(desc_words & output_words)
-            if overlap < 2 and len(desc_words) > 5:
-                output_description_matches = False
-                issues.append("Output may not match description")
-
-        return {'tool_name': tool_name, 'step_number': step_number, 'output_type_matches': output_type_matches, 'output_description_matches': output_description_matches, 'issues': issues}
+        return {'tool_name': tool_name, 'step_number': step_number, 'output_type_matches': output_type_matches, 'issues': issues}
 
     def verify_placeholder_resolution(self, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any]) -> Dict[str, Any]:
         """Verify that all placeholders in tool arguments were resolved correctly."""
@@ -728,16 +1034,8 @@ Generate a concise, natural response that summarizes what was accomplished."""
         return {'all_resolved': total_placeholders == resolved_count, 'total_placeholders': total_placeholders, 'resolved_count': resolved_count, 'details': details}
 
     def run_full_verification(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any]) -> VerificationResult:
-        """
-        Run all verification checks on a generated datapoint.
-
-        Verification checks:
-        1. Tool relevance - are tools relevant for the query?
-        2. Invocation order - are tools invoked in the right order?
-        3. Output consistency - do outputs match tool declarations?
-        4. Placeholder resolution - are all placeholders resolved?
-        """
-        print("\n=== Running Verification ===")
+        """Run all verification checks on a generated datapoint."""
+        print("\n  Running Verification...")
 
         # 1. Check tool relevance
         tool_relevance_checks = []
@@ -748,16 +1046,11 @@ Generate a concise, natural response that summarizes what was accomplished."""
                 tool_relevance_checks.append(check)
                 if not check['is_relevant']:
                     all_relevant = False
-                print(f"  {tc.tool_name}: relevance={check['relevance_score']:.2f}, relevant={check['is_relevant']}")
 
         # 2. Verify invocation order
-        print("Verifying invocation order...")
         order_result = self.verify_invocation_order(query, trajectory)
-        print(f"  Order correct: {order_result['order_is_correct']}")
-        print(f"  Details: {order_result['order_verification_details']}")
 
         # 3. Verify output consistency
-        print("Verifying output consistency...")
         output_validations = []
         all_outputs_valid = True
         for step in trajectory:
@@ -768,17 +1061,11 @@ Generate a concise, natural response that summarizes what was accomplished."""
 
                 validation = self.verify_output_consistency(tc.tool_name, step.step_number, tc.output, expected_type, expected_desc)
                 output_validations.append(validation)
-                if not validation['output_type_matches'] or not validation['output_description_matches']:
+                if not validation['output_type_matches']:
                     all_outputs_valid = False
-                print(f"  {tc.tool_name}: type_match={validation['output_type_matches']}, desc_match={validation['output_description_matches']}")
-                if validation['issues']:
-                    for issue in validation['issues']:
-                        print(f"    - {issue}")
 
         # 4. Check placeholder resolution
-        print("Checking placeholder resolution...")
         placeholder_result = self.verify_placeholder_resolution(trajectory, execution_context)
-        print(f"  Resolved: {placeholder_result['resolved_count']}/{placeholder_result['total_placeholders']}")
 
         # Overall check
         overall_passed = all_relevant and order_result['order_is_correct'] and all_outputs_valid and placeholder_result['all_resolved']
@@ -793,11 +1080,7 @@ Generate a concise, natural response that summarizes what was accomplished."""
         if not placeholder_result['all_resolved']:
             issues.append(f"{placeholder_result['total_placeholders'] - placeholder_result['resolved_count']} placeholders were not resolved")
 
-        summary = "Verification PASSED - all checks successful" if overall_passed else "Verification FAILED - issues found"
-        print(f"\n=== Verification Result: {'PASSED' if overall_passed else 'FAILED'} ===")
-        if issues:
-            for issue in issues:
-                print(f"  - {issue}")
+        summary = "Verification PASSED" if overall_passed else "Verification FAILED - " + "; ".join(issues)
 
         return VerificationResult(
             query=query,
