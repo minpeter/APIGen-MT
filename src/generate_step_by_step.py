@@ -71,8 +71,8 @@ def parse_args():
     parser.add_argument(
         '--model', '-m',
         type=str,
-        default='moonshotai/kimi-k2.5',
-        help='Model to use for generation (default: moonshotai/kimi-k2.5)'
+        default='z-ai/glm-5.1',
+        help='Model to use for generation (default: z-ai/glm-5.1)'
     )
 
     return parser.parse_args()
