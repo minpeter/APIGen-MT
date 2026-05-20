@@ -2,12 +2,12 @@
 
 ## Custom LLM Provider Test
 
-Tested the custom LLM provider with the default model nvidia/nemotron-3-super-120b-a12b.
+Tested the custom LLM provider with the default model z-ai/glm-5.1.
 
 Configuration used:
 - API Base: https://integrate.api.nvidia.com/v1 (from OPENAI_API_BASE in .env)
 - API Key: sk-or-v1-... (from OPENAI_API_KEY in .env)
-- Model: nvidia/nemotron-3-super-120b-a12b
+- Model: z-ai/glm-5.1
 
 ### Test Results:
 

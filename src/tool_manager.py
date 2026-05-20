@@ -1,11 +1,91 @@
 from function_schema import get_function_schema
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import json
 import datetime
 import os
+import copy
+import inspect
+import importlib
 from pathlib import Path
+from collections import defaultdict
 
 from llm_client import LLMClient
+
+
+CLASS_KEY_TO_INITIAL_CONFIG_KEY = {
+    "gorilla_file_system": "GorillaFileSystem",
+    "math_api": "MathAPI",
+    "message_api": "MessageAPI",
+    "posting_api": "TwitterAPI",
+    "ticket_api": "TicketAPI",
+    "trading_bot": "TradingBot",
+    "travel_booking": "TravelAPI",
+    "vehicle_control": "VehicleControlAPI",
+}
+
+CLASS_KEY_TO_CLASS_NAME = {
+    "gorilla_file_system": "GorillaFileSystem",
+    "math_api": "MathAPI",
+    "message_api": "MessageAPI",
+    "posting_api": "PostingAPI",
+    "ticket_api": "TicketAPI",
+    "trading_bot": "TradingBot",
+    "travel_booking": "TravelBooking",
+    "vehicle_control": "VehicleControl",
+}
+
+TOOL_CLASS_KEYS = list(CLASS_KEY_TO_CLASS_NAME.keys())
+
+
+def get_canonical_initial_configs(examples: List[Dict]) -> Dict[str, Dict[str, Any]]:
+    """Extract the most representative (largest) initial_config per class."""
+    configs_by_class = defaultdict(list)
+    for ex in examples:
+        ic = ex.get("initial_config", {})
+        for cls_name, cls_config in ic.items():
+            if isinstance(cls_config, dict):
+                configs_by_class[cls_name].append(cls_config)
+    canonical = {}
+    for cls_name, configs in configs_by_class.items():
+        largest = max(configs, key=lambda x: len(json.dumps(x)))
+        canonical[cls_name] = largest
+    return canonical
+
+
+def create_python_tool_instances(
+    canonical_configs: Dict[str, Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Instantiate all 8 Python tool classes with canonical initial configs.
+
+    Returns:
+        Dict mapping class_key -> tool instance
+    """
+    instances = {}
+    for class_key in TOOL_CLASS_KEYS:
+        config_key = CLASS_KEY_TO_INITIAL_CONFIG_KEY[class_key]
+        config = copy.deepcopy(canonical_configs.get(config_key, {}))
+        try:
+            mod = importlib.import_module(f"tools.{class_key}")
+            cls_name = CLASS_KEY_TO_CLASS_NAME[class_key]
+            cls = getattr(mod, cls_name)
+            instances[class_key] = cls(initial_config=config)
+        except Exception as e:
+            print(f"Warning: Could not instantiate {class_key}: {e}")
+    return instances
+
+
+def build_api_name_to_class_key_map(tools_data: List[Dict]) -> Dict[str, str]:
+    """Build a mapping from api_name -> class_key using the tool definitions.
+
+    Each tool in the JSONL has 'api_name' and 'tool_name' (which is the class_key).
+    """
+    mapping = {}
+    for tool in tools_data:
+        api_name = tool.get("api_name", "")
+        class_key = tool.get("tool_name", "")
+        if api_name and class_key:
+            mapping[api_name] = class_key
+    return mapping
 
 
 # >>>>> Example functions (kept for reference) <<<<<
@@ -50,36 +130,207 @@ class ToolManager:
     """
     
     def __init__(
-        self, 
-        llm: LLMClient, 
+        self,
+        llm: LLMClient,
         tool_pool_path: Optional[str] = None,
-        tools: Optional[List] = None
+        tools: Optional[List] = None,
+        invocation_examples_path: Optional[str] = None
     ):
         """
         Initialize the ToolManager.
-        
+
         Args:
             llm: LLMClient instance for simulating tool execution
             tool_pool_path: Path to a JSON or JSONL file containing tool definitions.
-                           If provided, tools will be loaded from this file.
+            If provided, tools will be loaded from this file.
             tools: Optional list of Python functions to use as tools.
-                  If both tool_pool_path and tools are provided, they will be merged.
+            If both tool_pool_path and tools are provided, they will be merged.
+            invocation_examples_path: Path to bfcl_v3_invocation_examples.jsonl.
+            If provided, Python tool implementations will be loaded and used
+            for actual execution instead of LLM simulation.
         """
         self.llm = llm
         self.tool_schemas: List[Dict[str, Any]] = []
         self.tool_implementations: Dict[str, Any] = {}
-        
+
+        # Python tool instances: class_key -> instance
+        self.python_tool_instances: Dict[str, Any] = {}
+        # Mapping from api_name -> class_key
+        self.api_name_to_class_key: Dict[str, str] = {}
+        # Canonical initial configs for resetting instances
+        self._canonical_configs: Dict[str, Dict[str, Any]] = {}
+
         # Load tools from file if path is provided
         if tool_pool_path:
             self._load_tools_from_file(tool_pool_path)
-        
+
         # Load tools from Python functions if provided
         if tools:
             self._load_tools_from_functions(tools)
-        
+
         # If neither file nor functions provided, use default example tools
         if not self.tool_schemas:
             self._load_default_tools()
+
+        # Load Python tool implementations if invocation examples provided
+        if invocation_examples_path:
+            self.load_python_tool_implementations(invocation_examples_path)
+
+    def load_python_tool_implementations(self, invocation_examples_path: str) -> None:
+        """Load Python tool implementations from invocation examples.
+
+        This creates instances of all 8 tool classes and builds the
+        api_name -> class_key mapping so that invoke_tool can call
+        actual Python code instead of LLM simulation.
+
+        Args:
+            invocation_examples_path: Path to bfcl_v3_invocation_examples.jsonl
+        """
+        path_obj = Path(invocation_examples_path)
+        if not path_obj.exists():
+            print(f"Warning: Invocation examples file not found: {invocation_examples_path}")
+            return
+
+        # Load invocation examples
+        examples = []
+        with open(path_obj, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        examples.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+
+        # Get canonical initial configs
+        self._canonical_configs = get_canonical_initial_configs(examples)
+
+        # Build api_name -> class_key mapping from loaded tool schemas
+        for tool in self.tool_schemas:
+            # The 'name' field in tool_schema is the api_name
+            # We need to find the class_key. We can match by looking at
+            # the original BFCL data stored in tool_implementations
+            pass
+
+        # Build the mapping from the BFCL definitions we already loaded
+        self.api_name_to_class_key = {}
+        for tool_name, impl_info in self.tool_implementations.items():
+            if impl_info.get("type") == "bfcl":
+                bfcl_data = impl_info.get("data", {})
+                class_key = bfcl_data.get("tool_name", "")
+                if class_key:
+                    self.api_name_to_class_key[tool_name] = class_key
+
+        # Create Python tool instances
+        self.python_tool_instances = create_python_tool_instances(self._canonical_configs)
+
+        loaded = len(self.python_tool_instances)
+        mapped = len(self.api_name_to_class_key)
+        print(f"Loaded {loaded} Python tool classes with {mapped} api_name mappings")
+
+    def reset_python_tool_instances(self) -> None:
+        """Reset all Python tool instances to fresh state using canonical configs.
+
+        Call this before generating each datapoint to ensure state isolation.
+        """
+        self.python_tool_instances = create_python_tool_instances(self._canonical_configs)
+
+    def has_python_implementation(self, tool_name: str) -> bool:
+        """Check if a tool has a Python implementation available.
+
+        Args:
+            tool_name: The api_name of the tool
+
+        Returns:
+            True if a Python implementation is available
+        """
+        class_key = self.api_name_to_class_key.get(tool_name)
+        return class_key is not None and class_key in self.python_tool_instances
+
+    def invoke_python_tool(self, tool_name: str, params: Dict[str, Any]) -> Any:
+        """Invoke a Python tool implementation directly.
+
+        Args:
+            tool_name: The api_name of the tool
+            params: Parameters to pass to the tool method
+
+        Returns:
+            The result of the Python tool invocation
+
+        Raises:
+            ValueError: If no Python implementation exists for the tool
+        """
+        class_key = self.api_name_to_class_key.get(tool_name)
+        if class_key is None or class_key not in self.python_tool_instances:
+            raise ValueError(f"No Python implementation for tool '{tool_name}'")
+
+        instance = self.python_tool_instances[class_key]
+        method = getattr(instance, tool_name, None)
+        if method is None or not callable(method):
+            raise ValueError(f"Method '{tool_name}' not found on {class_key}")
+
+        try:
+            coerced_params = self._coerce_params(method, params)
+            return method(**coerced_params)
+        except Exception as e:
+            return {"error": str(e)}
+
+    @staticmethod
+    def _coerce_params(method: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Coerce parameter types to match the method signature.
+
+        LLM-generated arguments may have incorrect types (e.g., strings
+        where ints are expected). This method inspects the function
+        signature and attempts type conversion.
+
+        Args:
+            method: The callable method
+            params: The parameters to coerce
+
+        Returns:
+            Parameters with types coerced to match the method signature
+        """
+        sig = inspect.signature(method)
+        coerced = {}
+        for key, value in params.items():
+            if key not in sig.parameters:
+                coerced[key] = value
+                continue
+
+            param = sig.parameters[key]
+            annotation = param.annotation
+
+            if annotation is inspect.Parameter.empty:
+                coerced[key] = value
+                continue
+
+            # Try to coerce the value to the annotated type
+            try:
+                if annotation is int and not isinstance(value, int):
+                    coerced[key] = int(value)
+                elif annotation is float and not isinstance(value, float):
+                    coerced[key] = float(value)
+                elif annotation is bool and not isinstance(value, bool):
+                    if isinstance(value, str):
+                        coerced[key] = value.lower() in ('true', '1', 'yes')
+                    else:
+                        coerced[key] = bool(value)
+                elif annotation is list and not isinstance(value, list):
+                    if isinstance(value, str):
+                        coerced[key] = json.loads(value)
+                    else:
+                        coerced[key] = list(value) if value else []
+                elif annotation is dict and not isinstance(value, dict):
+                    if isinstance(value, str):
+                        coerced[key] = json.loads(value)
+                    else:
+                        coerced[key] = value
+                else:
+                    coerced[key] = value
+            except (ValueError, TypeError, json.JSONDecodeError):
+                coerced[key] = value
+
+        return coerced
     
     def _load_tools_from_file(self, path: str) -> None:
         """
@@ -320,14 +571,17 @@ class ToolManager:
     def invoke_tool(self, tool_name: str, params: Dict[str, Any]) -> Any:
         """
         Invoke a tool with the given parameters.
-        
+
+        If a Python implementation is available, it will be used for
+        actual execution. Otherwise, falls back to LLM-based simulation.
+
         Args:
             tool_name: Name of the tool to invoke
             params: Parameters to pass to the tool
-            
+
         Returns:
             The result of the tool invocation
-            
+
         Raises:
             ValueError: If the tool does not exist
         """
@@ -337,16 +591,20 @@ class ToolManager:
             if tool["name"] == tool_name:
                 tool_schema = tool
                 break
-        
+
         if tool_schema is None:
             available_tools = [tool["name"] for tool in self.tool_schemas]
             raise ValueError(
                 f"Tool '{tool_name}' not found. Available tools: {', '.join(available_tools)}"
             )
-        
+
+        # Try Python implementation first (actual tool execution)
+        if self.has_python_implementation(tool_name):
+            return self.invoke_python_tool(tool_name, params)
+
         # Get implementation info
         impl_info = self.tool_implementations.get(tool_name)
-        
+
         if impl_info and impl_info.get("type") == "python":
             # Call the actual Python function
             func = impl_info.get("func")
@@ -355,7 +613,7 @@ class ToolManager:
                     return func(**params)
                 except Exception as e:
                     return {"error": str(e)}
-        
+
         # Use virtual tool executor for BFCL-style tools or when no implementation exists
         return self.__virtual_tool_executor(tool_name, params, schema=tool_schema)
     
@@ -787,37 +1045,48 @@ DEFAULT_TOOLS = [
 
 
 if __name__ == "__main__":
-    # Example: Load tools from BFCL tool pool file
+    # Example: Load tools from BFCL tool pool file with Python implementations
+    project_root = os.path.join(os.path.dirname(__file__), "..", "..")
     tool_pool_path = os.path.join(
-        os.path.dirname(__file__), 
-        "..", 
-        "..", 
-        "data", 
-        "magnet_mt", 
-        "output", 
-        "tool_pool.jsonl"
+        project_root,
+        "magnet_tool_extraction",
+        "bfcl_v3_tools_with_outputs.jsonl"
     )
-    
-    print("Initializing ToolManager with tool pool file...")
+    invocation_examples_path = os.path.join(
+        project_root,
+        "magnet_tool_extraction",
+        "bfcl_v3_invocation_examples.jsonl"
+    )
+
+    print("Initializing ToolManager with tool pool + Python implementations...")
     tool_manager = ToolManager(
         llm=LLMClient(),
-        tool_pool_path=tool_pool_path
+        tool_pool_path=tool_pool_path,
+        invocation_examples_path=invocation_examples_path
     )
-    
+
     # Get available tools
     tools = tool_manager.get_tools_json_schema()
     print(f"Available tools ({len(tools)}):")
-    for tool in tools[:5]:  # Show first 5
-        print(f"  - {tool['name']}: {tool['description'][:50]}...")
+    for tool in tools[:5]:
+        print(f" - {tool['name']}: {tool['description'][:50]}...")
     if len(tools) > 5:
-        print(f"  ... and {len(tools) - 5} more")
-    
-    # Test invoking a tool
-    if tools:
-        test_tool = tools[0]["name"]
-        print(f"\nTesting tool invocation: {test_tool}")
+        print(f" ... and {len(tools) - 5} more")
+
+    # Show Python implementation stats
+    python_tools = [t['name'] for t in tools if tool_manager.has_python_implementation(t['name'])]
+    print(f"\nTools with Python implementations: {len(python_tools)}/{len(tools)}")
+
+    # Test invoking a Python-implemented tool
+    test_tools = [
+        ("add", {"a": 10, "b": 20}),
+        ("create_ticket", {"title": "Test ticket", "priority": 3}),
+        ("get_flight_cost", {"travel_from": "SFO", "travel_to": "JFK", "travel_date": "2024-06-15", "travel_class": "economy"}),
+    ]
+    for test_tool, test_params in test_tools:
+        print(f"\nTesting Python tool: {test_tool}")
         try:
-            result = tool_manager.invoke_tool(test_tool, {})
+            result = tool_manager.invoke_tool(test_tool, test_params)
             print(f"Result: {result}")
         except Exception as e:
             print(f"Error: {e}")

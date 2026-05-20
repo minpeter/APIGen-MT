@@ -60,7 +60,7 @@ class LLMOutputPredictor:
             api_key=api_key,
             base_url=base_url
         )
-        self.model = "nvidia/nemotron-3-super-120b-a12b"
+        self.model = "z-ai/glm-5.1"
         self.client_type = "nvidia"
 
     def predict_output(

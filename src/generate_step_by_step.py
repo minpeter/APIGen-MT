@@ -67,6 +67,13 @@ def parse_args():
         default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl',
         help='Path to tool pool file'
     )
+
+    parser.add_argument(
+        '--invocation-examples',
+        type=str,
+        default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
+        help='Path to invocation examples file (for Python tool implementations)'
+    )
     
     parser.add_argument(
         '--model', '-m',
@@ -134,8 +141,12 @@ def main():
     for cat, tools in sorted(tools_by_category.items()):
         print(f"  {cat:30s}: {len(tools):3d} tools")
     
-    # Initialize tool manager
-    tool_manager = ToolManager(llm=llm_client, tool_pool_path=args.tool_pool)
+    # Initialize tool manager (with Python tool implementations)
+    tool_manager = ToolManager(
+        llm=llm_client,
+        tool_pool_path=args.tool_pool,
+        invocation_examples_path=args.invocation_examples
+    )
     
     # Initialize generator
     generator = StepByStepGenerator(
