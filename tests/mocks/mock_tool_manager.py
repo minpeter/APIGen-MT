@@ -207,6 +207,7 @@ class MockToolManager:
         self.captured_invocations: List[Dict[str, Any]] = []
         self.should_fail: bool = False
         self.fail_tool: Optional[str] = None
+        self.python_tool_instances: Dict[str, Any] = {}
 
     def reset(self):
         """Reset the mock manager state."""

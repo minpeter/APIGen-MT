@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -529,6 +530,194 @@ def build_schemas_prompt(
     return "\n".join(parts)
 
 
+# ─── Auth-gate metadata for sequential test generation ──────────────────────
+
+STATEFUL_AUTH_INFO: Dict[str, Dict[str, Any]] = {
+    "message_api": {
+        "login_method": "message_login",
+        "login_params": {"user_id": "USR005"},
+        "auth_state_field": "current_user",
+        "auth_failure_value": "",
+        "gated_methods": ["send_message", "delete_message", "search_messages"],
+        "non_gated_methods": ["get_user_id", "add_contact", "message_login"],
+    },
+    "posting_api": {
+        "login_method": "authenticate_twitter",
+        "login_params": {"username": "genealogy_enthusiast", "password": "Fh7#mK9$pL2&vN4"},
+        "auth_state_field": "authenticated",
+        "auth_failure_value": False,
+        "gated_methods": ["post_tweet", "comment", "retweet", "follow_user", "unfollow_user", "mention"],
+        "non_gated_methods": ["get_tweet", "get_tweet_comments", "get_user_stats", "get_user_tweets", "search_tweets", "authenticate_twitter"],
+    },
+    "trading_bot": {
+        "login_method": "trading_login",
+        "login_params": {"username": "trader", "password": "pass123"},
+        "auth_state_field": "authenticated",
+        "auth_failure_value": False,
+        "gated_methods": [],
+        "non_gated_methods": ["trading_login", "place_order", "cancel_order", "get_order_details",
+                              "fund_account", "make_transaction", "add_to_watchlist",
+                              "remove_stock_from_watchlist", "get_stock_info", "get_symbol_by_name",
+                              "get_available_stocks", "filter_stocks_by_price", "notify_price_change",
+                              "update_market_status", "update_stock_price", "get_transaction_history"],
+    },
+    "travel_booking": {
+        "login_method": "authenticate_travel",
+        "login_params": {"client_id": "c1", "client_secret": "s1",
+                         "refresh_token": "r1", "grant_type": "read_write",
+                         "user_first_name": "M", "user_last_name": "S"},
+        "auth_state_field": "access_token",
+        "auth_failure_value": "",
+        "token_field": "access_token",
+        "gated_methods": ["book_flight", "cancel_booking", "get_credit_card_balance",
+                          "purchase_insurance", "register_credit_card", "retrieve_invoice",
+                          "set_budget_limit"],
+        "non_gated_methods": ["authenticate_travel", "get_flight_cost", "get_nearest_airport_by_city",
+                              "compute_exchange_rate", "contact_customer_support",
+                              "get_budget_fiscal_year", "verify_traveler_information"],
+    },
+    "ticket_api": {
+        "login_method": "ticket_login",
+        "login_params": {"username": "agent_a", "password": "pass123"},
+        "auth_state_field": "current_user",
+        "auth_failure_value": "",
+        "gated_methods": [],
+        "non_gated_methods": ["ticket_login", "create_ticket", "get_ticket", "edit_ticket",
+                              "close_ticket", "resolve_ticket", "get_user_tickets"],
+    },
+    "gorilla_file_system": None,
+    "math_api": None,
+    "vehicle_control": None,
+}
+
+
+def build_sequential_tests_prompt(
+    class_key: str,
+    class_code: str,
+    canonical_config: Dict[str, Any],
+    tools: List[Dict],
+    config_key: str,
+) -> str:
+    """Build the LLM prompt for generating sequential stateful API tests.
+
+    These tests validate that login/auth → operation sequences work correctly,
+    and that operations without prior auth fail predictably.
+    """
+    class_name = CLASS_KEY_TO_CLASS_NAME[class_key]
+    auth_info = STATEFUL_AUTH_INFO.get(class_key)
+
+    parts = []
+    parts.append(f"## Task: Generate sequential stateful API tests for {class_name}")
+    parts.append("")
+    parts.append(f"File: tests/tools/test_sequential_{class_key}.py")
+    parts.append("")
+    parts.append("### Overview:")
+    parts.append("Generate tests for sequential function-calling scenarios where")
+    parts.append("the output of one call is required as input to the next, or where")
+    parts.append("authentication state determines whether subsequent calls succeed.")
+    parts.append("")
+
+    if auth_info is None:
+        parts.append("### NOTE: This class has NO authentication/login gate.")
+        parts.append("Generate tests for chained operations where step N depends on step N-1 output.")
+        parts.append("For example: create resource → get resource → update resource → delete resource.")
+    else:
+        parts.append("### Authentication info:")
+        parts.append(f"- Login method: `{auth_info['login_method']}`")
+        parts.append(f"- Login params: {json.dumps(auth_info['login_params'])}")
+        parts.append(f"- Auth state field: `self.{auth_info['auth_state_field']}`")
+        parts.append(f"- Auth failure value: `{auth_info['auth_failure_value']}`")
+        if auth_info.get('gated_methods'):
+            parts.append(f"- Gated methods (require auth): {auth_info['gated_methods']}")
+        if auth_info.get('non_gated_methods'):
+            parts.append(f"- Non-gated methods (work without auth): {auth_info['non_gated_methods']}")
+        if auth_info.get('token_field'):
+            parts.append(f"- Token field: `self.{auth_info['token_field']}` (passed as param to gated methods)")
+        parts.append("")
+
+    parts.append("### Test classes to generate:")
+    if auth_info is not None:
+        parts.append("1. `Test{class_name}SequentialCorrect` - Correct login → operation sequences")
+        parts.append("   - login then call each gated method")
+        parts.append("   - login → operation A → operation B where B depends on A's output")
+        parts.append("   - login → operation → verify state change")
+        parts.append("")
+        parts.append("2. `Test{class_name}SequentialProblematic` - Problematic sequences")
+        parts.append("   - call gated method WITHOUT login → should fail")
+        parts.append("   - login with wrong credentials → then call gated method → should fail")
+        parts.append("   - login → call with invalid params → verify error handling")
+        parts.append("   - call gated method with wrong/expired token (for token-based auth)")
+    else:
+        parts.append("1. `Test{class_name}SequentialCorrect` - Correct chained operation sequences")
+        parts.append("   - create → get → verify created data")
+        parts.append("   - create → update → get → verify update")
+        parts.append("   - multi-step dependent operations")
+        parts.append("")
+        parts.append("2. `Test{class_name}SequentialProblematic` - Problematic sequences")
+        parts.append("   - get nonexistent resource → verify empty/error response")
+        parts.append("   - update nonexistent resource → verify error")
+        parts.append("   - invalid param chains")
+
+    parts.append("")
+    parts.append("### Requirements:")
+    parts.append("- Use pytest fixtures (NOT unittest.TestCase)")
+    parts.append("- Each test must call 2+ methods in sequence (that's the point!)")
+    parts.append("- Start with unauthenticated state in fixtures (set auth field to failure value)")
+    parts.append("- Use json.loads(json.dumps(config)) for deep copy in fixtures")
+    parts.append("- Test that correct sequences SUCCEED and problematic sequences FAIL")
+    parts.append("- Import: import pytest, import json")
+    parts.append(f"- Import: from tools.{class_key} import {class_name}")
+    parts.append("- Do NOT import or use any LLM client or tool_manager")
+    parts.append("- Each test should be self-contained with its own API instance")
+    parts.append("")
+
+    parts.append("### initial_config (with auth fields set to failure values for fixtures):")
+    unauth_config = copy.deepcopy(canonical_config) if canonical_config else {}
+    if auth_info and unauth_config:
+        field = auth_info["auth_state_field"]
+        if field in unauth_config:
+            unauth_config[field] = auth_info["auth_failure_value"]
+    parts.append("```json")
+    parts.append(json.dumps(unauth_config, indent=2)[:3000])
+    parts.append("```")
+    parts.append("")
+
+    parts.append("### Class code (for reference):")
+    parts.append("```python")
+    if len(class_code) > 4000:
+        lines = class_code.split("\n")
+        kept = []
+        for line in lines:
+            if (line.strip().startswith("def ") or line.strip().startswith("class ")
+                    or line.strip().startswith("@") or not line.strip()
+                    or line.strip().startswith('"""') or line.strip().startswith("'''")):
+                kept.append(line)
+            elif len(kept) > 0 and not line.startswith(" "):
+                kept.append(line)
+        truncated = "\n".join(kept)
+        if len(truncated) > 4000:
+            truncated = truncated[:4000] + "\n # ... (truncated)"
+        parts.append(truncated)
+    else:
+        parts.append(class_code)
+    parts.append("```")
+    parts.append("")
+
+    parts.append("### Tools available on this class:")
+    for tool in sorted(tools, key=lambda t: t["api_name"]):
+        api_name = tool["api_name"]
+        params = tool.get("parameters", {})
+        props = params.get("properties", {})
+        param_names = list(props.keys())
+        parts.append(f"- `{api_name}({', '.join(param_names)})`")
+    parts.append("")
+
+    parts.append("Return the complete test file in a single ```python ... ``` code block.")
+    parts.append("Generate 3-5 correct sequence tests and 3-5 problematic sequence tests.")
+
+    return "\n".join(parts)
+
+
 def build_tests_prompt(
     class_key: str,
     class_code: str,
@@ -948,6 +1137,11 @@ def main():
         action="store_true",
         help="Only generate/update schemas.py from existing class files",
     )
+    parser.add_argument(
+        "--sequential-tests",
+        action="store_true",
+        help="Generate sequential stateful API tests for classes with auth gates",
+    )
     args = parser.parse_args()
 
     # Determine which classes to generate
@@ -1079,7 +1273,69 @@ def main():
             print(f"  {'✓' if ok else '✗'} {CLASS_KEY_TO_CLASS_NAME[ck]}")
         total = len(test_results)
         passed = sum(1 for v in test_results.values() if v)
-        print(f"\n  Total: {passed}/{total} test files generated")
+        print(f"\n Total: {passed}/{total} test files generated")
+        return 0 if passed == total else 1
+
+    # ── Sequential-tests mode: generate sequential stateful API tests ──
+    if args.sequential_tests:
+        print(f"\n{'='*60}")
+        print(f"Generating sequential stateful API tests")
+        print(f"{'='*60}")
+        seq_results: Dict[str, bool] = {}
+        for class_key in target_classes:
+            class_name = CLASS_KEY_TO_CLASS_NAME[class_key]
+            class_file = output_dir / f"{class_key}.py"
+            seq_test_file = test_dir / f"test_sequential_{class_key}.py"
+            if not class_file.exists():
+                print(f" [SKIP] {class_name} - class file not found")
+                continue
+            if seq_test_file.exists() and args.skip_existing:
+                print(f" [SKIP] {class_name} - sequential test file already exists")
+                continue
+
+            class_code = class_file.read_text()
+            tools = tools_by_class.get(class_key, [])
+            config_key = CLASS_KEY_TO_INITIAL_CONFIG_KEY[class_key]
+            canonical_config = canonical_configs.get(config_key, {})
+
+            print(f"\n Generating sequential tests for {class_name} ({len(tools)} tools)...")
+            seq_prompt = build_sequential_tests_prompt(
+                class_key, class_code, canonical_config, tools, config_key
+            )
+
+            seq_code = ""
+            for attempt in range(args.max_retries + 1):
+                response = call_llm(client, SYSTEM_PROMPT, seq_prompt, verbose=args.verbose, max_tokens=8192)
+                seq_code = extract_tests_code(response)
+                valid, error = validate_python_code(seq_code, f"test_sequential_{class_key}.py")
+                if valid:
+                    print(f" ✓ Sequential tests for {class_name} generated and validated")
+                    break
+                else:
+                    print(f" ✗ Syntax error: {error}")
+                    if attempt < args.max_retries:
+                        seq_prompt += f"\n\n### PREVIOUS OUTPUT HAD SYNTAX ERROR:\n{error}\nPlease fix and regenerate."
+
+            if seq_code:
+                test_file_path = test_dir / f"test_sequential_{class_key}.py"
+                test_file_path.write_text(seq_code)
+                if args.verbose:
+                    print(f" Wrote {test_file_path}")
+                seq_results[class_key] = True
+            else:
+                seq_results[class_key] = False
+
+            time.sleep(1)
+
+        # Summary for sequential-test mode
+        print(f"\n{'='*60}")
+        print(f"Sequential Test Generation Summary")
+        print(f"{'='*60}")
+        for ck, ok in seq_results.items():
+            print(f" {'✓' if ok else '✗'} {CLASS_KEY_TO_CLASS_NAME[ck]}")
+        total = len(seq_results)
+        passed = sum(1 for v in seq_results.values() if v)
+        print(f"\n Total: {passed}/{total} sequential test files generated")
         return 0 if passed == total else 1
 
     # ── Generate each class ──

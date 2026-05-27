@@ -28,6 +28,7 @@ from pathlib import Path
 load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from llm_client import LocalOpenAILLMClient
 from tool_manager import ToolManager

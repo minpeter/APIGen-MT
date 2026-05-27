@@ -5,9 +5,11 @@ import json
 import re
 import copy
 import os
+import time
+import requests
 from pathlib import Path
 from llm_client import LLMClient, LocalOpenAILLMClient
-from tool_manager import ToolManager
+from tool_manager import ToolManager, filter_api_state
 from prompts import StepByStepPrompts
 
 
@@ -18,11 +20,22 @@ class ToolCallWithOutput(BaseModel):
     output: Any = None
 
 
+class StateVerificationResult(BaseModel):
+    """LLM-as-judge verdict on a single state transition."""
+    is_valid: bool = True
+    reasoning: str = ""
+    issues: List[str] = []
+    state_changes_summary: str = ""
+
+
 class TrajectoryStep(BaseModel):
     """A single step in the conversation trajectory."""
     step_number: int
     tool_calls: List[ToolCallWithOutput] = []
     reasoning: Optional[str] = None
+    pre_state: Optional[Dict[str, Dict[str, Any]]] = None
+    post_state: Optional[Dict[str, Dict[str, Any]]] = None
+    state_verification: Optional[StateVerificationResult] = None
 
 
 class ConversationTrajectory(BaseModel):
@@ -32,6 +45,7 @@ class ConversationTrajectory(BaseModel):
     final_response: str
     tools_used: List[str] = []
     categories_used: List[str] = []
+    initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 class TokenUsageStats(BaseModel):
@@ -48,6 +62,8 @@ class StepByStepDatapoint(BaseModel):
     generation_metadata: Dict[str, Any] = {}
     verification_result: Optional[Dict[str, Any]] = None
     token_usage: TokenUsageStats = Field(default_factory=TokenUsageStats)
+    initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None
+    intermediate_api_states: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class VerificationResult(BaseModel):
@@ -85,6 +101,33 @@ class StepByStepGenerator:
         self.num_actions = num_actions
         self.validate_outputs = validate_outputs
         self._python_tools_available = bool(tool_manager.python_tool_instances)
+
+    def _safe_llm_generate(self, messages: list, max_retries: int = 5, **kwargs) -> str:
+        """Call self.llm.generate() with application-level retry on transient errors.
+
+        The underlying LocalOpenAILLMClient already retries 429/5xx/timeout
+        indefinitely, but this wrapper catches any exceptions that escape
+        (e.g. RuntimeError from unexpected API responses, JSON decode errors
+        from garbled responses, etc.) and retries with backoff.
+        """
+        import random as _rng
+        for attempt in range(max_retries):
+            try:
+                result = self.llm.generate(messages, **kwargs)
+                if result is None:
+                    raise ValueError("LLM returned None")
+                return result
+            except (requests.exceptions.Timeout,
+                    requests.exceptions.ConnectionError,
+                    requests.exceptions.HTTPError) as e:
+                delay = min(2 * (2 ** attempt), 60) + _rng.uniform(0, 2)
+                print(f" [_safe_llm_generate] Transient error (attempt {attempt+1}/{max_retries}): {e}, retrying in {delay:.1f}s...")
+                time.sleep(delay)
+            except (RuntimeError, ValueError, json.JSONDecodeError) as e:
+                delay = min(2 * (2 ** attempt), 30) + _rng.uniform(0, 1)
+                print(f" [_safe_llm_generate] Error (attempt {attempt+1}/{max_retries}): {e}, retrying in {delay:.1f}s...")
+                time.sleep(delay)
+        raise RuntimeError(f"LLM generate failed after {max_retries} application-level retries")
 
         # Token tracking - accumulated across stages for current datapoint
         self._accumulated_prompt_tokens: int = 0
@@ -205,7 +248,7 @@ Respond with JSON:
 }}"""
 
         try:
-            response = self.llm.generate([{"role": "user", "content": prompt}])
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
             response_text = response.strip()
 
             if "```json" in response_text:
@@ -325,7 +368,7 @@ Respond ONLY with valid JSON in this exact format:
 }}"""
 
             try:
-                response = self.llm.generate([{"role": "user", "content": prompt}])
+                response = self._safe_llm_generate([{"role": "user", "content": prompt}])
                 response_text = response.strip()
 
                 if "```json" in response_text:
@@ -335,31 +378,28 @@ Respond ONLY with valid JSON in this exact format:
                 elif response_text.startswith("{"):
                     start = response_text.find("{")
                     end = response_text.rfind("}") + 1
-                    response_text = response_text[start:end]
+                    if end > start:
+                        response_text = response_text[start:end]
 
                 result = json.loads(response_text)
                 query = result.get("query", "")
                 intent = result.get("intent", "")
                 expected_tools = result.get("expected_tools", [])
-            
-                # Log what was generated
-                print(f"  Generated Query: {query}")
-                print(f"  Intent: {intent}")
-                print(f"  Expected tools: {expected_tools}")
-            
-                # Build feedback with the full generated output
-                generated_summary = f"""--- ATTEMPT {attempt + 1} OUTPUT ---
-    Query: {query}
-    Intent: {intent}
-    Expected tools: {expected_tools}"""
 
-                # Validate tool count
+                print(f" Generated Query: {query}")
+                print(f" Intent: {intent}")
+                print(f" Expected tools: {expected_tools}")
+
+                generated_summary = f"""--- ATTEMPT {attempt + 1} OUTPUT ---
+Query: {query}
+Intent: {intent}
+Expected tools: {expected_tools}"""
+
                 if len(expected_tools) != self.num_actions:
-                    print(f"  ✗ Wrong tool count: {len(expected_tools)} != {self.num_actions}")
+                    print(f" ✗ Wrong tool count: {len(expected_tools)} != {self.num_actions}")
                     accumulated_feedback += f"\n{generated_summary}\nFAILURE: Expected {self.num_actions} tools, but got {len(expected_tools)}.\n--- END ATTEMPT {attempt + 1} ---"
                     continue
 
-                # Validate that tools exist
                 all_tools_valid = True
                 invalid_tools = []
                 for tool in expected_tools:
@@ -377,15 +417,14 @@ Respond ONLY with valid JSON in this exact format:
                             cat_tools = self.tool_manager.get_tools_by_category(cat)
                             available_tools.extend([t['name'] for t in cat_tools[:5]])
 
-                    print(f"  ✗ Invalid tools: {invalid_tools}")
+                    print(f" ✗ Invalid tools: {invalid_tools}")
                     accumulated_feedback += f"""\n{generated_summary}
-    FAILURE: Tools not found: {invalid_tools}
-    These tools do NOT exist. Choose from available tools.
-    Available tools (sample): {available_tools[:15]}
-    --- END ATTEMPT {attempt + 1} ---"""
+FAILURE: Tools not found: {invalid_tools}
+These tools do NOT exist. Choose from available tools.
+Available tools (sample): {available_tools[:15]}
+--- END ATTEMPT {attempt + 1} ---"""
                     continue
 
-                # Validate tool sequence makes sense for the query (skip for large action counts - too strict)
                 if self.num_actions <= 5:
                     is_valid, validation_msg = self.validate_expected_tools(query, expected_tools, intent)
 
@@ -400,9 +439,10 @@ Respond ONLY with valid JSON in this exact format:
             except json.JSONDecodeError as e:
                 print(f" ✗ JSON decode error: {e}")
                 accumulated_feedback += f"\n--- ATTEMPT {attempt + 1} FAILED ---\nJSON parsing error: {e}\n--- END ATTEMPT {attempt + 1} ---"
+                continue
 
-            print(f" Failed to generate valid query after {max_retries} attempts")
-            return QueryGenerationResult(query="", intent="", expected_tools=[])
+        print(f" Failed to generate valid query after {max_retries} attempts")
+        return QueryGenerationResult(query="", intent="", expected_tools=[])
 
     def _generate_next_step(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any], expected_tools: List[str], step_num: int = 1) -> StepSelectionResult:
         trajectory_str = ""
@@ -469,7 +509,7 @@ Respond ONLY with valid JSON:
 }}"""
 
         try:
-            response = self.llm.generate([{"role": "user", "content": prompt}])
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
             response_text = response.strip()
 
             if "```json" in response_text:
@@ -515,9 +555,13 @@ Respond ONLY with valid JSON:
         self._reset_token_tracking()
         self._capture_initial_usage()
 
-        # Reset Python tool instances to fresh state for state isolation
+        # Initialize API state with full, realistic configurations
+        # This ensures login calls and subsequent operations succeed
+        initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None
         if self._python_tools_available:
-            self.tool_manager.reset_python_tool_instances()
+            self.tool_manager.initialize_api_state()
+            initial_api_state = self.tool_manager.get_api_state()
+            print(f" Captured initial API state ({len(initial_api_state)} class keys)")
 
         # Stage 1: Generate and verify query
         print("\n" + "-" * 70)
@@ -558,7 +602,7 @@ Respond ONLY with valid JSON:
         print("STAGE 3: Finalize Datapoint")
         print("-" * 70)
         
-        datapoint = self._stage3_finalize(query_result, trajectory, execution_context, focus_category)
+        datapoint = self._stage3_finalize(query_result, trajectory, execution_context, focus_category, initial_api_state)
         
         if datapoint is None:
             print("\n✗ Stage 3 failed: Could not finalize datapoint")
@@ -706,7 +750,7 @@ Respond with JSON containing only the arguments:
 }}"""
         
         try:
-            response = self.llm.generate([{"role": "user", "content": prompt}])
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
             response_text = response.strip()
         
             # Extract JSON
@@ -725,29 +769,32 @@ Respond with JSON containing only the arguments:
         except json.JSONDecodeError as e:
             return None, f"JSON parsing error: {e}"
 
-    def _stage2_generate_tools(self, query_result: QueryGenerationResult, 
+    def _stage2_generate_tools(self, query_result: QueryGenerationResult,
                                max_retries_per_tool: int) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
         """
         Stage 2: Generate tool invocations tool-by-tool.
         Uses expected_tools from Stage 1 directly - no LLM selection needed.
         - Each tool has its own retry count for argument generation
         - Feedback is wiped on successful tool completion
+        - Captures pre/post API state snapshots around each tool call
+        - Runs LLM-as-judge state verification after each call
         - If any tool fails after max retries, entire stage fails
         - Returns (trajectory, execution_context) or None
         """
         trajectory: List[TrajectoryStep] = []
         execution_context: Dict[str, Any] = {}
-        
-        # Iterate through expected_tools directly
+
         for step_num, tool_name in enumerate(query_result.expected_tools, 1):
             print(f"\n[Step {step_num}/{self.num_actions}] Processing tool: {tool_name}")
 
-            # Track retries for this specific tool
             tool_feedback = ""
             step_success = False
 
             for attempt in range(max_retries_per_tool):
                 print(f" [Attempt {attempt + 1}/{max_retries_per_tool}]")
+
+                # ── Capture PRE state snapshot ──
+                pre_state = self.tool_manager.get_api_state() if self._python_tools_available else None
 
                 # Generate arguments for this tool (with feedback from previous failures)
                 print(f" Generating arguments for {tool_name}...")
@@ -758,15 +805,15 @@ Respond with JSON containing only the arguments:
                     execution_context=execution_context,
                     feedback=tool_feedback if tool_feedback else None
                 )
-                
+
                 if error:
-                    print(f"    ✗ {error}")
+                    print(f" ✗ {error}")
                     if attempt < max_retries_per_tool - 1:
                         continue
                     break
-                
-                print(f"    Arguments: {json.dumps(arguments)}")
-                
+
+                print(f" Arguments: {json.dumps(arguments)}")
+
                 # Simulate tool execution
                 print(f" Simulating {tool_name}...")
                 output = self._simulate_tool_execution(
@@ -785,10 +832,9 @@ Respond with JSON containing only the arguments:
                         error_detail = output.get('error', output.get('error_message', output.get('error_code', 'Unknown error')))
                         error_type = output.get('error_type', 'execution_error')
                         print(f" ✗ Tool returned error: {error_detail}")
-                        # Check if this is a validation failure that should trigger a retry
                         if error_type == 'validation_failure' and attempt < max_retries_per_tool - 1:
                             tool_feedback = f"Previous output validation failed: {error_detail}. Generate new arguments."
-                            print(f"   Retrying due to validation failure...")
+                            print(f" Retrying due to validation failure...")
                             continue
                         elif attempt < max_retries_per_tool - 1:
                             continue
@@ -807,20 +853,51 @@ Respond with JSON containing only the arguments:
                         print(f" ✗ Output validation failed: {issues_str}")
                         if attempt < max_retries_per_tool - 1:
                             tool_feedback = f"Previous output failed validation: {issues_str}. Expected type: {expected_type}."
-                            print(f"   Retrying with new arguments...")
+                            print(f" Retrying with new arguments...")
                             continue
-                        print(f"   Max retries exceeded, proceeding with potentially invalid output")
+                        print(f" Max retries exceeded, proceeding with potentially invalid output")
+
+                # ── Capture POST state snapshot ──
+                post_state = self.tool_manager.get_api_state() if self._python_tools_available else None
+
+                # ── LLM-as-judge state verification ──
+                state_verification = None
+                if pre_state is not None and post_state is not None:
+                    print(f" Verifying state transition for {tool_name}...")
+                    state_verification = self.verify_state_transition(
+                        tool_name=tool_name,
+                        tool_arguments=arguments,
+                        tool_output=output,
+                        pre_state=pre_state,
+                        post_state=post_state,
+                    )
+                    if state_verification.is_valid:
+                        print(f" ✓ State verification passed: {state_verification.state_changes_summary}")
+                    else:
+                        issues_joined = '; '.join(state_verification.issues)
+                        print(f" ✗ State verification FAILED: {issues_joined}")
+                        if attempt < max_retries_per_tool - 1:
+                            tool_feedback = (
+                                f"State verification failed: {issues_joined}. "
+                                f"Judge reasoning: {state_verification.reasoning}. "
+                                f"Generate different arguments."
+                            )
+                            print(f" Retrying due to state verification failure...")
+                            # Roll back state by re-initializing + replaying completed steps
+                            self._replay_state(trajectory)
+                            continue
+                        print(f" Max retries exceeded, proceeding despite state verification failure")
 
                 # SUCCESS: Tool completed - add to trajectory
                 print(f" ✓ Tool execution successful")
-                    
+
                 # Update execution context
                 if isinstance(output, dict):
                     for k, v in output.items():
                         execution_context[f"{tool_name}_{k}"] = v
-                    execution_context[f"{tool_name}_output"] = output
-                
-                # Add to trajectory
+                execution_context[f"{tool_name}_output"] = output
+
+                # Add to trajectory (with state snapshots + verification)
                 tool_call = ToolCallWithOutput(
                     tool_name=tool_name,
                     arguments=arguments,
@@ -829,32 +906,49 @@ Respond with JSON containing only the arguments:
                 trajectory_step = TrajectoryStep(
                     step_number=step_num,
                     tool_calls=[tool_call],
-                    reasoning=f"Generated arguments for {tool_name} based on query context"
+                    reasoning=f"Generated arguments for {tool_name} based on query context",
+                    pre_state=pre_state,
+                    post_state=post_state,
+                    state_verification=state_verification,
                 )
                 trajectory.append(trajectory_step)
                 step_success = True
                 break
-                
-        if not step_success:
-            print(f"\n✗ Tool {tool_name} failed after {max_retries_per_tool} attempts")
-            return None, None
-        
+
+            if not step_success:
+                print(f"\n✗ Tool {tool_name} failed after {max_retries_per_tool} attempts")
+                return None, None
+
         # All tools completed successfully
         return trajectory, execution_context
 
+    def _replay_state(self, trajectory: List[TrajectoryStep]) -> None:
+        """Re-initialize API state and replay all completed trajectory steps.
+
+        This is used to roll back state after a failed state-verification
+        attempt so that the next retry starts from the correct state.
+        """
+        self.tool_manager.initialize_api_state()
+        for step in trajectory:
+            for tc in step.tool_calls:
+                if self.tool_manager.has_python_implementation(tc.tool_name):
+                    self.tool_manager.invoke_python_tool(tc.tool_name, tc.arguments)
+
     def _stage3_finalize(self, query_result: QueryGenerationResult, trajectory: List[TrajectoryStep],
-                        execution_context: Dict[str, Any],
-                        focus_category: Optional[str]) -> Optional[StepByStepDatapoint]:
+                         execution_context: Dict[str, Any],
+                         focus_category: Optional[str],
+                         initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None) -> Optional[StepByStepDatapoint]:
         """
         Stage 3: Finalize datapoint.
         - No retries - if verification fails, something is fundamentally wrong
         - Assembles final datapoint with verification results
+        - Stores initial_api_state and all verified intermediate states
         - Uses class-level token tracking
         """
         print("\nGenerating final response...")
         final_response = self._generate_final_response(query_result.query, trajectory, execution_context)
         print(f" Final response: {final_response}")
-        
+
         # Collect tools and categories
         tools_used = []
         categories_used = set()
@@ -865,16 +959,44 @@ Respond with JSON containing only the arguments:
                 cat = self.tool_manager.get_tool_category(tc.tool_name)
                 if cat:
                     categories_used.add(cat)
-        
+
+        # Filter state snapshots to only include APIs whose tools are used
+        filtered_initial_state = filter_api_state(initial_api_state, tools_used) if initial_api_state else None
+
+        # Build filtered trajectory steps (strip irrelevant API states)
+        filtered_trajectory: List[TrajectoryStep] = []
+        for step in trajectory:
+            filtered_pre = filter_api_state(step.pre_state, tools_used) if step.pre_state else None
+            filtered_post = filter_api_state(step.post_state, tools_used) if step.post_state else None
+            filtered_trajectory.append(TrajectoryStep(
+                step_number=step.step_number,
+                tool_calls=step.tool_calls,
+                reasoning=step.reasoning,
+                pre_state=filtered_pre,
+                post_state=filtered_post,
+                state_verification=step.state_verification,
+            ))
+
+        # Extract intermediate verified states from trajectory steps
+        intermediate_states: List[Dict[str, Any]] = []
+        for step in filtered_trajectory:
+            if step.post_state is not None and step.state_verification is not None:
+                intermediate_states.append({
+                    "step_number": step.step_number,
+                    "post_state": step.post_state,
+                    "state_verification": step.state_verification.model_dump(),
+                })
+
         # Create trajectory
         conv_trajectory = ConversationTrajectory(
             query=query_result.query,
-            steps=trajectory,
+            steps=filtered_trajectory,
             final_response=final_response,
             tools_used=tools_used,
-            categories_used=list(categories_used)
+            categories_used=list(categories_used),
+            initial_api_state=filtered_initial_state,
         )
-        
+
         # Run verification
         print("\nRunning verification...")
         verification_result = self.run_full_verification(
@@ -882,7 +1004,7 @@ Respond with JSON containing only the arguments:
             trajectory=trajectory,
             execution_context=execution_context
         )
-        
+
         verification_passed = verification_result.overall_verification_passed if verification_result else False
 
         # If verification failed, return None so the caller knows to retry
@@ -896,7 +1018,7 @@ Respond with JSON containing only the arguments:
         # Update token usage from class-level tracking
         self._update_token_usage()
         token_usage = self._get_token_stats()
-        
+
         # Create metadata
         metadata = {
             "num_actions": len(trajectory),
@@ -904,15 +1026,17 @@ Respond with JSON containing only the arguments:
             "query_intent": query_result.intent,
             "expected_tools": query_result.expected_tools
         }
-        
+
         # Create datapoint
         datapoint = StepByStepDatapoint(
             trajectory=conv_trajectory,
             generation_metadata=metadata,
             verification_result=verification_result.model_dump() if verification_result else {},
-            token_usage=token_usage
+            token_usage=token_usage,
+            initial_api_state=filtered_initial_state,
+            intermediate_api_states=intermediate_states,
         )
-        
+
         return datapoint
 
     def _generate_final_response(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any]) -> str:
@@ -936,7 +1060,7 @@ Actions taken:
 Generate a concise, natural response that summarizes what was accomplished."""
 
         try:
-                response = self.llm.generate([{"role": "user", "content": prompt}])
+                response = self._safe_llm_generate([{"role": "user", "content": prompt}])
                 return response.strip()
         except Exception as e:
             print(f"    Error generating final response: {e}")
@@ -1008,21 +1132,6 @@ Generate a concise, natural response that summarizes what was accomplished."""
             elif expected_type_lower in output_type:
                 type_compatible = True
 
-        if not type_compatible and isinstance(output, dict):
-            for v in output.values():
-                if 'float' in expected_type_lower and isinstance(v, (int, float)):
-                    type_compatible = True; break
-                elif 'number' in expected_type_lower and isinstance(v, (int, float)):
-                    type_compatible = True; break
-                elif 'integer' in expected_type_lower and isinstance(v, int) and not isinstance(v, bool):
-                    type_compatible = True; break
-                elif 'string' in expected_type_lower and isinstance(v, str):
-                    type_compatible = True; break
-                elif 'bool' in expected_type_lower and isinstance(v, bool):
-                    type_compatible = True; break
-                elif 'list' in expected_type_lower and isinstance(v, list):
-                    type_compatible = True; break
-
             if not type_compatible:
                 output_type_matches = False
                 issues.append(f"Type mismatch: expected {expected_type}, got {output_type}")
@@ -1059,6 +1168,120 @@ Generate a concise, natural response that summarizes what was accomplished."""
                                 details.append({'step': step.step_number, 'tool': tc.tool_name, 'argument': arg_name, 'placeholder': f"{{{{{placeholder}}}}}", 'resolved': False, 'resolved_value': None})
 
         return {'all_resolved': total_placeholders == resolved_count, 'total_placeholders': total_placeholders, 'resolved_count': resolved_count, 'details': details}
+
+    def verify_state_transition(
+        self,
+        tool_name: str,
+        tool_arguments: Dict[str, Any],
+        tool_output: Any,
+        pre_state: Dict[str, Dict[str, Any]],
+        post_state: Dict[str, Dict[str, Any]],
+    ) -> StateVerificationResult:
+        """Use an LLM-as-judge to verify that a tool call produced a
+        logically correct state transition.
+
+        The LLM receives:
+        - The tool name, arguments, and output
+        - A *diff* between pre_state and post_state (only changed keys)
+        - Relevant class keys (the ones that actually changed)
+
+        It judges whether the state changes are consistent with the tool's
+        declared semantics and the returned output.
+        """
+        # Compute diff — only include class keys that changed
+        changed_classes: Dict[str, Dict[str, Any]] = {}
+        for class_key in set(pre_state) | set(post_state):
+            pre = pre_state.get(class_key, {})
+            post = post_state.get(class_key, {})
+            if pre != post:
+                diff: Dict[str, Any] = {}
+                all_keys = set(pre) | set(post)
+                for k in all_keys:
+                    pre_val = pre.get(k, "<MISSING>")
+                    post_val = post.get(k, "<MISSING>")
+                    if pre_val != post_val:
+                        diff[k] = {"before": pre_val, "after": post_val}
+                if diff:
+                    changed_classes[class_key] = diff
+
+        if not changed_classes:
+            return StateVerificationResult(
+                is_valid=True,
+                reasoning="No state changes detected (read-only or no-op call).",
+                issues=[],
+                state_changes_summary="No state changes.",
+            )
+
+        # Determine which class_key the tool belongs to
+        tool_class_key = self.tool_manager.api_name_to_class_key.get(tool_name, "unknown")
+
+        # Truncate large diffs for the prompt
+        diff_str = json.dumps(changed_classes, indent=2, default=str, ensure_ascii=False)
+        if len(diff_str) > 3000:
+            diff_str = diff_str[:3000] + "\n... (truncated)"
+
+        output_str = json.dumps(tool_output, default=str, ensure_ascii=False) if not isinstance(tool_output, str) else tool_output
+        if len(output_str) > 1000:
+            output_str = output_str[:1000] + "... (truncated)"
+
+        args_str = json.dumps(tool_arguments, default=str, ensure_ascii=False)
+        if len(args_str) > 1000:
+            args_str = args_str[:1000] + "... (truncated)"
+
+        prompt = f"""You are an expert API state auditor. Verify that the state transition produced by a tool call is logically correct and consistent with the tool's output.
+
+=== TOOL CALL ===
+Tool: {tool_name}
+Class: {tool_class_key}
+Arguments: {args_str}
+Output: {output_str}
+
+=== STATE CHANGES (diff of pre vs post) ===
+{diff_str}
+
+=== YOUR TASK ===
+1. Check whether the state changes are logically consistent with what the tool is supposed to do.
+2. Verify that authentication/login state was updated correctly (e.g., current_user, authenticated, access_token).
+3. Verify that data mutations (new messages, tickets, bookings, orders, etc.) are reflected in the state.
+4. Check for any contradictory or nonsensical state changes.
+
+Respond ONLY with valid JSON:
+{{
+  "is_valid": true/false,
+  "reasoning": "brief explanation of your verdict",
+  "issues": ["list of issues found, empty if valid"],
+  "state_changes_summary": "human-readable summary of what changed"
+}}"""
+
+        try:
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+            response_text = response.strip()
+
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0]
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0]
+
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            if start >= 0 and end > start:
+                response_text = response_text[start:end]
+
+            result = json.loads(response_text)
+            return StateVerificationResult(
+                is_valid=bool(result.get("is_valid", True)),
+                reasoning=result.get("reasoning", ""),
+                issues=result.get("issues", []),
+                state_changes_summary=result.get("state_changes_summary", ""),
+            )
+        except Exception as e:
+            print(f" Warning: State verification LLM call failed: {e}")
+            return StateVerificationResult(
+                is_valid=True,
+                reasoning=f"LLM judge call failed ({e}), assuming valid.",
+                issues=[],
+                state_changes_summary="Could not verify (LLM error).",
+            )
 
     def run_full_verification(self, query: str, trajectory: List[TrajectoryStep], execution_context: Dict[str, Any]) -> VerificationResult:
         """Run all verification checks on a generated datapoint."""

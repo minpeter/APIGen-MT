@@ -394,7 +394,7 @@ class LocalOpenAILLMClient(LLMClient):
     def chat(self, messages, kwargs) -> tuple[str, str]:
         # Count tokens in the prompt before sending to API
         prompt_tokens = self.token_counter.count_prompt_tokens(messages)
-        
+
         if messages[-1]["role"] == "assistant" and self.tokenizer is not None:
             # Fall back to base class prefill logic using tokenizer and /completions
             response = super().chat(messages, kwargs)
@@ -416,9 +416,11 @@ class LocalOpenAILLMClient(LLMClient):
 
         max_retries = 999999
         base_delay = 2
-        request_timeout = kwargs.get("timeout", 120)
+        request_timeout = kwargs.get("timeout", 60)
         rate_limit_retry_count = 0
+        server_error_retry_count = 0
         attempt = 0
+        import random as _rng
 
         while attempt < max_retries:
             try:
@@ -432,24 +434,48 @@ class LocalOpenAILLMClient(LLMClient):
                 response_obj = response.json()
 
                 if "choices" not in response_obj:
-                    # Check for rate limiting (429) and retry infinitely
+                    # Rate limiting (429) — retry infinitely with exponential backoff + jitter
                     if response.status_code == 429:
                         rate_limit_retry_count += 1
-                        delay = min(base_delay * (2 ** min(rate_limit_retry_count, 10)), 300)  # Cap at 300s
-                        print(f"[LLMClient] Rate limited (429), retrying in {delay}s... (rate limit retry #{rate_limit_retry_count})")
+                        delay = min(base_delay * (2 ** min(rate_limit_retry_count, 10)), 300)
+                        jitter = _rng.uniform(0, 1.0) * min(delay, 5)
+                        delay += jitter
+                        print(f"[LLMClient] Rate limited (429), retrying in {delay:.1f}s... (rate limit retry #{rate_limit_retry_count})")
                         time.sleep(delay)
-                        continue  # Don't increment attempt, just retry
+                        continue
+                    # Server errors (5xx) — retry with backoff
+                    if response.status_code >= 500:
+                        server_error_retry_count += 1
+                        delay = min(base_delay * (2 ** min(server_error_retry_count, 8)), 120)
+                        jitter = _rng.uniform(0, 1.0) * min(delay, 3)
+                        delay += jitter
+                        print(f"[LLMClient] Server error {response.status_code}, retrying in {delay:.1f}s... (server error retry #{server_error_retry_count})")
+                        time.sleep(delay)
+                        continue
                     raise RuntimeError(f"Unexpected response from API: {response_obj}")
                 break
             except (requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as e:
                 if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)
-                    print(f"[LLMClient] Request timeout (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...")
+                    delay = base_delay * (2 ** min(attempt, 8))
+                    jitter = _rng.uniform(0, 1.0) * min(delay, 3)
+                    delay += jitter
+                    print(f"[LLMClient] Request timeout (attempt {attempt + 1}), retrying in {delay:.1f}s...")
                     time.sleep(delay)
                     attempt += 1
                     continue
                 else:
-                    print(f"[LLMClient] Request failed after {max_retries} attempts due to timeout")
+                    print(f"[LLMClient] Request failed after {attempt + 1} attempts due to timeout")
+                    raise
+            except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** min(attempt, 8))
+                    jitter = _rng.uniform(0, 1.0) * min(delay, 3)
+                    delay += jitter
+                    print(f"[LLMClient] Connection error (attempt {attempt + 1}): {e}, retrying in {delay:.1f}s...")
+                    time.sleep(delay)
+                    attempt += 1
+                    continue
+                else:
                     raise
             except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
                 if attempt < max_retries - 1:

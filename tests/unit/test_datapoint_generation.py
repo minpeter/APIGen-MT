@@ -59,7 +59,7 @@ class TestGenerateDatapoint:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator_2_steps.generate_datapoint(max_retries=2)
+        result = generator_2_steps.generate_datapoint(query_retries=2)
 
         # May succeed or fail depending on validation
         if result:
@@ -79,7 +79,7 @@ class TestGenerateDatapoint:
 
         result = generator_2_steps.generate_datapoint(
             focus_category="Travel",
-            max_retries=1,
+            query_retries=1,
         )
 
         if result:
@@ -98,7 +98,7 @@ class TestGenerateDatapoint:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator_3_steps.generate_datapoint(max_retries=1)
+        result = generator_3_steps.generate_datapoint(query_retries=1)
 
         if result:
             assert len(result.trajectory.steps) == 3
@@ -121,7 +121,7 @@ class TestGenerateDatapoint:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator_2_steps.generate_datapoint(max_retries=2)
+        result = generator_2_steps.generate_datapoint(query_retries=2)
 
         # Should eventually succeed
         if result:
@@ -141,7 +141,7 @@ class TestGenerateDatapoint:
         hint = "Focus on travel planning"
         result = generator_2_steps.generate_datapoint(
             context_hint=hint,
-            max_retries=1,
+            query_retries=1,
         )
 
         if result:
@@ -158,7 +158,7 @@ class TestGenerateDatapoint:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator_2_steps.generate_datapoint(max_retries=1)
+        result = generator_2_steps.generate_datapoint(query_retries=1)
 
         if result:
             # Tools used should not be empty
@@ -176,7 +176,7 @@ class TestGenerateDatapoint:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator_2_steps.generate_datapoint(max_retries=1)
+        result = generator_2_steps.generate_datapoint(query_retries=1)
 
         if result:
             # Categories should be tracked
@@ -192,7 +192,7 @@ class TestGenerateDatapoint:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator_2_steps.generate_datapoint(max_retries=1)
+        result = generator_2_steps.generate_datapoint(query_retries=1)
 
         if result:
             assert result.verification_result is not None
@@ -221,7 +221,7 @@ class TestDatapointGenerationFailures:
             MALFORMED_JSON_UNCLOSED_BRACE,
         ])
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         # Should return None when query generation fails
         assert result is None
@@ -240,13 +240,13 @@ class TestDatapointGenerationFailures:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator.generate_datapoint(max_retries=2)
+        result = generator.generate_datapoint(query_retries=2)
 
         # Should retry and potentially succeed
         if result:
             assert result.trajectory.query != ""
 
-    def test_generate_datapoint_max_retries_exceeded(self, generator, mock_llm):
+    def test_generate_datapoint_query_retries_exceeded(self, generator, mock_llm):
         """Test when max retries are exhausted."""
         from tests.mocks.mock_llm_responses import MALFORMED_JSON_UNCLOSED_BRACE
 
@@ -257,7 +257,7 @@ class TestDatapointGenerationFailures:
             MALFORMED_JSON_UNCLOSED_BRACE,
         ])
 
-        result = generator.generate_datapoint(max_retries=2)
+        result = generator.generate_datapoint(query_retries=2)
 
         # Should return None after exhausting retries
         assert result is None
@@ -285,7 +285,7 @@ class TestDatapointStructure:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             assert hasattr(result, "trajectory")
@@ -303,7 +303,7 @@ class TestDatapointStructure:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             assert hasattr(result, "generation_metadata")
@@ -319,7 +319,7 @@ class TestDatapointStructure:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             assert hasattr(result, "verification_result")
@@ -334,7 +334,7 @@ class TestDatapointStructure:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             for i, step in enumerate(result.trajectory.steps, 1):
@@ -350,7 +350,7 @@ class TestDatapointStructure:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             tools = result.trajectory.tools_used
@@ -379,7 +379,7 @@ class TestDatapointModelDump:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             dumped = result.model_dump()
@@ -397,7 +397,7 @@ class TestDatapointModelDump:
             VALID_FINAL_RESPONSE,
         ])
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             json_str = result.model_dump_json()

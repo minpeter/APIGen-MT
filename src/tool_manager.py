@@ -16,12 +16,464 @@ CLASS_KEY_TO_INITIAL_CONFIG_KEY = {
     "gorilla_file_system": "GorillaFileSystem",
     "math_api": "MathAPI",
     "message_api": "MessageAPI",
-    "posting_api": "TwitterAPI",
+    "posting_api": "PostingAPI",
     "ticket_api": "TicketAPI",
     "trading_bot": "TradingBot",
     "travel_booking": "TravelAPI",
     "vehicle_control": "VehicleControlAPI",
 }
+
+FULL_INITIAL_CONFIGS = {
+    "GorillaFileSystem": {
+        "root": {
+            "home": {
+                "type": "directory",
+                "contents": {
+                    "user": {
+                        "type": "directory",
+                        "contents": {
+                            "documents": {
+                                "type": "directory",
+                                "contents": {
+                                    "readme.txt": {
+                                        "type": "file",
+                                        "content": "Welcome to the workspace.\nThis is a shared document area.\nPlease follow the naming conventions."
+                                    },
+                                    "report.csv": {
+                                        "type": "file",
+                                        "content": "name,score,grade\nAlice,92,A\nBob,78,B\nCharlie,85,B"
+                                    }
+                                }
+                            },
+                            "projects": {
+                                "type": "directory",
+                                "contents": {
+                                    "alpha": {
+                                        "type": "directory",
+                                        "contents": {
+                                            "config.json": {
+                                                "type": "file",
+                                                "content": '{"version": "1.0", "debug": false, "port": 8080}'
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "notes.txt": {
+                                "type": "file",
+                                "content": "Meeting notes from 2024-01-15\nAction items: review PR, update docs"
+                            }
+                        }
+                    }
+                }
+            },
+            "tmp": {
+                "type": "directory",
+                "contents": {
+                    "temp_log.txt": {
+                        "type": "file",
+                        "content": "Process started at 09:00\nProcess completed at 17:30\nNo errors detected."
+                    }
+                }
+            }
+        }
+    },
+    "MathAPI": {
+        "numbers": [275.5, 299.75, 250.65, 310.85, 290.1]
+    },
+    "MessageAPI": {
+        "workspace_id": "WS123456",
+        "user_count": 4,
+        "user_map": {
+            "Michael": "USR005",
+            "Sarah": "USR006",
+            "David": "USR007",
+            "Emma": "USR008"
+        },
+        "messages_sent_map": {
+            "USR005": {
+                "USR006": ["Please review the attached document."],
+                "USR007": ["Meeting at 3 PM."],
+                "USR008": ["Lunch tomorrow?"]
+            },
+            "USR006": {
+                "USR005": ["Got it, thanks!"],
+                "USR007": ["Can we reschedule?"]
+            },
+            "USR007": {
+                "USR005": ["Sure, see you then."],
+                "USR008": ["Let's catch up soon."]
+            },
+            "USR008": {
+                "USR006": ["I'll be there."],
+                "USR007": ["Sounds good."]
+            }
+        },
+        "messages_inbox_map": {
+            "USR005": {
+                "USR006": ["Got it, thanks!"],
+                "USR007": ["Sure, see you then."]
+            },
+            "USR006": {
+                "USR005": ["Please review the attached document."],
+                "USR008": ["I'll be there."]
+            },
+            "USR007": {
+                "USR005": ["Meeting at 3 PM."],
+                "USR006": ["Can we reschedule?"]
+            },
+            "USR008": {
+                "USR005": ["Lunch tomorrow?"],
+                "USR007": ["Let's catch up soon."]
+            }
+        },
+        "message_count": 8,
+        "current_user": "USR005"
+    },
+    "PostingAPI": {
+        "authenticated": True,
+        "tweet_counter": 10,
+        "tweets": {
+            "0": {
+                "id": 0,
+                "username": "genealogy_enthusiast",
+                "content": "Excited to start my genealogy journey!",
+                "tags": ["#genealogy", "#familyhistory", "#beginnings"],
+                "mentions": []
+            },
+            "1": {
+                "id": 1,
+                "username": "genealogy_enthusiast",
+                "content": "Researching family history is so rewarding.",
+                "tags": ["#genealogy", "#research", "#familyhistory"],
+                "mentions": []
+            },
+            "2": {
+                "id": 2,
+                "username": "genealogy_enthusiast",
+                "content": "Can't wait to uncover new stories about my ancestors.",
+                "tags": ["#ancestors", "#familystories", "#discovery"],
+                "mentions": []
+            },
+            "3": {
+                "id": 3,
+                "username": "genealogy_enthusiast",
+                "content": "Genealogy is like a puzzle waiting to be solved.",
+                "tags": ["#genealogy", "#puzzle", "#research"],
+                "mentions": []
+            },
+            "4": {
+                "id": 4,
+                "username": "genealogy_enthusiast",
+                "content": "Every family has a story worth telling.",
+                "tags": ["#familystories", "#heritage", "#genealogy"],
+                "mentions": []
+            },
+            "5": {
+                "id": 5,
+                "username": "genealogy_enthusiast",
+                "content": "Exploring my roots is a journey of self-discovery.",
+                "tags": ["#roots", "#selfdiscovery", "#familyhistory"],
+                "mentions": []
+            },
+            "6": {
+                "id": 6,
+                "username": "genealogy_enthusiast",
+                "content": "Family history is a treasure trove of stories.",
+                "tags": ["#familyhistory", "#stories", "#heritage"],
+                "mentions": []
+            },
+            "7": {
+                "id": 7,
+                "username": "genealogy_enthusiast",
+                "content": "Connecting with my past to understand my present.",
+                "tags": ["#connection", "#pastpresent", "#genealogy"],
+                "mentions": []
+            },
+            "8": {
+                "id": 8,
+                "username": "genealogy_enthusiast",
+                "content": "Genealogy: where history meets personal stories.",
+                "tags": ["#genealogy", "#history", "#personalstories"],
+                "mentions": []
+            },
+            "9": {
+                "id": 9,
+                "username": "genealogy_enthusiast",
+                "content": "Uncovering the past, one ancestor at a time.",
+                "tags": ["#ancestors", "#research", "#familyhistory"],
+                "mentions": []
+            }
+        },
+        "comments": {
+            "0": [
+                {"username": "history_buff", "content": "Great start!"},
+                {"username": "family_finder", "content": "Welcome to the community!"}
+            ],
+            "3": [
+                {"username": "puzzle_solver", "content": "So true!"}
+            ]
+        },
+        "retweets": [
+            {"username": "history_buff", "tweet_id": 0},
+            {"username": "family_finder", "tweet_id": 5}
+        ],
+        "following_list": ["history_buff", "family_finder", "puzzle_solver"],
+        "users": {
+            "history_buff": {"tweet_count": 25, "following_count": 50, "retweet_count": 10},
+            "family_finder": {"tweet_count": 15, "following_count": 30, "retweet_count": 5},
+            "puzzle_solver": {"tweet_count": 8, "following_count": 12, "retweet_count": 2}
+        },
+        "username": "genealogy_enthusiast",
+        "password": "Fh7#mK9$pL2&vN4"
+    },
+    "TicketAPI": {
+        "tickets_queue": [
+            {
+                "id": 123456,
+                "title": "System Error",
+                "description": "There is a critical system error that needs immediate attention.",
+                "status": "Open",
+                "priority": 4,
+                "created_by": "support_agent"
+            },
+            {
+                "id": 654321,
+                "title": "Feature Request",
+                "description": "Request for a new feature in the application.",
+                "status": "In Progress",
+                "priority": 2,
+                "created_by": "support_agent"
+            }
+        ],
+        "ticket_count": 654321,
+        "ticket_counter": 654321,
+        "current_user": "support_agent"
+    },
+    "TradingBot": {
+        "account_info": {
+            "account_id": 12345,
+            "balance": 10000.0,
+            "binding_card": 1974202140965533
+        },
+        "authenticated": True,
+        "market_status": "Open",
+        "order_counter": 12446,
+        "stocks": {
+            "AAPL": {"price": 227.16, "percent_change": 0.17, "volume": 2.552, "MA(5)": 227.11, "MA(20)": 227.09},
+            "GOOG": {"price": 2840.34, "percent_change": 0.24, "volume": 1.123, "MA(5)": 2835.67, "MA(20)": 2842.15},
+            "TSLA": {"price": 667.92, "percent_change": -0.12, "volume": 1.654, "MA(5)": 671.15, "MA(20)": 668.2},
+            "MSFT": {"price": 310.23, "percent_change": 0.09, "volume": 3.234, "MA(5)": 309.88, "MA(20)": 310.11},
+            "NVDA": {"price": 220.34, "percent_change": 0.34, "volume": 1.234, "MA(5)": 220.45, "MA(20)": 220.67},
+            "ALPH": {"price": 1320.45, "percent_change": -0.08, "volume": 1.567, "MA(5)": 1321.12, "MA(20)": 1325.78},
+            "OMEG": {"price": 457.23, "percent_change": 0.12, "volume": 2.345, "MA(5)": 456.78, "MA(20)": 458.12},
+            "QUAS": {"price": 725.89, "percent_change": -0.03, "volume": 1.789, "MA(5)": 726.45, "MA(20)": 728.0},
+            "NEPT": {"price": 88.34, "percent_change": 0.19, "volume": 0.654, "MA(5)": 88.21, "MA(20)": 88.67},
+            "SYNX": {"price": 345.67, "percent_change": 0.11, "volume": 2.112, "MA(5)": 345.34, "MA(20)": 346.12},
+            "ZETA": {"price": 150.45, "percent_change": 0.05, "volume": 1.789, "MA(5)": 150.0, "MA(20)": 149.5}
+        },
+        "watch_list": ["NVDA", "ZETA"],
+        "transaction_history": [
+            {
+                "order_id": 12346,
+                "symbol": "GOOG",
+                "price": 2840.34,
+                "num_shares": 5,
+                "status": "Pending",
+                "timestamp": "2024-10-27 14:10:53"
+            }
+        ]
+    },
+    "TravelAPI": {
+        "credit_card_list": {
+            "12345": {
+                "card_number": "123456",
+                "expiration_date": "12/2028",
+                "cardholder_name": "Michael Smith",
+                "card_verification_number": 465,
+                "balance": 50000.0
+            }
+        },
+        "booking_record": {
+            "flight_001": {
+                "travel_to": "Rome",
+                "travel_from": "New York",
+                "insurance": "none",
+                "travel_cost": 1200.5,
+                "travel_date": "2024-08-08",
+                "travel_class": "Business",
+                "transaction_id": "12345",
+                "card_id": "12345"
+            }
+        },
+        "access_token": "abc123xyz",
+        "token_type": "Bearer",
+        "token_expires_in": 3600,
+        "token_scope": "full_access",
+        "user_first_name": "Michael",
+        "user_last_name": "Smith",
+        "budget_limit": 5000.0
+    },
+    "VehicleControlAPI": {
+        "remainingUnlockedDoors": 0,
+        "fuelLevel": 15.0,
+        "batteryVoltage": 12.8,
+        "engineState": "stopped",
+        "doorStatus": {
+            "driver": "locked",
+            "passenger": "locked",
+            "rear_left": "locked",
+            "rear_right": "locked"
+        },
+        "acTemperature": 22.0,
+        "fanSpeed": 60,
+        "acMode": "auto",
+        "humidityLevel": 45.0,
+        "headLightStatus": "off",
+        "parkingBrakeStatus": "released",
+        "parkingBrakeForce": 0.0,
+        "slopeAngle": 0.0,
+        "distanceToNextVehicle": 100.0,
+        "cruiseStatus": "inactive",
+        "destination": "Grand Canyon",
+        "frontLeftTirePressure": 35.0,
+        "frontRightTirePressure": 35.0,
+        "rearLeftTirePressure": 35.0,
+        "rearRightTirePressure": 35.0
+    }
+}
+
+TOOL_NAME_TO_CLASS_KEY = {
+    "cat": "gorilla_file_system",
+    "cd": "gorilla_file_system",
+    "cp": "gorilla_file_system",
+    "diff": "gorilla_file_system",
+    "du": "gorilla_file_system",
+    "echo": "gorilla_file_system",
+    "find": "gorilla_file_system",
+    "grep": "gorilla_file_system",
+    "ls": "gorilla_file_system",
+    "mkdir": "gorilla_file_system",
+    "mv": "gorilla_file_system",
+    "rm": "gorilla_file_system",
+    "rmdir": "gorilla_file_system",
+    "sort": "gorilla_file_system",
+    "tail": "gorilla_file_system",
+    "touch": "gorilla_file_system",
+    "wc": "gorilla_file_system",
+    "absolute_value": "math_api",
+    "add": "math_api",
+    "divide": "math_api",
+    "imperial_si_conversion": "math_api",
+    "logarithm": "math_api",
+    "max_value": "math_api",
+    "mean": "math_api",
+    "min_value": "math_api",
+    "multiply": "math_api",
+    "percentage": "math_api",
+    "power": "math_api",
+    "round_number": "math_api",
+    "si_unit_conversion": "math_api",
+    "square_root": "math_api",
+    "standard_deviation": "math_api",
+    "subtract": "math_api",
+    "sum_values": "math_api",
+    "add_contact": "message_api",
+    "delete_message": "message_api",
+    "get_user_id": "message_api",
+    "message_login": "message_api",
+    "search_messages": "message_api",
+    "send_message": "message_api",
+    "authenticate_twitter": "posting_api",
+    "comment": "posting_api",
+    "follow_user": "posting_api",
+    "get_tweet": "posting_api",
+    "get_tweet_comments": "posting_api",
+    "get_user_stats": "posting_api",
+    "get_user_tweets": "posting_api",
+    "mention": "posting_api",
+    "post_tweet": "posting_api",
+    "retweet": "posting_api",
+    "search_tweets": "posting_api",
+    "unfollow_user": "posting_api",
+    "close_ticket": "ticket_api",
+    "create_ticket": "ticket_api",
+    "edit_ticket": "ticket_api",
+    "get_ticket": "ticket_api",
+    "get_user_tickets": "ticket_api",
+    "resolve_ticket": "ticket_api",
+    "ticket_login": "ticket_api",
+    "add_to_watchlist": "trading_bot",
+    "cancel_order": "trading_bot",
+    "filter_stocks_by_price": "trading_bot",
+    "fund_account": "trading_bot",
+    "get_available_stocks": "trading_bot",
+    "get_order_details": "trading_bot",
+    "get_stock_info": "trading_bot",
+    "get_symbol_by_name": "trading_bot",
+    "get_transaction_history": "trading_bot",
+    "make_transaction": "trading_bot",
+    "notify_price_change": "trading_bot",
+    "place_order": "trading_bot",
+    "remove_stock_from_watchlist": "trading_bot",
+    "trading_login": "trading_bot",
+    "update_market_status": "trading_bot",
+    "update_stock_price": "trading_bot",
+    "authenticate_travel": "travel_booking",
+    "book_flight": "travel_booking",
+    "cancel_booking": "travel_booking",
+    "compute_exchange_rate": "travel_booking",
+    "contact_customer_support": "travel_booking",
+    "get_budget_fiscal_year": "travel_booking",
+    "get_credit_card_balance": "travel_booking",
+    "get_flight_cost": "travel_booking",
+    "get_nearest_airport_by_city": "travel_booking",
+    "purchase_insurance": "travel_booking",
+    "register_credit_card": "travel_booking",
+    "retrieve_invoice": "travel_booking",
+    "set_budget_limit": "travel_booking",
+    "verify_traveler_information": "travel_booking",
+    "activateParkingBrake": "vehicle_control",
+    "adjustClimateControl": "vehicle_control",
+    "displayCarStatus": "vehicle_control",
+    "display_log": "vehicle_control",
+    "estimate_distance": "vehicle_control",
+    "estimate_drive_feasibility_by_mileage": "vehicle_control",
+    "fillFuelTank": "vehicle_control",
+    "gallon_to_liter": "vehicle_control",
+    "get_zipcode_based_on_city": "vehicle_control",
+    "liter_to_gallon": "vehicle_control",
+    "lockDoors": "vehicle_control",
+    "pressBrakePedal": "vehicle_control",
+    "setCruiseControl": "vehicle_control",
+    "setHeadlights": "vehicle_control",
+    "set_navigation": "vehicle_control",
+    "startEngine": "vehicle_control",
+}
+
+
+def get_relevant_class_keys(tool_names: List[str]) -> set:
+    """Return the set of class_keys whose APIs are used by the given tool names."""
+    keys = set()
+    for t in tool_names:
+        if t in TOOL_NAME_TO_CLASS_KEY:
+            keys.add(TOOL_NAME_TO_CLASS_KEY[t])
+    return keys
+
+
+def filter_api_state(
+    full_state: Dict[str, Dict[str, Any]],
+    tool_names: List[str],
+) -> Dict[str, Dict[str, Any]]:
+    """Return only the class_key entries relevant to *tool_names*.
+
+    If *tool_names* is empty, returns the full state unchanged (safe default).
+    """
+    relevant = get_relevant_class_keys(tool_names)
+    if not relevant:
+        return full_state
+    return {k: v for k, v in full_state.items() if k in relevant}
+
 
 CLASS_KEY_TO_CLASS_NAME = {
     "gorilla_file_system": "GorillaFileSystem",
@@ -229,11 +681,55 @@ class ToolManager:
         print(f"Loaded {loaded} Python tool classes with {mapped} api_name mappings")
 
     def reset_python_tool_instances(self) -> None:
-        """Reset all Python tool instances to fresh state using canonical configs.
+        """Reset all Python tool instances to fresh state using FULL initial configs.
+
+        This initializes each API class with a complete, realistic state including
+        pre-existing users, messages, tickets, stocks, tweets, etc. so that login
+        and subsequent operations work correctly.
 
         Call this before generating each datapoint to ensure state isolation.
         """
-        self.python_tool_instances = create_python_tool_instances(self._canonical_configs)
+        self.python_tool_instances = create_python_tool_instances(FULL_INITIAL_CONFIGS)
+
+    def initialize_api_state(self) -> None:
+        """Initialize all Python tool instances with full, realistic API state.
+
+        This is the primary method to call at the beginning of each datapoint
+        generation. It ensures all stateful APIs (Message, Posting, Ticket,
+        Trading, Travel) start with a complete, consistent state so that
+        login calls and subsequent operations succeed properly.
+
+        For example, MessageAPI gets pre-existing users in user_map so that
+        message_login with a valid user ID succeeds, and PostingAPI gets
+        username/password credentials so authenticate_twitter works.
+        """
+        self.reset_python_tool_instances()
+
+    def get_api_state(self) -> Dict[str, Dict[str, Any]]:
+        """Snapshot the current state of all Python tool instances.
+
+        Returns a dict mapping class_key -> state_dict for every instantiated
+        tool class.  State dicts are JSON-serialisable (nested structures of
+        primitives, lists, dicts).  Non-serialisable values are converted to
+        strings via ``default=str``.
+
+        The snapshot is a deep copy so callers can freely mutate it without
+        affecting the live instances.
+        """
+        import json as _json
+
+        state: Dict[str, Dict[str, Any]] = {}
+        for class_key, instance in self.python_tool_instances.items():
+            raw = vars(instance)
+            # Round-trip through JSON to guarantee serialisability & deep copy
+            try:
+                state[class_key] = _json.loads(_json.dumps(raw, default=str))
+            except (TypeError, ValueError):
+                # Fallback: str-ify anything that fails
+                state[class_key] = _json.loads(_json.dumps(
+                    {k: str(v) for k, v in raw.items()}
+                ))
+        return state
 
     def has_python_implementation(self, tool_name: str) -> bool:
         """Check if a tool has a Python implementation available.

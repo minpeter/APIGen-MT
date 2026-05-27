@@ -62,7 +62,7 @@ class TestEndToEndDatapointGeneration:
             num_actions=2,
         )
 
-        result = generator.generate_datapoint(max_retries=2)
+        result = generator.generate_datapoint(query_retries=2)
 
         # May succeed or fail depending on validation
         if result:
@@ -79,7 +79,7 @@ class TestEndToEndDatapointGeneration:
             num_actions=3,
         )
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             assert len(result.trajectory.steps) == 3
@@ -98,7 +98,7 @@ class TestEndToEndDatapointGeneration:
 
         result = generator.generate_datapoint(
             focus_category="Travel",
-            max_retries=1,
+            query_retries=1,
         )
 
         if result:
@@ -130,7 +130,7 @@ class TestPlaceholderChain:
             num_actions=2,
         )
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result and len(result.trajectory.steps) >= 2:
             # Verify that execution context accumulated
@@ -168,7 +168,7 @@ class TestRetryWithFeedback:
             num_actions=2,
         )
 
-        result = generator.generate_datapoint(max_retries=2)
+        result = generator.generate_datapoint(query_retries=2)
 
         # May succeed or fail - just verify it runs
         if result:
@@ -201,7 +201,7 @@ class TestRetryWithFeedback:
             num_actions=2,
         )
 
-        result = generator.generate_datapoint(max_retries=3)
+        result = generator.generate_datapoint(query_retries=3)
 
         # May succeed or fail
         if result:
@@ -229,7 +229,7 @@ class TestVerificationFailureRecovery:
             num_actions=2,
         )
 
-        result = generator.generate_datapoint(max_retries=2)
+        result = generator.generate_datapoint(query_retries=2)
 
         if result:
             # Should have verification result
@@ -258,7 +258,7 @@ class TestToolCategoryFiltering:
 
         result = generator.generate_datapoint(
             focus_category="Travel",
-            max_retries=1,
+            query_retries=1,
         )
 
         if result:
@@ -287,7 +287,7 @@ class TestDatapointCompleteness:
             num_actions=2,
         )
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             # Required fields
@@ -329,7 +329,7 @@ class TestDatapointCompleteness:
             num_actions=2,
         )
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             # Serialize
@@ -371,7 +371,7 @@ class TestMultiStepWorkflows:
         assert len(query_result.expected_tools) == 2
 
         # Generate datapoint
-        datapoint = generator.generate_datapoint(max_retries=1)
+        datapoint = generator.generate_datapoint(query_retries=1)
 
         if datapoint:
             # Query should match
@@ -393,7 +393,7 @@ class TestMultiStepWorkflows:
             num_actions=2,
         )
 
-        result = generator.generate_datapoint(max_retries=1)
+        result = generator.generate_datapoint(query_retries=1)
 
         if result:
             # Verify steps have outputs

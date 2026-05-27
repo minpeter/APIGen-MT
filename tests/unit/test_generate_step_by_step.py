@@ -29,7 +29,7 @@ class TestParseArgs:
         assert args.num_datapoints == 100
         assert args.num_actions == 2
         assert args.output == "step_by_step_datapoints.jsonl"
-        assert args.model == "minimaxai/minimax-m2.7"
+        assert args.model == "z-ai/glm-5.1"
 
     def test_parse_args_custom_values(self):
         """Test custom argument values."""

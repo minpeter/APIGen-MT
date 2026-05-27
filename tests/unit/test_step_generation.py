@@ -135,9 +135,9 @@ class TestGenerateNextStep:
             execution_context={},
             expected_tools=["tool1"],
             step_num=1,
-        )
+    )
 
-        assert result.tool_name == ""
+        assert result.tool_name == "__ERROR__"
         assert result.arguments == {}
 
     def test_next_step_not_json_response(self, generator, mock_llm):
@@ -150,10 +150,10 @@ class TestGenerateNextStep:
             execution_context={},
             expected_tools=["tool1"],
             step_num=1,
-        )
+    )
 
-        # Should return empty result on JSON parse error
-        assert result.tool_name == ""
+        # Should return __ERROR__ result on JSON parse error
+        assert result.tool_name == "__ERROR__"
 
 
 class TestSimulateToolExecution:
@@ -220,7 +220,7 @@ class TestBuildTrajectory:
             VALID_STEP_RESPONSE,
         ])
 
-        datapoint = generator.generate_datapoint(max_retries=0)
+        datapoint = generator.generate_datapoint(query_retries=0)
 
         if datapoint:
             for i, step in enumerate(datapoint.trajectory.steps, 1):

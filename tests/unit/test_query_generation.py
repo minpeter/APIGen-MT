@@ -268,18 +268,21 @@ class TestGenerateUserQueryEdgeCases:
         )
 
     def test_generate_query_with_context_hint(self, generator, mock_llm):
-        """Test query generation with context hint."""
+        """Test query generation with context hint (passed via focus_category)."""
         mock_llm.set_responses([
             VALID_QUERY_RESPONSE_2_TOOLS,
             VALID_SEQUENCE_RESPONSE,
         ])
 
-        hint = "Focus on travel planning"
-        result = generator.generate_user_query(context_hint=hint)
+        hint = "Travel"
+        result = generator.generate_user_query(focus_category=hint)
 
         # Verify result was generated
         assert result is not None
-        # Hint should be passed - verify the method accepts it without error
+        # Verify the category was mentioned in prompt
+        assert len(mock_llm.captured_prompts) > 0
+        prompt_text = str(mock_llm.captured_prompts[0])
+        assert "Travel" in prompt_text
 
     def test_generate_query_with_validation_feedback(self, generator, mock_llm):
         """Test query generation with validation feedback."""
