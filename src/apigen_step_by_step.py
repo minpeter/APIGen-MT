@@ -691,7 +691,8 @@ Respond ONLY with valid JSON:
 
     def _generate_tool_arguments(self, tool_name: str, query: str, trajectory: List[TrajectoryStep],
                                  execution_context: Dict[str, Any],
-                                 feedback: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+                                 feedback: Optional[str] = None,
+                                 current_api_state: Optional[Dict[str, Dict[str, Any]]] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """Generate arguments for a specific tool based on query and context."""
         # Get tool schema
         tool_schema = self.tool_manager.get_tool_schema(tool_name)
@@ -710,6 +711,21 @@ Respond ONLY with valid JSON:
         output_type = tool_schema.get('output_type', 'unknown')
         output_description = tool_schema.get('output_description', '')
 
+        # Build API state section — prefer the class relevant to this tool
+        api_state_section = ""
+        if current_api_state:
+            class_key = self.tool_manager.api_name_to_class_key.get(tool_name)
+            if class_key and class_key in current_api_state:
+                state_for_tool = {class_key: current_api_state[class_key]}
+            else:
+                state_for_tool = current_api_state
+            api_state_section = f"""
+=== CURRENT API STATE ===
+The following is the REAL current state of the API. You MUST use values from this state when providing arguments (e.g., user IDs, ticket IDs, usernames, access tokens). Do NOT invent or guess values — use the ones shown below.
+
+{json.dumps(state_for_tool, indent=2, default=str)[:2000]}
+"""
+
         prompt = f"""Generate arguments for the tool '{tool_name}' based on the user query and previous steps.
 
 === USER QUERY ===
@@ -720,7 +736,7 @@ Respond ONLY with valid JSON:
 
 === EXECUTION CONTEXT ===
 {json.dumps(execution_context, indent=2, default=str)[:500]}
-
+{api_state_section}
 === TOOL SCHEMA ===
 {json.dumps(tool_schema.get('parameters', {}), indent=2)}
 
@@ -739,14 +755,15 @@ Description: {output_description}
 Generate arguments for '{tool_name}' that:
 1. Match the schema above
 2. Fulfill the user query
-3. Use values from Execution Context when available (e.g., user_id from previous step)
-4. Are specific and realistic
-5. Will produce an output that matches the Expected Output type and description above
+3. Use values from the CURRENT API STATE or Execution Context when available (e.g., real user_id from user_map, ticket_id from ticket_queue, access_token from state)
+4. Do NOT invent or guess IDs, usernames, or tokens — use the real values from the API state
+5. Are specific and realistic
+6. Will produce an output that matches the Expected Output type and description above
 
 Respond with JSON containing only the arguments:
 {{
-    "arg1": "value1",
-    "arg2": "value2"
+  "arg1": "value1",
+  "arg2": "value2"
 }}"""
         
         try:
@@ -797,14 +814,15 @@ Respond with JSON containing only the arguments:
                 pre_state = self.tool_manager.get_api_state() if self._python_tools_available else None
 
                 # Generate arguments for this tool (with feedback from previous failures)
-                print(f" Generating arguments for {tool_name}...")
+                print(f"  Generating arguments for {tool_name}...")
                 arguments, error = self._generate_tool_arguments(
-                    tool_name=tool_name,
-                    query=query_result.query,
-                    trajectory=trajectory,
-                    execution_context=execution_context,
-                    feedback=tool_feedback if tool_feedback else None
-                )
+            tool_name=tool_name,
+            query=query_result.query,
+            trajectory=trajectory,
+            execution_context=execution_context,
+            feedback=tool_feedback if tool_feedback else None,
+            current_api_state=pre_state,
+        )
 
                 if error:
                     print(f" ✗ {error}")
@@ -1009,7 +1027,12 @@ Respond with JSON containing only the arguments:
 
         # If verification failed, return None so the caller knows to retry
         if not verification_passed:
-            print(f" Verification: FAILED")
+            print(f"  Verification: FAILED")
+            if verification_result:
+                print(f"  Details: {verification_result.verification_summary}")
+                for ov in verification_result.output_validations:
+                    if not ov.get('output_type_matches', True):
+                        print(f"    - {ov.get('tool_name')}: {ov.get('issues')}")
             print(f"\n✗ Datapoint failed verification - discarding")
             return None
 
@@ -1108,6 +1131,39 @@ Generate a concise, natural response that summarizes what was accomplished."""
 
         return {'order_is_correct': order_is_correct, 'order_verification_details': details}
 
+    @staticmethod
+    def _is_dict_wrapped_primitive(output: Any, expected_type_lower: str) -> bool:
+        """Check if a dict output wraps a value matching expected_type.
+
+        Python tool implementations commonly return:
+        - {'result': 42.0} when BFCL declares output_type=float
+        - {'matching_tweets': []} when BFCL declares output_type=list
+        - {'comments': [...]} when BFCL declares output_type=list
+        This is a valid wrapper pattern — the semantic content *is* the
+        expected type.
+        """
+        if not isinstance(output, dict) or not output:
+            return False
+
+        # List-wrapping: {"key": [...]}
+        if 'list' in expected_type_lower:
+            return any(isinstance(v, list) for v in output.values())
+
+        prim_types = {
+            'float': float,
+            'number': (int, float),
+            'integer': int,
+            'string': str,
+            'boolean': bool,
+        }
+        py_type = prim_types.get(expected_type_lower)
+        if py_type is None:
+            return False
+        for v in output.values():
+            if isinstance(v, py_type):
+                return True
+        return False
+
     def verify_output_consistency(self, tool_name: str, step_number: int, output: Any, expected_type: str, expected_description: str) -> Dict[str, Any]:
         """Verify if a tool's output matches its declared type and description."""
         if output is None:
@@ -1130,6 +1186,9 @@ Generate a concise, natural response that summarizes what was accomplished."""
             elif 'bool' in expected_type_lower and isinstance(output, bool):
                 type_compatible = True
             elif expected_type_lower in output_type:
+                type_compatible = True
+
+            if not type_compatible and self._is_dict_wrapped_primitive(output, expected_type_lower):
                 type_compatible = True
 
             if not type_compatible:

@@ -37,10 +37,23 @@ class MessageAPI:
                 "message": f"User '{user_name}' already exists in the workspace."
             }
 
+        existing_ids = {
+            uid for uid in self.user_map.values()
+        } | set(self.messages_sent_map.keys()) | set(self.messages_inbox_map.keys())
+        max_num = 0
+        for uid in existing_ids:
+            try:
+                num = int(uid.replace("USR", ""))
+                if num > max_num:
+                    max_num = num
+            except (ValueError, AttributeError):
+                pass
+
+        new_num = max_num + 1
+        new_user_id = f"USR{new_num:03d}"
         self.user_count += 1
-        new_user_id = f"USR{self.user_count:03d}"
         self.user_map[user_name] = new_user_id
-        
+
         # Initialize message maps for the new user
         self.messages_sent_map[new_user_id] = {}
         self.messages_inbox_map[new_user_id] = {}

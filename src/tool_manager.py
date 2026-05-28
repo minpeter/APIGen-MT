@@ -131,7 +131,7 @@ FULL_INITIAL_CONFIGS = {
         "current_user": "USR005"
     },
     "PostingAPI": {
-        "authenticated": True,
+        "authenticated": False,
         "tweet_counter": 10,
         "tweets": {
             "0": {
@@ -224,8 +224,8 @@ FULL_INITIAL_CONFIGS = {
             "family_finder": {"tweet_count": 15, "following_count": 30, "retweet_count": 5},
             "puzzle_solver": {"tweet_count": 8, "following_count": 12, "retweet_count": 2}
         },
-        "username": "genealogy_enthusiast",
-        "password": "Fh7#mK9$pL2&vN4"
+        "username": "tech_user",
+        "password": "TechUser2024!"
     },
     "TicketAPI": {
         "tickets_queue": [
@@ -256,7 +256,7 @@ FULL_INITIAL_CONFIGS = {
             "balance": 10000.0,
             "binding_card": 1974202140965533
         },
-        "authenticated": True,
+        "authenticated": False,
         "market_status": "Open",
         "order_counter": 12446,
         "stocks": {
