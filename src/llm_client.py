@@ -416,7 +416,7 @@ class LocalOpenAILLMClient(LLMClient):
 
         max_retries = 999999
         base_delay = 2
-        request_timeout = kwargs.get("timeout", 60)
+        request_timeout = kwargs.get("timeout", 300)
         rate_limit_retry_count = 0
         server_error_retry_count = 0
         attempt = 0

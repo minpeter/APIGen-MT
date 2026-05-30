@@ -179,7 +179,7 @@ class GorillaFileSystem:
             "type": "file",
             "content": content
         }
-        return {"terminal_output": "None"}
+        return {"terminal_output": f"File '{file_name}' created successfully."}
 
     def find(self, path: str = ".", name: str = "None") -> Dict[str, Any]:
         """Find files or directories under a specific path that contain name in its file name."""

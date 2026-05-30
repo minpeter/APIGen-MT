@@ -25,6 +25,10 @@ from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 
+# Force unbuffered output for nohup
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -79,8 +83,8 @@ def parse_args():
     parser.add_argument(
         '--model', '-m',
         type=str,
-        default='z-ai/glm-5.1',
-        help='Model to use for generation (default: z-ai/glm-5.1)'
+        default='deepseek-v4-flash-free',
+        help='Model to use for generation (default: deepseek-v4-flash-free)'
     )
 
     return parser.parse_args()

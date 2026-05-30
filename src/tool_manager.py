@@ -83,12 +83,18 @@ FULL_INITIAL_CONFIGS = {
     },
     "MessageAPI": {
         "workspace_id": "WS123456",
-        "user_count": 4,
+        "user_count": 10,
         "user_map": {
             "Michael": "USR005",
             "Sarah": "USR006",
             "David": "USR007",
-            "Emma": "USR008"
+            "Emma": "USR008",
+            "Alice": "USR009",
+            "Bob": "USR010",
+            "Charlie": "USR011",
+            "Diana": "USR012",
+            "John": "USR013",
+            "Jane": "USR014"
         },
         "messages_sent_map": {
             "USR005": {
@@ -107,7 +113,13 @@ FULL_INITIAL_CONFIGS = {
             "USR008": {
                 "USR006": ["I'll be there."],
                 "USR007": ["Sounds good."]
-            }
+            },
+            "USR009": {},
+            "USR010": {},
+            "USR011": {},
+            "USR012": {},
+            "USR013": {},
+            "USR014": {}
         },
         "messages_inbox_map": {
             "USR005": {
@@ -125,14 +137,20 @@ FULL_INITIAL_CONFIGS = {
             "USR008": {
                 "USR005": ["Lunch tomorrow?"],
                 "USR007": ["Let's catch up soon."]
-            }
+            },
+            "USR009": {},
+            "USR010": {},
+            "USR011": {},
+            "USR012": {},
+            "USR013": {},
+            "USR014": {}
         },
         "message_count": 8,
         "current_user": "USR005"
     },
     "PostingAPI": {
         "authenticated": False,
-        "tweet_counter": 10,
+        "tweet_counter": 17,
         "tweets": {
             "0": {
                 "id": 0,
@@ -202,6 +220,55 @@ FULL_INITIAL_CONFIGS = {
                 "username": "genealogy_enthusiast",
                 "content": "Uncovering the past, one ancestor at a time.",
                 "tags": ["#ancestors", "#research", "#familyhistory"],
+                "mentions": []
+            },
+            "10": {
+                "id": 10,
+                "username": "tech_user",
+                "content": "Artificial intelligence is transforming how we work and live.",
+                "tags": ["#AI", "#technology", "#future"],
+                "mentions": []
+            },
+            "11": {
+                "id": 11,
+                "username": "tech_user",
+                "content": "Just published a new blog post about machine learning trends.",
+                "tags": ["#machinelearning", "#AI", "#blog"],
+                "mentions": []
+            },
+            "12": {
+                "id": 12,
+                "username": "tech_user",
+                "content": "Exploring the latest breakthroughs in natural language processing.",
+                "tags": ["#NLP", "#AI", "#research"],
+                "mentions": []
+            },
+            "13": {
+                "id": 13,
+                "username": "tech_user",
+                "content": "The future of artificial intelligence is bright and full of possibilities.",
+                "tags": ["#AI", "#future", "#technology"],
+                "mentions": []
+            },
+            "14": {
+                "id": 14,
+                "username": "history_buff",
+                "content": "Ancient civilizations had remarkable engineering skills.",
+                "tags": ["#history", "#engineering", "#ancient"],
+                "mentions": []
+            },
+            "15": {
+                "id": 15,
+                "username": "family_finder",
+                "content": "Found a new branch of my family tree today!",
+                "tags": ["#familytree", "#genealogy", "#discovery"],
+                "mentions": []
+            },
+            "16": {
+                "id": 16,
+                "username": "puzzle_solver",
+                "content": "AI-powered tools make data analysis so much easier.",
+                "tags": ["#AI", "#data", "#analytics"],
                 "mentions": []
             }
         },

@@ -30,10 +30,17 @@ class MessageAPI:
                 "message": "User name cannot be empty."
             }
 
-        if user_name in self.user_map:
+        # Case-insensitive check
+        existing_name = None
+        for name in self.user_map:
+            if name.lower() == user_name.lower():
+                existing_name = name
+                break
+
+        if existing_name:
             return {
                 "added_status": False,
-                "user_id": self.user_map[user_name],
+                "user_id": self.user_map[existing_name],
                 "message": f"User '{user_name}' already exists in the workspace."
             }
 
@@ -99,19 +106,9 @@ class MessageAPI:
                 "message": "No messages found to delete."
             }
 
-        # If message_id is not provided, delete the latest message (last in the list)
-        if message_id is None:
-            message_id = len(sent_messages) - 1
-
-        if message_id < 0 or message_id >= len(sent_messages):
-            return {
-                "deleted_status": False,
-                "message_id": message_id,
-                "message": "Invalid message ID."
-            }
-
-        # Remove the message from sent map
-        deleted_msg = sent_messages.pop(message_id)
+        # Delete the latest message (last in the list)
+        idx = len(sent_messages) - 1
+        deleted_msg = sent_messages.pop(idx)
         
         # Remove the corresponding message from the receiver's inbox
         if receiver_id in self.messages_inbox_map and sender_id in self.messages_inbox_map[receiver_id]:
@@ -121,7 +118,7 @@ class MessageAPI:
 
         return {
             "deleted_status": True,
-            "message_id": message_id,
+            "message_id": idx,
             "message": "Message deleted successfully."
         }
 
@@ -132,9 +129,12 @@ class MessageAPI:
                 "user_id": ""
             }
 
-        user_id = self.user_map.get(user, "")
+        # Case-insensitive lookup
+        for name, uid in self.user_map.items():
+            if name.lower() == user.lower():
+                return {"user_id": uid}
         return {
-            "user_id": user_id
+            "user_id": ""
         }
 
     def message_login(self, user_id: str) -> dict:
@@ -183,7 +183,19 @@ class MessageAPI:
                     if keyword.lower() in msg.lower():
                         results.append({
                             "receiver_id": receiver_id,
-                            "message": msg
+                            "message": msg,
+                            "direction": "sent"
+                        })
+
+        # Search in received messages (inbox)
+        if sender_id in self.messages_inbox_map:
+            for sender, messages in self.messages_inbox_map[sender_id].items():
+                for msg in messages:
+                    if keyword.lower() in msg.lower():
+                        results.append({
+                            "sender_id": sender,
+                            "message": msg,
+                            "direction": "received"
                         })
 
         return {

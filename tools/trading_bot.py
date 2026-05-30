@@ -19,6 +19,7 @@ class TradingBot:
             "binding_card": 0
         })
         self.authenticated: bool = initial_config.get("authenticated", False)
+        self.current_user: str = initial_config.get("current_user", "")
         self.market_status: str = initial_config.get("market_status", "Closed")
         self.order_counter: int = initial_config.get("order_counter", 0)
         self.stocks: Dict[str, Dict[str, Any]] = initial_config.get("stocks", {})
@@ -53,10 +54,17 @@ class TradingBot:
         
         self.name_to_symbol: Dict[str, str] = {
             "apple": "AAPL",
+            "apple inc": "AAPL",
+            "apple inc.": "AAPL",
             "google": "GOOG",
+            "google llc": "GOOG",
             "tesla": "TSLA",
+            "tesla inc": "TSLA",
+            "tesla inc.": "TSLA",
             "microsoft": "MSFT",
+            "microsoft corporation": "MSFT",
             "nvidia": "NVDA",
+            "nvidia corporation": "NVDA",
             "alpha": "ALPH",
             "omega": "OMEG",
             "quasar": "QUAS",
@@ -242,6 +250,7 @@ class TradingBot:
     def trading_login(self, username: str, password: str) -> Dict[str, str]:
         """Handle user login."""
         self.authenticated = True
+        self.current_user = username
         return {"status": "Login successful"}
 
     def update_market_status(self, current_time_str: str) -> Dict[str, str]:
