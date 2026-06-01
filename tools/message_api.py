@@ -145,7 +145,6 @@ class MessageAPI:
                 "message": "User ID cannot be empty."
             }
 
-        # Check if user_id exists in the system (either as a value in user_map or has messages)
         user_exists = user_id in self.user_map.values() or user_id in self.messages_sent_map or user_id in self.messages_inbox_map
 
         if not user_exists:

@@ -24,6 +24,8 @@ class TradingBot:
         self.order_counter: int = initial_config.get("order_counter", 0)
         self.stocks: Dict[str, Dict[str, Any]] = initial_config.get("stocks", {})
         self.watch_list: List[str] = initial_config.get("watch_list", [])
+        self.username: str = initial_config.get("username", "")
+        self.password: str = initial_config.get("password", "")
         
         raw_history = initial_config.get("transaction_history", [])
         self.transaction_history: List[Dict[str, Any]] = []
@@ -75,12 +77,16 @@ class TradingBot:
 
     def add_to_watchlist(self, stock: str) -> Dict[str, str]:
         """Add a stock to the watchlist."""
+        if not self.authenticated:
+            return {"symbol": "", "watchlist_status": "User not authenticated"}
         if stock and stock not in self.watch_list:
             self.watch_list.append(stock)
         return {"symbol": stock}
 
     def cancel_order(self, order_id: int) -> Dict[str, Any]:
         """Cancel an order."""
+        if not self.authenticated:
+            return {"order_id": order_id, "status": "User not authenticated"}
         if order_id in self.orders:
             self.orders[order_id]["status"] = "Cancelled"
             return {"order_id": order_id, "status": "Cancelled"}
@@ -98,6 +104,8 @@ class TradingBot:
 
     def fund_account(self, amount: float) -> Dict[str, Any]:
         """Fund the account with the specified amount."""
+        if not self.authenticated:
+            return {"status": "User not authenticated", "new_balance": self.account_info.get("balance", 0.0)}
         if amount <= 0:
             return {"status": "Failed: invalid amount", "new_balance": self.account_info.get("balance", 0.0)}
         self.account_info["balance"] = self.account_info.get("balance", 0.0) + amount
@@ -189,6 +197,8 @@ class TradingBot:
 
     def make_transaction(self, account_id: int, xact_type: str, amount: float) -> Dict[str, Any]:
         """Make a deposit or withdrawal based on specified amount."""
+        if not self.authenticated:
+            return {"status": "User not authenticated", "new_balance": self.account_info.get("balance", 0.0)}
         if account_id != self.account_info.get("account_id"):
             return {"status": "Failed: account not found", "new_balance": self.account_info.get("balance", 0.0)}
         
@@ -222,6 +232,8 @@ class TradingBot:
 
     def place_order(self, order_type: str, symbol: str, price: float, amount: int) -> Dict[str, Any]:
         """Place an order."""
+        if not self.authenticated:
+            return {"order_id": 0, "order_type": order_type, "status": "User not authenticated", "price": price, "amount": amount}
         self.order_counter += 1
         order_id = self.order_counter
         self.orders[order_id] = {
@@ -242,6 +254,8 @@ class TradingBot:
 
     def remove_stock_from_watchlist(self, symbol: str) -> Dict[str, str]:
         """Remove a stock from the watchlist."""
+        if not self.authenticated:
+            return {"status": "User not authenticated"}
         if symbol in self.watch_list:
             self.watch_list.remove(symbol)
             return {"status": f"{symbol} removed from watchlist"}
@@ -249,12 +263,18 @@ class TradingBot:
 
     def trading_login(self, username: str, password: str) -> Dict[str, str]:
         """Handle user login."""
-        self.authenticated = True
-        self.current_user = username
-        return {"status": "Login successful"}
+        if not username or not password:
+            return {"status": "Login failed: username and password required"}
+        if username == self.username and password == self.password:
+            self.authenticated = True
+            self.current_user = username
+            return {"status": "Login successful"}
+        return {"status": "Login failed: invalid credentials"}
 
     def update_market_status(self, current_time_str: str) -> Dict[str, str]:
         """Update the market status based on the current time."""
+        if not self.authenticated:
+            return {"status": "User not authenticated"}
         try:
             time_part, ampm = current_time_str.strip().rsplit(' ', 1)
             time_str_24h = datetime.strptime(f"{time_part} {ampm}", "%I:%M %p").strftime("%H:%")
@@ -273,6 +293,8 @@ class TradingBot:
 
     def update_stock_price(self, symbol: str, new_price: float) -> Dict[str, Any]:
         """Update the price of a stock."""
+        if not self.authenticated:
+            return {"symbol": symbol, "old_price": 0.0, "new_price": 0.0, "status": "User not authenticated"}
         if symbol in self.stocks:
             old_price = self.stocks[symbol].get("price", 0.0)
             self.stocks[symbol]["price"] = new_price

@@ -146,7 +146,7 @@ FULL_INITIAL_CONFIGS = {
             "USR014": {}
         },
         "message_count": 8,
-        "current_user": "USR005"
+        "current_user": ""
     },
     "PostingAPI": {
         "authenticated": False,
@@ -315,7 +315,10 @@ FULL_INITIAL_CONFIGS = {
         ],
         "ticket_count": 654321,
         "ticket_counter": 654321,
-        "current_user": "support_agent"
+        "current_user": "",
+        "authenticated": False,
+        "username": "support_agent",
+        "password": "SupportAgent2024!"
     },
     "TradingBot": {
         "account_info": {
@@ -326,6 +329,8 @@ FULL_INITIAL_CONFIGS = {
         "authenticated": False,
         "market_status": "Open",
         "order_counter": 12446,
+        "username": "trader_admin",
+        "password": "TradeAdmin2024!",
         "stocks": {
             "AAPL": {"price": 227.16, "percent_change": 0.17, "volume": 2.552, "MA(5)": 227.11, "MA(20)": 227.09},
             "GOOG": {"price": 2840.34, "percent_change": 0.24, "volume": 1.123, "MA(5)": 2835.67, "MA(20)": 2842.15},
@@ -373,13 +378,16 @@ FULL_INITIAL_CONFIGS = {
                 "card_id": "12345"
             }
         },
-        "access_token": "abc123xyz",
+        "access_token": "",
         "token_type": "Bearer",
-        "token_expires_in": 3600,
-        "token_scope": "full_access",
+        "token_expires_in": 0,
+        "token_scope": "",
         "user_first_name": "Michael",
         "user_last_name": "Smith",
-        "budget_limit": 5000.0
+        "budget_limit": 5000.0,
+        "client_id": "travel_client_001",
+        "client_secret": "s3cretK3y!",
+        "refresh_token": "refresh_abc123"
     },
     "VehicleControlAPI": {
         "remainingUnlockedDoors": 0,

@@ -282,30 +282,30 @@ Respond with JSON:
             {
                 "category": "Finance",
                 "num_tools": 3,
-                "query": "Buy 50 shares of Apple stock at market price, then add AAPL to my watchlist and notify me when the price changes by more than 5%.",
-                "intent": "User wants to purchase Apple stock, monitor it, and receive price alerts",
-                "expected_tools": ["get_symbol_by_name", "place_order", "add_to_watchlist"]
+                "query": "Log in to my trading account, then buy 50 shares of Apple stock at market price.",
+                "intent": "User wants to log in and purchase Apple stock",
+                "expected_tools": ["trading_login", "get_symbol_by_name", "place_order"]
             },
             {
                 "category": "Events",
-                "num_tools": 4,
-                "query": "My order #12345 never arrived. Create a ticket about this issue, get the ticket details, and update it with high priority since it's been 2 weeks.",
-                "intent": "User has a delivery issue and wants to create and manage a support ticket",
-                "expected_tools": ["create_ticket", "get_ticket", "edit_ticket", "get_user_tickets"]
+                "num_tools": 3,
+                "query": "Log in to the ticket system, then resolve ticket #123456 with the resolution 'Issue fixed', and close it.",
+                "intent": "User wants to authenticate, then resolve and close a ticket",
+                "expected_tools": ["ticket_login", "resolve_ticket", "close_ticket"]
             },
             {
-                "category": "Storage",
-                "num_tools": 3,
-                "query": "Navigate to the project directory, check the disk usage of all files, and then display the contents of config.json.",
-                "intent": "User wants to browse a directory, check file sizes, and view a configuration file",
-                "expected_tools": ["cd", "du", "cat"]
+                "category": "Posting Api",
+                "num_tools": 2,
+                "query": "Authenticate with Twitter, then post a tweet saying 'Hello world!'.",
+                "intent": "User wants to authenticate and post a tweet",
+                "expected_tools": ["authenticate_twitter", "post_tweet"]
             },
             {
                 "category": "Communication",
-                "num_tools": 2,
-                "query": "Send a message to user john_doe saying 'Meeting at 3pm', but first get their user ID from their username.",
-                "intent": "User wants to send a message to another user, requiring ID lookup first",
-                "expected_tools": ["get_user_id", "send_message"]
+                "num_tools": 3,
+                "query": "Log in to the messaging app as USR005, then get the user ID for Sarah, and send her a message saying 'Hi Sarah!'.",
+                "intent": "User wants to log in, look up a user ID, and send a message",
+                "expected_tools": ["message_login", "get_user_id", "send_message"]
             }
         ]
 
@@ -343,6 +343,7 @@ Generate a natural, realistic user query that would require using EXACTLY {self.
 5. CRITICAL: Use ONLY the exact tool names from the AVAILABLE TOOLS section below
 6. CRITICAL: Do NOT invent tool names - only use tools that exist in the list
 7. The tools should logically fit together to accomplish the query
+8. AUTH REQUIREMENT: Many tools require authentication FIRST. If you include a tool that needs auth (e.g., place_order, post_tweet, send_message, close_ticket, book_flight), you MUST also include the corresponding login tool (e.g., trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) as one of the {self.num_actions} tools. The login tool should come BEFORE the gated tool in the expected_tools list.
 
 === AVAILABLE TOOLS WITH DESCRIPTIONS ===
 {tools_with_descriptions}
@@ -542,8 +543,9 @@ Respond ONLY with valid JSON:
     def generate_datapoint(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None,
                            query_retries: int = 5, tool_retries: int = 3) -> Optional[StepByStepDatapoint]:
         """
-        Generate a datapoint using three-stage generation:
+        Generate a datapoint using multi-stage generation:
         Stage 1: Generate and verify query (separate retry count)
+        Stage 1.5: Adjust initial API state for expected tools (best-effort)
         Stage 2: Generate tool invocations tool-by-tool (separate retry count per tool)
         Stage 3: Finalize datapoint (no retries)
         """
@@ -580,6 +582,22 @@ Respond ONLY with valid JSON:
         print(f" Query: {query_result.query}")
         print(f" Expected tools: {query_result.expected_tools}")
         print(f" Tokens so far: {self._accumulated_total_tokens:,}")
+
+        # Stage 1.5: Adjust initial API state for expected tools
+        if self._python_tools_available and query_result.expected_tools:
+            print("\n" + "-" * 70)
+            print("STAGE 1.5: Adjust Initial API State")
+            print("-" * 70)
+
+            adjusted = self._stage1_5_adjust_initial_state(query_result)
+
+            if adjusted:
+                initial_api_state = self.tool_manager.get_api_state()
+                print(f" ✓ API state adjusted, re-captured ({len(initial_api_state)} class keys)")
+                self._update_token_usage()
+                print(f" Tokens so far: {self._accumulated_total_tokens:,}")
+            else:
+                print(" ⚠ State adjustment failed or not needed, proceeding with original state")
 
         # Stage 2: Generate tool invocations tool-by-tool
         print("\n" + "-" * 70)
@@ -685,9 +703,203 @@ Respond ONLY with valid JSON:
             # SUCCESS: Query is valid - wipe feedback and return
             print(" ✓ Query verification passed")
             return query_result
+
         # All retries exhausted
         print(f"\n✗ Failed to generate valid query after {max_retries} attempts")
         return None
+
+    def _stage1_5_adjust_initial_state(self, query_result: QueryGenerationResult) -> bool:
+        """Stage 1.5: Adjust initial API state so expected tools will succeed.
+
+        Sends the query, expected tools, their schemas, and the current API state
+        to the LLM. The LLM identifies what state modifications are needed for
+        each tool to execute successfully (e.g., ensure specific ticket IDs exist,
+        user IDs are present, access tokens are set, etc.).
+
+        Modifications are applied directly to the live Python tool instances,
+        then the initial_api_state is re-captured.
+
+        Returns True if adjustments were applied, False otherwise.
+        """
+        current_state = self.tool_manager.get_api_state()
+
+        relevant_class_keys = set()
+        for tool_name in query_result.expected_tools:
+            class_key = self.tool_manager.api_name_to_class_key.get(tool_name)
+            if class_key:
+                relevant_class_keys.add(class_key)
+
+        relevant_state = {k: v for k, v in current_state.items() if k in relevant_class_keys}
+
+        tool_schemas_str = ""
+        for tool_name in query_result.expected_tools:
+            schema = self.tool_manager.get_tool_schema(tool_name)
+            if schema:
+                params = schema.get('parameters', {})
+                desc = schema.get('description', '')
+                tool_schemas_str += f"\n- {tool_name}: {desc}\n  Parameters: {json.dumps(params, indent=2, default=str)[:500]}\n"
+
+        state_json = json.dumps(relevant_state, indent=2, default=str)[:6000]
+
+        prompt = f"""You are preparing the initial state of API instances so that a sequence of tool calls will execute successfully.
+
+=== USER QUERY ===
+{query_result.query}
+
+=== EXPECTED TOOL SEQUENCE ===
+{json.dumps(query_result.expected_tools)}
+
+=== TOOL SCHEMAS ===
+{tool_schemas_str}
+
+=== CURRENT API STATE (relevant classes only) ===
+{state_json}
+
+=== YOUR TASK ===
+Analyze each tool in the expected sequence and determine what state modifications are needed so that EVERY tool call will succeed. Common issues:
+
+1. **Ticket tools** (get_ticket, edit_ticket, close_ticket, resolve_ticket, create_ticket): Need ticket IDs that exist in `tickets_queue`. Also require `authenticated=True` (set by `ticket_login`). If the query uses ticket operations without login, add `ticket_login` to the plan or ensure the user is already authenticated.
+2. **Message tools** (send_message, get_user_id, search_messages, delete_message): Need user IDs in `user_map`. `send_message`, `search_messages`, and `delete_message` require `current_user` set (via `message_login`). If the query references users by name, ensure they exist with correct IDs.
+3. **Login tools**: These VALIDATE credentials against stored values. Do NOT set `authenticated=True` or `access_token` directly — instead, ensure the stored credentials match what the LLM will use in the login call. If the query uses specific credentials, update the stored values to match.
+   - `trading_login(username, password)`: Validates against `trading_bot.username` / `trading_bot.password`
+   - `ticket_login(username, password)`: Validates against `ticket_api.username` / `ticket_api.password`
+   - `authenticate_twitter(username, password)`: Validates against `posting_api.username` / `posting_api.password`
+   - `authenticate_travel(client_id, client_secret, refresh_token, ...)`: Validates against `travel_booking.client_id` / `travel_booking.client_secret` / `travel_booking.refresh_token`
+   - `message_login(user_id)`: Only validates that the user_id exists in `user_map` values — no password check, no username/password fields needed
+4. **Trading tools** (place_order, cancel_order, fund_account, make_transaction, add_to_watchlist, remove_stock_from_watchlist, update_market_status, update_stock_price): Require `authenticated=True` (set by `trading_login`). If the sequence doesn't include `trading_login`, ensure the stored `username`/`password` match what the LLM will use.
+5. **Travel tools** (book_flight, cancel_booking, get_credit_card_balance, purchase_insurance, register_credit_card, retrieve_invoice, set_budget_limit): Require a valid `access_token` (set by `authenticate_travel`). Ungated tools (get_flight_cost, get_nearest_airport_by_city, etc.) don't need auth. If the sequence includes `authenticate_travel`, ensure the stored `client_id`/`client_secret`/`refresh_token` match what the LLM will use.
+6. **Posting tools** (post_tweet, comment, follow_user, mention, retweet, unfollow_user): Require `authenticated=True` (set by `authenticate_twitter`). If the sequence includes `authenticate_twitter`, ensure the stored `username`/`password` match what the LLM will use.
+7. **Vehicle tools**: Generally stateless, but may need specific status flags.
+
+CRITICAL RULES:
+- Only ADD or MODIFY state, never REMOVE existing entries
+- Do NOT set `authenticated=True`, `current_user`, or `access_token` directly — let login tools handle that
+- Instead, update the stored credentials (`username`/`password`, `client_id`/`client_secret`/`refresh_token`) so that login calls with those credentials will succeed
+- For ticket tools: if the query mentions specific ticket titles or IDs, add matching tickets to `tickets_queue`
+- For message tools: if the query mentions specific usernames, add them to `user_map` if missing
+- Keep modifications MINIMAL — only add what's strictly necessary for the tools to succeed
+- Use the SAME ID format as existing entries (e.g., USR015 for new users, integer IDs for tickets)
+
+Respond ONLY with valid JSON in this exact format:
+{{
+  "modifications": {{
+    "class_key": {{
+      "field_path": "value_to_set"
+    }}
+  }},
+  "reasoning": "Brief explanation of what was added and why"
+}}
+
+The `modifications` dict maps class_key (e.g., "ticket_api", "message_api") to a dict of field-level changes. Each field_path can be:
+- A top-level attribute name (e.g., "username": "new_user")
+- A nested path using dot notation for dicts (e.g., "user_map.NewUser": "USR015")
+- An array append using the special key "APPEND:tickets_queue" (value is the item to append)
+- An array append multiple using "EXTEND:tickets_queue" (value is a list of items to append)
+
+If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "Current state is sufficient"}}"""
+
+        try:
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+            response_text = response.strip()
+
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0]
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0]
+
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            if start >= 0 and end > start:
+                response_text = response_text[start:end]
+
+            result = json.loads(response_text)
+            modifications = result.get("modifications", {})
+            reasoning = result.get("reasoning", "")
+
+            if not modifications:
+                print(f" No modifications needed: {reasoning}")
+                return False
+
+            print(f" Modifications requested: {json.dumps(modifications, indent=2, default=str)[:1000]}")
+            print(f" Reasoning: {reasoning}")
+
+            applied = self._apply_state_modifications(modifications)
+
+            if applied > 0:
+                print(f" ✓ Applied {applied} state modifications")
+                return True
+            else:
+                print(" No modifications could be applied")
+                return False
+
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f" ✗ Failed to parse state adjustment response: {e}")
+            return False
+        except Exception as e:
+            print(f" ✗ State adjustment error: {e}")
+            return False
+
+    def _apply_state_modifications(self, modifications: Dict[str, Any]) -> int:
+        """Apply state modifications to live Python tool instances.
+
+        Args:
+            modifications: Dict mapping class_key -> {field_path: value}
+
+        Returns:
+            Number of modifications successfully applied
+        """
+        applied = 0
+
+        for class_key, field_changes in modifications.items():
+            if class_key not in self.tool_manager.python_tool_instances:
+                print(f" ⚠ Unknown class_key: {class_key}, skipping")
+                continue
+
+            instance = self.tool_manager.python_tool_instances[class_key]
+
+            for field_path, value in field_changes.items():
+                try:
+                    if field_path.startswith("APPEND:"):
+                        list_field = field_path[len("APPEND:"):]
+                        current_list = getattr(instance, list_field, None)
+                        if isinstance(current_list, list):
+                            current_list.append(value)
+                            applied += 1
+                            print(f"   {class_key}.{list_field}: appended item")
+                        else:
+                            print(f"   ⚠ {class_key}.{list_field} is not a list, skipping append")
+                    elif field_path.startswith("EXTEND:"):
+                        list_field = field_path[len("EXTEND:"):]
+                        current_list = getattr(instance, list_field, None)
+                        if isinstance(current_list, list) and isinstance(value, list):
+                            current_list.extend(value)
+                            applied += 1
+                            print(f"   {class_key}.{list_field}: extended with {len(value)} items")
+                        else:
+                            print(f"   ⚠ {class_key}.{list_field} extend failed (not list or value not list)")
+                    elif "." in field_path:
+                        parts = field_path.split(".")
+                        obj = instance
+                        for part in parts[:-1]:
+                            if isinstance(obj, dict):
+                                obj = obj.get(part, {})
+                            else:
+                                obj = getattr(obj, part, {})
+                        last_key = parts[-1]
+                        if isinstance(obj, dict):
+                            obj[last_key] = value
+                            applied += 1
+                            print(f"   {class_key}.{field_path}: set to {json.dumps(value, default=str)[:100]}")
+                        else:
+                            print(f"   ⚠ {class_key}.{field_path}: parent is not a dict, skipping")
+                    else:
+                        setattr(instance, field_path, value)
+                        applied += 1
+                        print(f"   {class_key}.{field_path}: set to {json.dumps(value, default=str)[:100]}")
+                except Exception as e:
+                    print(f"   ⚠ Failed to apply {class_key}.{field_path}: {e}")
+
+        return applied
 
     def _generate_tool_arguments(self, tool_name: str, query: str, trajectory: List[TrajectoryStep],
                                  execution_context: Dict[str, Any],
@@ -756,9 +968,10 @@ Generate arguments for '{tool_name}' that:
 1. Match the schema above
 2. Fulfill the user query
 3. Use values from the CURRENT API STATE or Execution Context when available (e.g., real user_id from user_map, ticket_id from ticket_queue, access_token from state)
-4. Do NOT invent or guess IDs, usernames, or tokens — use the real values from the API state
-5. Are specific and realistic
-6. Will produce an output that matches the Expected Output type and description above
+4. For LOGIN/AUTH tools: use the stored credentials from the API state (e.g., username/password fields, client_id/client_secret/refresh_token). These are the ONLY valid credentials — the API validates against them.
+5. Do NOT invent or guess IDs, usernames, or tokens — use the real values from the API state
+6. Are specific and realistic
+7. Will produce an output that matches the Expected Output type and description above
 
 Respond with JSON containing only the arguments:
 {{

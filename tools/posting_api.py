@@ -29,10 +29,10 @@ class PostingAPI:
         """Authenticate a user with username and password."""
         if not username or not password:
             return {"authentication_status": False}
-        self.authenticated = True
-        self.username = username
-        self.password = password
-        return {"authentication_status": True}
+        if username == self.username and password == self.password:
+            self.authenticated = True
+            return {"authentication_status": True}
+        return {"authentication_status": False}
 
     def comment(self, tweet_id: int, comment_content: str) -> dict:
         """Comment on a tweet for the authenticated user."""

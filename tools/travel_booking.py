@@ -22,6 +22,9 @@ class TravelBooking:
         self.user_first_name: str = initial_config.get("user_first_name", "")
         self.user_last_name: str = initial_config.get("user_last_name", "")
         self.budget_limit: float = initial_config.get("budget_limit", 0.0)
+        self.client_id: str = initial_config.get("client_id", "")
+        self.client_secret: str = initial_config.get("client_secret", "")
+        self.refresh_token: str = initial_config.get("refresh_token", "")
 
     def authenticate_travel(
         self,
@@ -35,6 +38,16 @@ class TravelBooking:
         """Authenticate the user with the travel API."""
         valid_grant_types = ["read_write", "read", "write"]
         if grant_type not in valid_grant_types:
+            return {
+                "expires_in": 0,
+                "access_token": "",
+                "token_type": "",
+                "scope": "",
+            }
+
+        if (client_id != self.client_id or
+            client_secret != self.client_secret or
+            refresh_token != self.refresh_token):
             return {
                 "expires_in": 0,
                 "access_token": "",

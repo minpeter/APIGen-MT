@@ -30,6 +30,9 @@ class TicketAPI:
         
         # Normalize current user
         self.current_user: str = initial_config.get("current_user", "")
+        self.authenticated: bool = initial_config.get("authenticated", False)
+        self.username: str = initial_config.get("username", "")
+        self.password: str = initial_config.get("password", "")
         
         # Normalize current ticket id
         self.current_ticket_id: Optional[int] = initial_config.get("current_ticket_id", None)
@@ -42,13 +45,15 @@ class TicketAPI:
 
     def close_ticket(self, ticket_id: int) -> Dict[str, Any]:
         """Close a ticket.
-        
+
         Args:
             ticket_id: ID of the ticket to be closed.
-            
+
         Returns:
             A dict containing the status of the close operation.
         """
+        if not self.authenticated:
+            return {"status": "User not authenticated"}
         for ticket in self.ticket_queue:
             if ticket.get("id") == ticket_id:
                 ticket["status"] = "Closed"
@@ -57,15 +62,17 @@ class TicketAPI:
 
     def create_ticket(self, title: str, description: str = '', priority: int = 1) -> Dict[str, Any]:
         """Create a ticket in the system and queue it.
-        
+
         Args:
             title: Title of the ticket.
             description: Description of the ticket. Defaults to an empty string.
             priority: Priority of the ticket, from 1 to 5. Defaults to 1.
-            
+
         Returns:
             A dict containing the details of the created ticket.
         """
+        if not self.authenticated:
+            return {"id": 0, "title": "", "description": "", "status": "User not authenticated", "priority": 0}
         self.ticket_counter += 1
         new_ticket_id = self.ticket_counter
         
@@ -96,14 +103,16 @@ class TicketAPI:
 
     def edit_ticket(self, ticket_id: int, updates: dict) -> Dict[str, Any]:
         """Modify the details of an existing ticket.
-        
+
         Args:
             ticket_id: ID of the ticket to be changed.
             updates: Dictionary containing the fields to be updated.
-            
+
         Returns:
             A dict containing the status of the update operation.
         """
+        if not self.authenticated:
+            return {"status": "User not authenticated"}
         for ticket in self.ticket_queue:
             if ticket.get("id") == ticket_id:
                 for key, value in updates.items():
@@ -183,14 +192,16 @@ class TicketAPI:
 
     def resolve_ticket(self, ticket_id: int, resolution: str) -> Dict[str, Any]:
         """Resolve a ticket with a resolution.
-        
+
         Args:
             ticket_id: ID of the ticket to be resolved.
             resolution: Resolution details for the ticket.
-            
+
         Returns:
             A dict containing the status of the resolve operation.
         """
+        if not self.authenticated:
+            return {"status": "User not authenticated"}
         for ticket in self.ticket_queue:
             if ticket.get("id") == ticket_id:
                 ticket["status"] = "Resolved"
@@ -200,16 +211,18 @@ class TicketAPI:
 
     def ticket_login(self, username: str, password: str) -> Dict[str, Any]:
         """Authenticate a user for ticket system.
-        
+
         Args:
             username: Username of the user.
             password: Password of the user.
-            
+
         Returns:
             A dict indicating whether the login was successful.
         """
-        # Basic authentication simulation
-        if username and password:
+        if not username or not password:
+            return {"success": False}
+        if username == self.username and password == self.password:
+            self.authenticated = True
             self.current_user = username
             return {"success": True}
         return {"success": False}

@@ -83,8 +83,8 @@ def parse_args():
     parser.add_argument(
         '--model', '-m',
         type=str,
-        default='deepseek-v4-flash-free',
-        help='Model to use for generation (default: deepseek-v4-flash-free)'
+        default='z-ai/glm-5.1',
+        help='Model to use for generation (default: z-ai/glm-5.1)'
     )
 
     return parser.parse_args()

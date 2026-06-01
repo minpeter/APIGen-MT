@@ -414,7 +414,7 @@ class LocalOpenAILLMClient(LLMClient):
             **kwargs,
         }
 
-        max_retries = 999999
+        max_retries = 3
         base_delay = 2
         request_timeout = kwargs.get("timeout", 300)
         rate_limit_retry_count = 0
@@ -434,10 +434,10 @@ class LocalOpenAILLMClient(LLMClient):
                 response_obj = response.json()
 
                 if "choices" not in response_obj:
-                    # Rate limiting (429) — retry infinitely with exponential backoff + jitter
+                    # Rate limiting (429) — retry with exponential backoff + jitter, then constant at 60s
                     if response.status_code == 429:
                         rate_limit_retry_count += 1
-                        delay = min(base_delay * (2 ** min(rate_limit_retry_count, 10)), 300)
+                        delay = min(base_delay * (2 ** min(rate_limit_retry_count, 6)), 60)
                         jitter = _rng.uniform(0, 1.0) * min(delay, 5)
                         delay += jitter
                         print(f"[LLMClient] Rate limited (429), retrying in {delay:.1f}s... (rate limit retry #{rate_limit_retry_count})")
@@ -446,7 +446,9 @@ class LocalOpenAILLMClient(LLMClient):
                     # Server errors (5xx) — retry with backoff
                     if response.status_code >= 500:
                         server_error_retry_count += 1
-                        delay = min(base_delay * (2 ** min(server_error_retry_count, 8)), 120)
+                        if server_error_retry_count > 10:
+                            raise RuntimeError(f"Server error persisted after {server_error_retry_count} retries")
+                        delay = min(base_delay * (2 ** min(server_error_retry_count, 6)), 60)
                         jitter = _rng.uniform(0, 1.0) * min(delay, 3)
                         delay += jitter
                         print(f"[LLMClient] Server error {response.status_code}, retrying in {delay:.1f}s... (server error retry #{server_error_retry_count})")
