@@ -249,15 +249,15 @@ class GorillaFileSystem:
         """Create a new directory in the current directory."""
         current_node = self._get_current_directory_node()
         if current_node is None:
-            return {}
+            return {"result": "Error: Current directory does not exist."}
         if dir_name in current_node:
-            return {}
+            return {"result": f"Error: Directory '{dir_name}' already exists."}
         
         current_node[dir_name] = {
             "type": "directory",
             "contents": {}
         }
-        return {}
+        return {"result": f"Directory '{dir_name}' created successfully."}
 
     def mv(self, source: str, destination: str) -> Dict[str, Any]:
         """Move a file or directory from one location to another."""
@@ -340,15 +340,15 @@ class GorillaFileSystem:
         """Create a new file of any extension in the current directory."""
         current_node = self._get_current_directory_node()
         if current_node is None:
-            return {}
+            return {"result": "Error: Current directory does not exist."}
         if file_name in current_node:
-            return {}
+            return {"result": f"Error: File '{file_name}' already exists."}
         
         current_node[file_name] = {
             "type": "file",
             "content": ""
         }
-        return {}
+        return {"result": f"File '{file_name}' created successfully."}
 
     def wc(self, file_name: str, mode: str = "l") -> Dict[str, Any]:
         """Count the number of lines, words, and characters in a file of any extension from current directory."""

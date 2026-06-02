@@ -691,18 +691,8 @@ Respond ONLY with valid JSON:
                 accumulated_feedback += f"\n{generated_summary}\nFAILURE: Tools not found: {invalid_tools}.\n--- END ATTEMPT {attempt + 1} ---"
                 continue
 
-        # Validate tool sequence using LLM (skip for large action counts - too strict)
-            if self.num_actions <= 5:
-                is_valid, validation_msg = self.validate_expected_tools(
-                    query_result.query, query_result.expected_tools, query_result.intent
-                )
-
-                if not is_valid:
-                    print(f" ✗ Tool sequence validation failed: {validation_msg}")
-                    accumulated_feedback += f"\n{generated_summary}\nFAILURE: Tool sequence validation - {validation_msg}.\n--- END ATTEMPT {attempt + 1} ---"
-                    continue
-            else:
-                print(f" Skipping LLM sequence validation (num_actions={self.num_actions})")
+            # Tool sequence validation already done inside generate_user_query
+            # (which retries internally with feedback on failure)
 
             # SUCCESS: Query is valid - wipe feedback and return
             print(" ✓ Query verification passed")
