@@ -121,19 +121,13 @@ class MultiTurnGenerator(StepByStepGenerator):
         self._update_token_usage()
         print(f" Overall task: {blueprint.overall_task}")
         for i, t in enumerate(blueprint.turns, 1):
-            print(f"   Turn {i}: {t.get('goal', '')}")
+            uq = t.get('user_query', '')
+            print(f"   Turn {i}: {uq[:80]}...")
 
         conversation = MultiTurnConversation(overall_task=blueprint.overall_task)
         execution_context: Dict[str, Any] = {}
         tools_used = set()
         categories_used = set()
-
-        turn_tool_names: List[str] = []
-        for t in blueprint.turns:
-            for tn in t.get("expected_tools", []):
-                turn_tool_names.append(tn)
-
-        tools_by_turn = self._assign_tools_to_turns(blueprint, turn_tool_names)
 
         for turn_idx in range(blueprint.num_turns):
             print(f"\n{'=' * 70}")
@@ -141,16 +135,12 @@ class MultiTurnGenerator(StepByStepGenerator):
             print("=" * 70)
 
             turn_spec = blueprint.turns[turn_idx] if turn_idx < len(blueprint.turns) else {}
-            turn_goal = turn_spec.get("goal", "")
-            turn_expected_tools = tools_by_turn.get(turn_idx, [])
 
             # Stage 1: Generate user query for this turn
             query_result = self._generate_turn_query(
                 blueprint=blueprint,
                 conversation=conversation,
                 turn_index=turn_idx,
-                focus_category=focus_category,
-                max_retries=5,
             )
             if query_result is None:
                 print(f"✗ Turn {turn_idx + 1} failed: Could not generate query")
@@ -218,7 +208,7 @@ class MultiTurnGenerator(StepByStepGenerator):
                 "actions_per_turn": self.num_actions,
                 "focus_category": focus_category,
                 "overall_task": blueprint.overall_task,
-                "turn_goals": [t.get("goal", "") for t in blueprint.turns],
+                "blueprint_queries": [t.get("user_query", "") for t in blueprint.turns],
                 "turn_expected_tools": [t.get("expected_tools", []) for t in blueprint.turns],
             },
             token_usage=self._get_token_stats(),
@@ -239,31 +229,45 @@ class MultiTurnGenerator(StepByStepGenerator):
     def _stage0_generate_blueprint(
             self, focus_category: Optional[str] = None
     ) -> Optional[DialogBlueprint]:
-        """Generate a dialog blueprint describing the overall multi-turn conversation."""
+        """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
         tools_str = self._get_tools_with_descriptions_str(category=focus_category)
 
-        prompt = f"""You are designing a multi-turn conversation for testing a tool-calling system.
+        prompt = f"""You are designing a multi-turn user-agent conversation for testing a tool-calling system.
 
-The conversation will have EXACTLY {self.num_turns} turns. In each turn, the user will ask for something that requires EXACTLY {self.num_actions} tool calls to fulfill.
+The conversation has EXACTLY {self.num_turns} turns. Each turn works like this:
+  1. The USER says something (a natural request mentioning concrete entities)
+  2. The AGENT calls EXACTLY {self.num_actions} tools to fulfill that request
+  3. The AGENT responds to the user with a summary of what was done
+
+The conversation should feel like a REAL user chatting with a support agent across multiple steps.
 
 === AVAILABLE TOOLS ===
 {tools_str}
 
 === REQUIREMENTS ===
-1. The overall conversation should feel natural and multi-step — each turn builds on the previous one
-2. Each turn must require EXACTLY {self.num_actions} tools (from the available tools list)
-3. The tools across all turns should be diverse and realistic
-4. Each turn should mention concrete entities (user IDs, ticket IDs, stock symbols, dates, etc.)
-5. AUTH REQUIREMENT: If a turn uses an auth-gated tool (place_order, post_tweet, send_message, close_ticket, book_flight, etc.), it MUST include the corresponding login tool (trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) in that same turn's expected_tools
-6. Tools can be reused across turns but the overall task should progress logically
+1. Each turn's user_query must include SPECIFIC concrete entities: usernames, passwords, user IDs, ticket IDs, stock symbols, dates, prices, amounts, etc.
+2. Each turn's user_query must require EXACTLY {self.num_actions} tools to fulfill
+3. The conversation should flow naturally — each turn builds on the previous one's results
+4. AUTH: For the FIRST turn that uses an auth-gated tool (place_order, post_tweet, send_message, close_ticket, book_flight, etc.), the user MUST include the login tool (trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) in expected_tools. Later turns can skip the login tool because auth persists.
+5. Use STORED credentials from the API state: trader_admin/TradeAdmin2024! for trading, tech_user/TechUser2024! for posting, support_agent/SupportAgent2024! for tickets, travel_client_001/s3cretK3y!/refresh_abc123 for travel, valid user IDs (USR005-USR014) for messaging.
+
+=== EXAMPLES OF GOOD TURN QUERIES ===
+- "Log me into the trading platform as trader_admin with password TradeAdmin2024! and then place a buy order for 100 shares of MSFT at market price."
+- "Now check my transaction history and add NVDA to my watchlist."
+- "Show me the info for AAPL stock and filter stocks in the Technology sector."
+- "Log into the ticket system as support_agent with password SupportAgent2024! and create a ticket titled 'Network outage' with critical priority."
+- "Resolve ticket #123456 with resolution 'Rebooted the server' and close it."
+- "Authenticate me on Twitter as tech_user with password TechUser2024! and post a tweet saying 'Great day for AI!'"
+- "Get the user ID for Sarah and send her a message saying 'Meeting at 2pm'."
+- "Find the nearest airport to Miami and then get the flight cost from there to New York in economy class."
 
 === OUTPUT FORMAT ===
-Respond ONLY with valid JSON:
+Respond ONLY with valid JSON. Each turn must have a SPECIFIC user_query with concrete entities:
 {{
-  "overall_task": "Brief description of the overall conversation scenario",
+  "overall_task": "Specific description of the full conversation scenario with concrete entities",
   "turns": [
     {{
-      "goal": "What this turn accomplishes",
+      "user_query": "The exact user request for this turn — MUST include concrete names, IDs, passwords, numbers",
       "expected_tools": ["tool1", "tool2"]
     }},
     ...
@@ -271,96 +275,9 @@ Respond ONLY with valid JSON:
 }}"""
 
         if focus_category:
-            prompt += f"\n\nFocus on the '{focus_category}' category for tool selection."
+            prompt += f"\n\nFocus primarily on the '{focus_category}' category for tool selection, but you can use tools from other categories if they fit the conversation."
 
-        try:
-            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
-            response_text = response.strip()
-
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0]
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0]
-            start = response_text.find("{")
-            end = response_text.rfind("}") + 1
-            if start >= 0 and end > start:
-                response_text = response_text[start:end]
-
-            result = json.loads(response_text)
-            turns = result.get("turns", [])
-            if not turns or len(turns) != self.num_turns:
-                print(f"  ✗ Expected {self.num_turns} turns, got {len(turns)}")
-                return None
-
-            all_tools_valid = all(
-                self.tool_manager.tool_exists(t)
-                for t_dict in turns
-                for t in t_dict.get("expected_tools", [])
-            )
-            if not all_tools_valid:
-                print("  ✗ Some expected_tools are invalid")
-                return None
-
-            return DialogBlueprint(
-                overall_task=result.get("overall_task", ""),
-                num_turns=self.num_turns,
-                turns=turns,
-            )
-        except (json.JSONDecodeError, ValueError, KeyError) as e:
-            print(f"  ✗ Failed to parse blueprint: {e}")
-            return None
-
-    # ─────────────────────── Turn query generation ───────────────────────
-
-    def _generate_turn_query(
-            self,
-            blueprint: DialogBlueprint,
-            conversation: MultiTurnConversation,
-            turn_index: int,
-            focus_category: Optional[str] = None,
-            max_retries: int = 3,
-    ) -> Optional[QueryGenerationResult]:
-        """Generate a user query for a specific turn based on dialog history."""
-
-        turn_spec = blueprint.turns[turn_index] if turn_index < len(blueprint.turns) else {}
-
-        history_str = self._format_conversation_history(conversation)
-
-        tools_str = self._get_tools_with_descriptions_str(category=focus_category)
-
-        prompt = f"""You are playing the role of a user in a multi-turn conversation with an AI assistant that can call tools.
-
-=== CONVERSATION BLUEPRINT ===
-Overall task: {blueprint.overall_task}
-
-Your current turn (#{turn_index + 1} of {self.num_turns}):
-Goal: {turn_spec.get('goal', '')}
-
-=== PREVIOUS CONVERSATION HISTORY ===
-{history_str if history_str else 'This is the first turn — no history yet.'}
-
-=== AVAILABLE TOOLS ===
-{tools_str}
-
-=== YOUR TASK ===
-Generate a natural, realistic user query for this turn that:
-1. Fits the conversation blueprint goal for turn #{turn_index + 1}
-2. References relevant information from previous turns (if any)
-3. Mentions concrete entities (names, IDs, dates, etc.)
-4. Requires EXACTLY {self.num_actions} tool calls to fulfill
-5. If auth-gated tools are needed, include the login tool in the expected_tools list
-
-Respond ONLY with valid JSON:
-{{
-  "query": "The user's request for this turn — be specific",
-  "intent": "Brief description of what the user wants",
-  "expected_tools": ["tool1", "tool2", ...]
-}}"""
-
-        if focus_category:
-            prompt += f"\n\nFocus on the '{focus_category}' category for tool selection."
-
-        for attempt in range(max_retries):
+        for attempt in range(3):
             try:
                 response = self._safe_llm_generate([{"role": "user", "content": prompt}])
                 response_text = response.strip()
@@ -375,30 +292,64 @@ Respond ONLY with valid JSON:
                     response_text = response_text[start:end]
 
                 result = json.loads(response_text)
-                query = result.get("query", "")
-                intent = result.get("intent", "")
-                expected_tools = result.get("expected_tools", [])
-
-                if not query or len(expected_tools) != self.num_actions:
-                    print(f"  ✗ Attempt {attempt + 1}: Invalid query/tools count")
+                turns = result.get("turns", [])
+                if not turns or len(turns) != self.num_turns:
+                    print(f"  ✗ Expected {self.num_turns} turns, got {len(turns)}")
                     continue
 
-                invalid = [t for t in expected_tools if not self.tool_manager.tool_exists(t)]
-                if invalid:
-                    print(f"  ✗ Attempt {attempt + 1}: Invalid tools: {invalid}")
+                all_tools_valid = all(
+                    self.tool_manager.tool_exists(t)
+                    for t_dict in turns
+                    for t in t_dict.get("expected_tools", [])
+                )
+                if not all_tools_valid:
+                    print("  ✗ Some expected_tools are invalid")
                     continue
 
-                print(f"  ✓ Generated query for turn {turn_index + 1}")
-                print(f"   Query: {query[:80]}...")
-                print(f"   Tools: {expected_tools}")
-                return QueryGenerationResult(query=query, intent=intent, expected_tools=expected_tools)
-
-            except (json.JSONDecodeError, ValueError) as e:
-                print(f"  ✗ Attempt {attempt + 1}: Parse error: {e}")
+                print(f" ✓ Blueprint generated: {result.get('overall_task', '')[:100]}")
+                return DialogBlueprint(
+                    overall_task=result.get("overall_task", ""),
+                    num_turns=self.num_turns,
+                    turns=turns,
+                )
+            except (json.JSONDecodeError, ValueError, KeyError) as e:
+                print(f"  ✗ Attempt {attempt + 1}: {e}")
                 continue
 
-        print(f"  ✗ Failed to generate valid query after {max_retries} attempts")
+        print("  ✗ Failed to generate valid blueprint after 3 attempts")
         return None
+
+    # ─────────────────────── Turn query generation ───────────────────────
+
+    def _generate_turn_query(
+            self,
+            blueprint: DialogBlueprint,
+            conversation: MultiTurnConversation,
+            turn_index: int,
+    ) -> Optional[QueryGenerationResult]:
+        """Use the blueprint's pre-written user query for this turn.
+
+        The blueprint already includes a specific user_query for each turn
+        with concrete entities (names, IDs, credentials). This avoids the
+        inconsistency and extra LLM cost of per-turn query generation.
+        """
+        turn_spec = blueprint.turns[turn_index] if turn_index < len(blueprint.turns) else {}
+        user_query = turn_spec.get("user_query", "")
+        expected_tools = turn_spec.get("expected_tools", [])
+
+        if not user_query or len(expected_tools) != self.num_actions:
+            print(f"  ✗ Turn {turn_index + 1}: Blueprint has invalid query ({len(expected_tools)} tools, need {self.num_actions})")
+            return None
+
+        invalid = [t for t in expected_tools if not self.tool_manager.tool_exists(t)]
+        if invalid:
+            print(f"  ✗ Turn {turn_index + 1}: Invalid tools in blueprint: {invalid}")
+            return None
+
+        print(f"  ✓ Using blueprint query for turn {turn_index + 1}")
+        print(f"   Query: {user_query[:80]}...")
+        print(f"   Tools: {expected_tools}")
+        return QueryGenerationResult(query=user_query, intent="", expected_tools=expected_tools)
 
     # ─────────────────────── Helpers ───────────────────────
 
