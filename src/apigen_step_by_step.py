@@ -116,6 +116,8 @@ class StepByStepGenerator:
                 result = self.llm.generate(messages, **kwargs)
                 if result is None:
                     raise ValueError("LLM returned None")
+                if not result.strip():
+                    raise ValueError("LLM returned empty response")
                 return result
             except (requests.exceptions.Timeout,
                     requests.exceptions.ConnectionError,
@@ -882,14 +884,34 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
                         obj = instance
                         for part in parts[:-1]:
                             if isinstance(obj, dict):
-                                obj = obj.get(part, {})
+                                if part not in obj:
+                                    obj[part] = {}
+                                obj = obj[part]
                             else:
+                                nested = getattr(obj, part, {})
+                                if isinstance(nested, dict) and part not in (getattr(type(obj), '__dict__', {}).keys() if hasattr(obj, '__dict__') else {}):
+                                    try:
+                                        setattr(obj, part, {})
+                                    except (AttributeError, TypeError):
+                                        pass
                                 obj = getattr(obj, part, {})
                         last_key = parts[-1]
                         if isinstance(obj, dict):
-                            obj[last_key] = value
-                            applied += 1
-                            print(f"   {class_key}.{field_path}: set to {json.dumps(value, default=str)[:100]}")
+                            if isinstance(value, str) and value.startswith("APPEND:"):
+                                append_val = value[len("APPEND:"):]
+                                existing = obj.get(last_key)
+                                if isinstance(existing, list):
+                                    existing.append(append_val)
+                                    applied += 1
+                                    print(f"   {class_key}.{field_path}: appended '{append_val}' to existing list")
+                                else:
+                                    obj[last_key] = [append_val]
+                                    applied += 1
+                                    print(f"   {class_key}.{field_path}: created list with '{append_val}'")
+                            else:
+                                obj[last_key] = value
+                                applied += 1
+                                print(f"   {class_key}.{field_path}: set to {json.dumps(value, default=str)[:100]}")
                         else:
                             print(f"   ⚠ {class_key}.{field_path}: parent is not a dict, skipping")
                     else:

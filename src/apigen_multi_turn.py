@@ -150,7 +150,7 @@ class MultiTurnGenerator(StepByStepGenerator):
                 conversation=conversation,
                 turn_index=turn_idx,
                 focus_category=focus_category,
-                max_retries=query_retries,
+                max_retries=5,
             )
             if query_result is None:
                 print(f"✗ Turn {turn_idx + 1} failed: Could not generate query")
