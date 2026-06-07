@@ -455,6 +455,26 @@ class LocalOpenAILLMClient(LLMClient):
                         time.sleep(delay)
                         continue
                     raise RuntimeError(f"Unexpected response from API: {response_obj}")
+
+                response_text = response_obj["choices"][0]["message"]["content"]
+
+                # Handle None or empty response (API may return null content)
+                if response_text is None:
+                    response_text = ""
+
+                # Retry empty responses — reasoning models occasionally return blank content
+                if not response_text.strip():
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** min(attempt, 6))
+                        jitter = _rng.uniform(0, 1.0) * min(delay, 3)
+                        delay += jitter
+                        print(f"[LLMClient] Empty response (attempt {attempt + 1}), retrying in {delay:.1f}s...")
+                        time.sleep(delay)
+                        attempt += 1
+                        continue
+                    else:
+                        print(f"[LLMClient] Empty response after {attempt + 1} attempts, proceeding with empty string")
+
                 break
             except (requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as e:
                 if attempt < max_retries - 1:
