@@ -771,7 +771,7 @@ Analyze each tool in the expected sequence and determine what state modification
    - `authenticate_travel(client_id, client_secret, refresh_token, ...)`: Validates against `travel_booking.client_id` / `travel_booking.client_secret` / `travel_booking.refresh_token`
    - `message_login(user_id)`: Only validates that the user_id exists in `user_map` values — no password check, no username/password fields needed
 4. **Trading tools** (place_order, cancel_order, fund_account, make_transaction, add_to_watchlist, remove_stock_from_watchlist, update_market_status, update_stock_price): Require `authenticated=True` (set by `trading_login`). If the sequence doesn't include `trading_login`, ensure the stored `username`/`password` match what the LLM will use.
-5. **Travel tools** (book_flight, cancel_booking, get_credit_card_balance, purchase_insurance, register_credit_card, retrieve_invoice, set_budget_limit): Require a valid `access_token` (set by `authenticate_travel`). Ungated tools (get_flight_cost, get_nearest_airport_by_city, etc.) don't need auth. If the sequence includes `authenticate_travel`, ensure the stored `client_id`/`client_secret`/`refresh_token` match what the LLM will use.
+5. **Travel tools** (book_flight, cancel_booking, get_credit_card_balance, purchase_insurance, register_credit_card, retrieve_invoice, set_budget_limit): Require a valid `access_token` (set by `authenticate_travel`). Ungated tools (get_flight_cost, get_nearest_airport_by_city, etc.) don't need auth. If the sequence includes `authenticate_travel`, ensure the stored `client_id`/`client_secret`/`refresh_token` match what the LLM will use. IMPORTANT: When using `register_credit_card`, the returned `card_id` has format `card_{last4digits}` (e.g., card_1234 for card number ending in 1234). Use this exact format when passing `card_id` to subsequent tools like `book_flight` or `purchase_insurance`.
 6. **Posting tools** (post_tweet, comment, follow_user, mention, retweet, unfollow_user): Require `authenticated=True` (set by `authenticate_twitter`). If the sequence includes `authenticate_twitter`, ensure the stored `username`/`password` match what the LLM will use.
 7. **Vehicle tools**: Generally stateless, but may need specific status flags.
 
@@ -780,7 +780,9 @@ CRITICAL RULES:
 - Do NOT set `authenticated=True`, `current_user`, or `access_token` directly — let login tools handle that
 - Instead, update the stored credentials (`username`/`password`, `client_id`/`client_secret`/`refresh_token`) so that login calls with those credentials will succeed
 - For ticket tools: if the query mentions specific ticket titles or IDs (e.g., "ticket ID 8392"), you MUST add those tickets with their exact IDs to `tickets_queue`. Use format: `{{"modifications": {{"ticket_api": {{"APPEND:tickets_queue": {{"id": 8392, "title": "...", "status": "Open", "priority": 3, "created_by": "support_agent"}}}}}}}}`
-- For message tools: if the query mentions specific usernames, add them to `user_map` if missing
+- For message tools: if the query mentions specific usernames, add them to `user_map` if missing. IMPORTANT: `add_contact` will fail if user already exists in `user_map`. Before adding, check if user already exists by looking at `user_map` values.
+- For posting tools: `follow_user` will fail if user is already in `following_list`. Before following, check if already following.
+- For travel tools: After `register_credit_card`, use the returned `card_id` (format: `card_XXXX`) in subsequent calls. Do NOT use raw card numbers.
 - Keep modifications MINIMAL — only add what's strictly necessary for the tools to succeed
 - Use the SAME ID format as existing entries (e.g., USR015 for new users, integer IDs for tickets)
 
