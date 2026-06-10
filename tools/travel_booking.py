@@ -281,8 +281,70 @@ class TravelBooking:
             "Hong Kong": "HKG",
             "Rome": "FCO",
             "Tokyo": "NRT",
+            "Seattle": "SEA",
+            "Miami": "MIA",
+            "Dallas": "DFW",
+            "Atlanta": "ATL",
+            "Denver": "DEN",
+            "Phoenix": "PHX",
+            "Las Vegas": "LAS",
+            "Orlando": "MCO",
+            "Honolulu": "HNL",
+            "Washington D.C.": "DCA",
+            "Dubai": "DXB",
+            "Singapore": "SIN",
+            "Sydney": "SYD",
+            "Mumbai": "BOM",
+            "Shanghai": "PVG",
+            "Toronto": "YYZ",
+            "Vancouver": "YVR",
+            "Mexico City": "MEX",
+            "Sao Paulo": "GRU",
+            "Amsterdam": "AMS",
+            "Madrid": "MAD",
+            "Munich": "MUC",
+            "Zurich": "ZRH",
+            "Barcelona": "BCN",
+            "Milan": "MXP",
+            "Istanbul": "IST",
+            "Bangkok": "BKK",
+            "Jakarta": "CGK",
+            "Kuala Lumpur": "KUL",
+            "Manila": "MNL",
+            "Seoul": "ICN",
+            "Taipei": "TPE",
+            "Frankfurt": "FRA",
+            "Brussels": "BRU",
+            "Vienna": "VIE",
+            "Prague": "PRG",
+            "Stockholm": "ARN",
+            "Copenhagen": "CPH",
+            "Oslo": "OSL",
+            "Helsinki": "HEL",
+            "Warsaw": "WAW",
+            "Lisbon": "LIS",
+            "Dublin": "DUB",
+            "Athens": "ATH",
+            "Moscow": "SVO",
+            "San Diego": "SAN",
+            "Portland": "PDX",
+            "Austin": "AUS",
+            "Nashville": "BNA",
+            "San Jose": "SJC",
+            "Tampa": "TPA",
+            "Raleigh": "RDU",
+            "Detroit": "DTW",
+            "Charlotte": "CLT",
+            "Minneapolis": "MSP",
+            "Philadelphia": "PHL",
+            "Baltimore": "BWI",
+            "Newark": "EWR",
+            "Fort Lauderdale": "FLL",
+            "Pittsburgh": "PIT",
         }
         nearest_airport = city_to_airport.get(location, "")
+        if not nearest_airport and location:
+            nearest_airport = location.upper()[:3]
         return {"nearest_airport": nearest_airport}
 
     def purchase_insurance(
@@ -325,13 +387,13 @@ class TravelBooking:
         if access_token != self.access_token:
             return {"card_id": ""}
 
-        card_id = str(len(self.credit_card_list) + 1)
+        card_id = f"card_{card_number[-4:]}"
         self.credit_card_list[card_id] = {
             "card_number": card_number,
             "expiration_date": expiration_date,
             "cardholder_name": cardholder_name,
             "card_verification_number": card_verification_number,
-            "balance": 0.0,
+            "balance": 10000.0,
         }
 
         return {"card_id": card_id}

@@ -2,18 +2,22 @@
 """
 Generate datapoints using step-by-step blueprint generation.
 
-This script generates datapoints where each step is generated sequentially
-with immediate tool execution simulation, resulting in a complete
-conversation trajectory.
+Supports two modes:
+  - multi-turn (default): Each user turn is a separate exchange with its own query.
+    Use --num-turns to control total turns and --num-actions for tools per turn.
+  - step-by-step (legacy): Single user query with multiple action steps.
 
 Usage:
     python generate_step_by_step.py [OPTIONS]
 
 Options:
-    --num-datapoints N    Number of datapoints to generate (default: 100)
-    --num-actions N       Number of actions/steps per datapoint (default: 2)
-    --output FILE         Output file path (default: step_by_step_datapoints.jsonl)
-    --debug               Enable debug output
+    --mode MODE             Generation mode: multi-turn (default) or step-by-step
+    --num-datapoints N      Number of datapoints to generate (default: 100)
+    --num-turns N            Number of user-assistant turns for multi-turn (default: 10)
+    --num-actions N         Actions per turn (default: 1)
+    --output FILE           Output file path (default: step_by_step_datapoints.jsonl)
+    --category CATEGORY     Filter tools to a specific category
+    --model MODEL           Model name (default: minimaxai/minimax-m2.7)
 """
 
 import json
@@ -25,7 +29,6 @@ from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Force unbuffered output for nohup
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
@@ -37,6 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from llm_client import LocalOpenAILLMClient
 from tool_manager import ToolManager
 from apigen_step_by_step import StepByStepGenerator, StepByStepDatapoint
+from apigen_multi_turn import MultiTurnGenerator, MultiTurnDatapoint
 
 
 def parse_args():
@@ -44,28 +48,43 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Generate datapoints using step-by-step blueprint generation.'
     )
-    
+
+    parser.add_argument(
+        '--mode',
+        type=str,
+        default='multi-turn',
+        choices=['multi-turn', 'step-by-step'],
+        help='Generation mode: multi-turn (default) or step-by-step (legacy)'
+    )
+
     parser.add_argument(
         '--num-datapoints', '-n',
         type=int,
         default=100,
         help='Number of datapoints to generate (default: 100)'
     )
-    
+
+    parser.add_argument(
+        '--num-turns', '-t',
+        type=int,
+        default=10,
+        help='Number of user-assistant turns for multi-turn mode (default: 10)'
+    )
+
     parser.add_argument(
         '--num-actions', '-a',
         type=int,
-        default=2,
-        help='Number of actions/steps per datapoint (default: 2)'
+        default=1,
+        help='Number of actions per turn (default: 1)'
     )
-    
+
     parser.add_argument(
         '--output', '-o',
         type=str,
         default='step_by_step_datapoints.jsonl',
         help='Output file path (default: step_by_step_datapoints.jsonl)'
     )
-    
+
     parser.add_argument(
         '--tool-pool',
         type=str,
@@ -79,12 +98,19 @@ def parse_args():
         default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
         help='Path to invocation examples file (for Python tool implementations)'
     )
-    
+
+    parser.add_argument(
+        '--category',
+        type=str,
+        default=None,
+        help='Filter tools to a specific category'
+    )
+
     parser.add_argument(
         '--model', '-m',
         type=str,
-        default='z-ai/glm-5.1',
-        help='Model to use for generation (default: z-ai/glm-5.1)'
+        default='minimaxai/minimax-m2.7',
+        help='Model to use for generation (default: minimaxai/minimax-m2.7)'
     )
 
     return parser.parse_args()
@@ -93,82 +119,31 @@ def parse_args():
 def load_tool_categories(tool_pool_path: str) -> dict:
     """Load tools and group them by category."""
     tools_by_category = {}
-    
+
     with open(tool_pool_path, 'r', encoding='utf-8') as f:
         for line in f:
             try:
                 tool = json.loads(line.strip())
                 category = tool.get('category', 'Unknown')
-                
+
                 if category not in tools_by_category:
                     tools_by_category[category] = []
                 tools_by_category[category].append(tool)
             except json.JSONDecodeError:
                 continue
-    
+
     return tools_by_category
 
 
-def main():
-    args = parse_args()
-    
-    print("=" * 70)
-    print("STEP-BY-STEP DATAPOINT GENERATION")
-    print("=" * 70)
-    print(f"Target: {args.num_datapoints} datapoints")
-    print(f"Actions per datapoint: {args.num_actions}")
-    print(f"Output: {args.output}")
-    print(f"Model: {args.model}")
-    print("=" * 70)
-    
-    # Configuration
-    api_key = os.getenv("OPENAI_API_KEY")
-    api_base = os.getenv("OPENAI_API_BASE")
-    
-    if not api_key or not api_base:
-        print("ERROR: OPENAI_API_KEY or OPENAI_API_BASE not set")
-        sys.exit(1)
-    
-    # Initialize LLM client
-    llm_client = LocalOpenAILLMClient(
-        url=api_base,
-        api_key=api_key,
-        api_model=args.model,
-        hf_tokenizer_id=None
-    )
-    
-    # Load tool categories for uniform sampling
-    print("\nLoading tools...")
-    tools_by_category = load_tool_categories(args.tool_pool)
-    total_tools = sum(len(t) for t in tools_by_category.values())
-    print(f"Loaded {total_tools} tools across {len(tools_by_category)} categories")
-    
-    for cat, tools in sorted(tools_by_category.items()):
-        print(f"  {cat:30s}: {len(tools):3d} tools")
-    
-    # Initialize tool manager (with Python tool implementations)
-    tool_manager = ToolManager(
-        llm=llm_client,
-        tool_pool_path=args.tool_pool,
-        invocation_examples_path=args.invocation_examples
-    )
-    
-    # Initialize generator
+def run_step_by_step(args, llm_client, tool_manager, categories, output_path):
+    """Run step-by-step (legacy single-query) generation."""
     generator = StepByStepGenerator(
         llm_client=llm_client,
         tool_manager=tool_manager,
         num_actions=args.num_actions
     )
-    
-    # Output setup
-    output_dir = Path(args.output).parent
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Track generated datapoints
+
     datapoints = []
-    categories = list(tools_by_category.keys())
-    
-    # Generation loop - run until target number of datapoints is reached
     attempt = 0
 
     while len(datapoints) < args.num_datapoints:
@@ -177,24 +152,18 @@ def main():
         print(f"\n{'='*70}")
         print(f"Generated: {len(datapoints)}/{args.num_datapoints} | Remaining: {remaining}")
         print("=" * 70)
-        
-        # Select random category to focus on
+
         focus_category = random.choice(categories)
         print(f"Focus category: {focus_category}")
-        
-        # Generate datapoint
-        datapoint = generator.generate_datapoint(
-            focus_category=focus_category
-        )
+
+        datapoint = generator.generate_datapoint(focus_category=focus_category)
 
         if datapoint:
-            # Add timestamp
             datapoint_dict = datapoint.model_dump()
             datapoint_dict['timestamp'] = datetime.now().isoformat()
             datapoint_dict['generation_attempt'] = attempt
 
-            # Save immediately - only verified datapoints
-            with open(args.output, 'a', encoding='utf-8') as f:
+            with open(output_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(datapoint_dict, ensure_ascii=False) + '\n')
 
             datapoints.append(datapoint)
@@ -202,9 +171,120 @@ def main():
             print(f" Query: {datapoint.trajectory.query}")
             print(f" Tools used: {datapoint.trajectory.tools_used}")
         else:
-            # Generation failed or verification failed - don't count towards target
-            print(f"\n✗ Failed to generate datapoint (verification failed or generation error)")
-    
+            print(f"\n✗ Failed to generate datapoint")
+
+        attempt += 1
+
+    return datapoints
+
+
+def run_multi_turn(args, llm_client, tool_manager, categories, output_path):
+    """Run multi-turn (multiple user exchanges) generation."""
+    generator = MultiTurnGenerator(
+        llm_client=llm_client,
+        tool_manager=tool_manager,
+        num_turns=args.num_turns,
+        actions_per_turn=args.num_actions,
+    )
+
+    datapoints = []
+
+    while len(datapoints) < args.num_datapoints:
+        remaining = args.num_datapoints - len(datapoints)
+
+        print(f"\n{'='*70}")
+        print(f"Generated: {len(datapoints)}/{args.num_datapoints} | Remaining: {remaining}")
+        print("=" * 70)
+
+        focus_category = random.choice(categories)
+        print(f"Focus category: {focus_category}")
+
+        dp = generator.generate_multi_turn_datapoint(focus_category=focus_category)
+
+        if dp is None:
+            print(f"\n✗ Failed to generate datapoint, retrying...")
+            continue
+
+        dp_dict = dp.model_dump()
+        dp_dict['timestamp'] = datetime.now().isoformat()
+
+        with open(output_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(dp_dict, ensure_ascii=False) + '\n')
+
+        datapoints.append(dp)
+        print(f"\n✓ Successfully generated datapoint {len(datapoints)}")
+        print(f" Task: {dp.conversation.overall_task[:80]}")
+        print(f" Turns: {len(dp.conversation.turns)}")
+        print(f" Tools: {dp.conversation.tools_used}")
+
+    return datapoints
+
+
+def main():
+    args = parse_args()
+
+    mode_label = "MULTI-TURN" if args.mode == "multi-turn" else "STEP-BY-STEP"
+    print("=" * 70)
+    print(f"{mode_label} DATAPOINT GENERATION")
+    print("=" * 70)
+    print(f"Target: {args.num_datapoints} datapoints")
+    if args.mode == "multi-turn":
+        print(f"Turns per conversation: {args.num_turns}")
+        print(f"Actions per turn: {args.num_actions}")
+    else:
+        print(f"Actions per datapoint: {args.num_actions}")
+    print(f"Output: {args.output}")
+    print(f"Model: {args.model}")
+    print("=" * 70)
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    api_base = os.getenv("OPENAI_API_BASE")
+
+    if not api_key or not api_base:
+        print("ERROR: OPENAI_API_KEY or OPENAI_API_BASE not set")
+        sys.exit(1)
+
+    llm_client = LocalOpenAILLMClient(
+        url=api_base,
+        api_key=api_key,
+        api_model=args.model,
+        hf_tokenizer_id=None
+    )
+
+    print("\nLoading tools...")
+    tools_by_category = load_tool_categories(args.tool_pool)
+
+    if args.category:
+        filtered = {args.category: tools_by_category.get(args.category)}
+        if filtered[args.category] is None:
+            print(f"Error: Category '{args.category}' not found")
+            available = list(tools_by_category.keys())
+            print(f"Available categories: {available}")
+            return
+        tools_by_category = filtered
+
+    total_tools = sum(len(t) for t in tools_by_category.values())
+    print(f"Loaded {total_tools} tools across {len(tools_by_category)} categories")
+
+    for cat, tools in sorted(tools_by_category.items()):
+        print(f"  {cat:30s}: {len(tools):3d} tools")
+
+    tool_manager = ToolManager(
+        llm=llm_client,
+        tool_pool_path=args.tool_pool,
+        invocation_examples_path=args.invocation_examples
+    )
+
+    output_dir = Path(args.output).parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    categories = list(tools_by_category.keys())
+
+    if args.mode == "multi-turn":
+        datapoints = run_multi_turn(args, llm_client, tool_manager, categories, args.output)
+    else:
+        datapoints = run_step_by_step(args, llm_client, tool_manager, categories, args.output)
+
     # Summary
     print(f"\n{'='*70}")
     print("GENERATION COMPLETE")
@@ -213,32 +293,40 @@ def main():
     print(f"Output file: {args.output}")
 
     if datapoints:
-        # Tool statistics
-        tools_used_all = []
-        for dp in datapoints:
-            tools_used_all.extend(dp.trajectory.tools_used)
-
         from collections import Counter
-        tool_counts = Counter(tools_used_all)
 
-        print(f"\nTop 10 tools used:")
-        for tool, count in tool_counts.most_common(10):
-            print(f"  {tool}: {count}")
+        if args.mode == "multi-turn":
+            tools_used_all = []
+            for dp in datapoints:
+                tools_used_all.extend(dp.conversation.tools_used)
+            tool_counts = Counter(tools_used_all)
 
-        # Token usage statistics
-        total_llm_calls = sum(dp.token_usage.total_llm_calls for dp in datapoints)
-        total_prompt_tokens = sum(dp.token_usage.prompt_tokens for dp in datapoints)
-        total_completion_tokens = sum(dp.token_usage.completion_tokens for dp in datapoints)
-        total_tokens = sum(dp.token_usage.total_tokens for dp in datapoints)
+            print(f"\nTop 10 tools used:")
+            for tool, count in tool_counts.most_common(10):
+                print(f"  {tool}: {count}")
+
+            total_calls = sum(dp.token_usage.total_llm_calls for dp in datapoints)
+            total_tokens = sum(dp.token_usage.total_tokens for dp in datapoints)
+        else:
+            tools_used_all = []
+            for dp in datapoints:
+                tools_used_all.extend(dp.trajectory.tools_used)
+            tool_counts = Counter(tools_used_all)
+
+            print(f"\nTop 10 tools used:")
+            for tool, count in tool_counts.most_common(10):
+                print(f"  {tool}: {count}")
+
+            total_calls = sum(dp.token_usage.total_llm_calls for dp in datapoints)
+            total_tokens = sum(dp.token_usage.total_tokens for dp in datapoints)
 
         print(f"\nToken Usage Statistics:")
-        print(f"  Total LLM calls: {total_llm_calls}")
+        print(f"  Total LLM calls: {total_calls}")
         print(f"  Total tokens: {total_tokens:,}")
-        print(f"    - Prompt tokens: {total_prompt_tokens:,}")
-        print(f"    - Completion tokens: {total_completion_tokens:,}")
-        print(f"  Average per datapoint:")
-        print(f"    - LLM calls: {total_llm_calls / len(datapoints):.1f}")
-        print(f"    - Tokens: {total_tokens / len(datapoints):.0f}")
+        if datapoints:
+            print(f"  Average per datapoint:")
+            print(f"    - LLM calls: {total_calls / len(datapoints):.1f}")
+            print(f"    - Tokens: {total_tokens // len(datapoints):,}")
 
     print("=" * 70)
 

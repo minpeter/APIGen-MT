@@ -251,6 +251,8 @@ The conversation should feel like a REAL user chatting with a support agent acro
 4. AUTH: For the FIRST turn that uses an auth-gated tool (place_order, post_tweet, send_message, close_ticket, book_flight, etc.), the user MUST include the login tool (trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) in expected_tools. Later turns can skip the login tool because auth persists.
 5. Use STORED credentials from the API state: trader_admin/TradeAdmin2024! for trading, tech_user/TechUser2024! for posting, support_agent/SupportAgent2024! for tickets, travel_client_001/s3cretK3y!/refresh_abc123 for travel, valid user IDs (USR005-USR014) for messaging.
 
+6. CROSS-TURN REFERENCES: When a later turn needs to reference an ID that was created by a tool in an earlier turn (e.g., booking IDs, transaction IDs, ticket IDs), use a placeholder in the format `{{{{TURN{{N}}.{{tool_name}}.{{output_key}}}}}}`. For example: `{{{{TURN1.book_flight.booking_id}}}}`. DO NOT hardcode an ID that doesn't exist yet — always use a placeholder and it will be resolved automatically.
+
 === EXAMPLES OF GOOD TURN QUERIES ===
 - "Log me into the trading platform as trader_admin with password TradeAdmin2024! and then place a buy order for 100 shares of MSFT at market price."
 - "Now check my transaction history and add NVDA to my watchlist."
@@ -332,9 +334,15 @@ Respond ONLY with valid JSON. Each turn must have a SPECIFIC user_query with con
         The blueprint already includes a specific user_query for each turn
         with concrete entities (names, IDs, credentials). This avoids the
         inconsistency and extra LLM cost of per-turn query generation.
+
+        Placeholders in the format {{TURN{N}.{tool_name}.{output_key}}} are
+        resolved using the actual tool outputs from prior turns.
         """
         turn_spec = blueprint.turns[turn_index] if turn_index < len(blueprint.turns) else {}
         user_query = turn_spec.get("user_query", "")
+
+        user_query = self._resolve_turn_placeholders(user_query, turn_index, conversation)
+
         expected_tools = turn_spec.get("expected_tools", [])
 
         if not user_query or len(expected_tools) != self.num_actions:
@@ -350,6 +358,52 @@ Respond ONLY with valid JSON. Each turn must have a SPECIFIC user_query with con
         print(f"   Query: {user_query[:80]}...")
         print(f"   Tools: {expected_tools}")
         return QueryGenerationResult(query=user_query, intent="", expected_tools=expected_tools)
+
+    def _resolve_turn_placeholders(
+            self,
+            query: str,
+            turn_index: int,
+            conversation: MultiTurnConversation,
+    ) -> str:
+        """Resolve {{TURN{N}.{tool_name}.{output_key}}} placeholders in a query.
+
+        Looks up the actual output value from a prior turn's tool execution
+        and substitutes it into the query.
+        """
+        import re
+        pattern = re.compile(r"\{\{TURN(\d+)\.(\w+)\.(\w+)\}\}")
+
+        def replacer(match):
+            ref_turn = int(match.group(1))
+            tool_name = match.group(2)
+            output_key = match.group(3)
+
+            if ref_turn > turn_index:
+                return match.group(0)
+
+            ref_turn_idx = ref_turn - 1
+            if ref_turn_idx >= len(conversation.turns):
+                return match.group(0)
+
+            prior_turn = conversation.turns[ref_turn_idx]
+            for step in prior_turn.steps:
+                for tc in step.tool_calls:
+                    if tc.tool_name == tool_name:
+                        output = tc.output
+                        if isinstance(output, dict):
+                            if output_key in output:
+                                return str(output[output_key])
+                            for k, v in output.items():
+                                if output_key.lower() in k.lower() or k.lower() in output_key.lower():
+                                    return str(v)
+                            if len(output) == 1:
+                                return str(list(output.values())[0])
+            return match.group(0)
+
+        resolved = pattern.sub(replacer, query)
+        if resolved != query:
+            print(f"   Resolved placeholders: {query[:60]}... -> {resolved[:60]}...")
+        return resolved
 
     # ─────────────────────── Helpers ───────────────────────
 

@@ -158,8 +158,11 @@ class TradingBot:
 
     def get_symbol_by_name(self, name: str) -> Dict[str, str]:
         """Get the symbol of a stock by company name."""
-        symbol = self.name_to_symbol.get(name.lower(), "Stock not found")
-        return {"symbol": symbol}
+        name_lower = name.lower()
+        for key, value in self.name_to_symbol.items():
+            if key.lower() == name_lower:
+                return {"symbol": value}
+        return {"symbol": "Stock not found"}
 
     def get_transaction_history(self, start_date: str = 'None', end_date: str = 'None') -> Dict[str, Any]:
         """Get the transaction history within a specified date range."""

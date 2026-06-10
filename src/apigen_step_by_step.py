@@ -255,10 +255,11 @@ Respond with JSON:
 
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0]
-            elif response_text.startswith("{"):
+            else:
                 start = response_text.find("{")
                 end = response_text.rfind("}") + 1
-                response_text = response_text[start:end]
+                if start >= 0 and end > start:
+                    response_text = response_text[start:end]
 
             result = json.loads(response_text)
             is_valid = result.get("is_valid", False)
@@ -378,10 +379,10 @@ Respond ONLY with valid JSON in this exact format:
                     response_text = response_text.split("```json")[1].split("```")[0]
                 elif "```" in response_text:
                     response_text = response_text.split("```")[1].split("```")[0]
-                elif response_text.startswith("{"):
+                else:
                     start = response_text.find("{")
                     end = response_text.rfind("}") + 1
-                    if end > start:
+                    if start >= 0 and end > start:
                         response_text = response_text[start:end]
 
                 result = json.loads(response_text)
@@ -519,10 +520,11 @@ Respond ONLY with valid JSON:
                 response_text = response_text.split("```json")[1].split("```")[0]
             elif "```" in response_text:
                 response_text = response_text.split("```")[1].split("```")[0]
-            elif response_text.startswith("{"):
+            else:
                 start = response_text.find("{")
                 end = response_text.rfind("}") + 1
-                response_text = response_text[start:end]
+                if start >= 0 and end > start:
+                    response_text = response_text[start:end]
 
             result = json.loads(response_text)
             return StepSelectionResult(
@@ -760,7 +762,7 @@ Respond ONLY with valid JSON:
 === YOUR TASK ===
 Analyze each tool in the expected sequence and determine what state modifications are needed so that EVERY tool call will succeed. Common issues:
 
-1. **Ticket tools** (get_ticket, edit_ticket, close_ticket, resolve_ticket, create_ticket): Need ticket IDs that exist in `tickets_queue`. Also require `authenticated=True` (set by `ticket_login`). If the query uses ticket operations without login, add `ticket_login` to the plan or ensure the user is already authenticated.
+1. **Ticket tools** (get_ticket, edit_ticket, close_ticket, resolve_ticket, create_ticket): Need ticket IDs that exist in `tickets_queue`. Also require `authenticated=True` (set by `ticket_login`). If the query references a ticket by ID (e.g., "ticket ID 8392"), you MUST add a ticket with that exact ID to `tickets_queue` using `APPEND:tickets_queue` with `{"id": 8392, ...}`.
 2. **Message tools** (send_message, get_user_id, search_messages, delete_message): Need user IDs in `user_map`. `send_message`, `search_messages`, and `delete_message` require `current_user` set (via `message_login`). If the query references users by name, ensure they exist with correct IDs.
 3. **Login tools**: These VALIDATE credentials against stored values. Do NOT set `authenticated=True` or `access_token` directly — instead, ensure the stored credentials match what the LLM will use in the login call. If the query uses specific credentials, update the stored values to match.
    - `trading_login(username, password)`: Validates against `trading_bot.username` / `trading_bot.password`
@@ -777,7 +779,7 @@ CRITICAL RULES:
 - Only ADD or MODIFY state, never REMOVE existing entries
 - Do NOT set `authenticated=True`, `current_user`, or `access_token` directly — let login tools handle that
 - Instead, update the stored credentials (`username`/`password`, `client_id`/`client_secret`/`refresh_token`) so that login calls with those credentials will succeed
-- For ticket tools: if the query mentions specific ticket titles or IDs, add matching tickets to `tickets_queue`
+- For ticket tools: if the query mentions specific ticket titles or IDs (e.g., "ticket ID 8392"), you MUST add those tickets with their exact IDs to `tickets_queue`. Use format: `{{"modifications": {{"ticket_api": {{"APPEND:tickets_queue": {{"id": 8392, "title": "...", "status": "Open", "priority": 3, "created_by": "support_agent"}}}}}}}}`
 - For message tools: if the query mentions specific usernames, add them to `user_map` if missing
 - Keep modifications MINIMAL — only add what's strictly necessary for the tools to succeed
 - Use the SAME ID format as existing entries (e.g., USR015 for new users, integer IDs for tickets)
@@ -841,6 +843,21 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
             print(f" ✗ State adjustment error: {e}")
             return False
 
+    @staticmethod
+    def _set_nested_field(obj, field_path: str, value: Any) -> None:
+        """Set a field on an object using dot-notation path, creating intermediate dicts."""
+        parts = field_path.split(".")
+        for part in parts[:-1]:
+            if isinstance(obj, dict):
+                obj = obj.setdefault(part, {})
+            else:
+                obj = getattr(obj, part, {})
+        last_key = parts[-1]
+        if isinstance(obj, dict):
+            obj[last_key] = value
+        else:
+            setattr(obj, last_key, value)
+
     def _apply_state_modifications(self, modifications: Dict[str, Any]) -> int:
         """Apply state modifications to live Python tool instances.
 
@@ -853,13 +870,36 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
         applied = 0
 
         for class_key, field_changes in modifications.items():
-            if class_key not in self.tool_manager.python_tool_instances:
+            actual_class_key = class_key
+            extra_prefix = ""
+
+            if class_key not in self.tool_manager.python_tool_instances and "." in class_key:
+                first_dot = class_key.find(".")
+                potential_key = class_key[:first_dot]
+                if potential_key in self.tool_manager.python_tool_instances:
+                    actual_class_key = potential_key
+                    extra_prefix = class_key[first_dot + 1:] + "."
+                    print(f"   ℹ Flat key detected: '{class_key}' -> class='{actual_class_key}', prefix='{extra_prefix}'")
+
+            if actual_class_key not in self.tool_manager.python_tool_instances:
                 print(f" ⚠ Unknown class_key: {class_key}, skipping")
                 continue
 
-            instance = self.tool_manager.python_tool_instances[class_key]
+            instance = self.tool_manager.python_tool_instances[actual_class_key]
+
+            if not isinstance(field_changes, dict):
+                effective_field_path = extra_prefix.rstrip(".") if extra_prefix else class_key
+                if not effective_field_path:
+                    print(f" ⚠ Empty field path for {class_key}, skipping")
+                    continue
+                value = field_changes
+                self._set_nested_field(instance, effective_field_path, value)
+                applied += 1
+                print(f"   {actual_class_key}.{effective_field_path}: {value}")
+                continue
 
             for field_path, value in field_changes.items():
+                effective_field_path = (extra_prefix + field_path).rstrip(".")
                 try:
                     if field_path.startswith("APPEND:"):
                         list_field = field_path[len("APPEND:"):]
@@ -879,8 +919,8 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
                             print(f"   {class_key}.{list_field}: extended with {len(value)} items")
                         else:
                             print(f"   ⚠ {class_key}.{list_field} extend failed (not list or value not list)")
-                    elif "." in field_path:
-                        parts = field_path.split(".")
+                    elif "." in effective_field_path:
+                        parts = effective_field_path.split(".")
                         obj = instance
                         for part in parts[:-1]:
                             if isinstance(obj, dict):
@@ -903,23 +943,23 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
                                 if isinstance(existing, list):
                                     existing.append(append_val)
                                     applied += 1
-                                    print(f"   {class_key}.{field_path}: appended '{append_val}' to existing list")
+                                    print(f"   {actual_class_key}.{effective_field_path}: appended '{append_val}' to existing list")
                                 else:
                                     obj[last_key] = [append_val]
                                     applied += 1
-                                    print(f"   {class_key}.{field_path}: created list with '{append_val}'")
+                                    print(f"   {actual_class_key}.{effective_field_path}: created list with '{append_val}'")
                             else:
                                 obj[last_key] = value
                                 applied += 1
-                                print(f"   {class_key}.{field_path}: set to {json.dumps(value, default=str)[:100]}")
+                                print(f"   {actual_class_key}.{effective_field_path}: set to {json.dumps(value, default=str)[:100]}")
                         else:
-                            print(f"   ⚠ {class_key}.{field_path}: parent is not a dict, skipping")
+                            print(f"   {actual_class_key}.{effective_field_path}: parent is not a dict, skipping")
                     else:
-                        setattr(instance, field_path, value)
+                        setattr(instance, effective_field_path, value)
                         applied += 1
-                        print(f"   {class_key}.{field_path}: set to {json.dumps(value, default=str)[:100]}")
+                        print(f"   {actual_class_key}.{effective_field_path}: set to {json.dumps(value, default=str)[:100]}")
                 except Exception as e:
-                    print(f"   ⚠ Failed to apply {class_key}.{field_path}: {e}")
+                    print(f"   ⚠ Failed to apply {actual_class_key}.{effective_field_path}: {e}")
 
         return applied
 
@@ -1010,11 +1050,12 @@ Respond with JSON containing only the arguments:
                 response_text = response_text.split("```json")[1].split("```")[0]
             elif "```" in response_text:
                 response_text = response_text.split("```")[1].split("```")[0]
-            elif response_text.startswith("{"):
+            else:
                 start = response_text.find("{")
                 end = response_text.rfind("}") + 1
-                response_text = response_text[start:end]
-        
+                if start >= 0 and end > start:
+                    response_text = response_text[start:end]
+
             arguments = json.loads(response_text)
             return arguments, None
         
