@@ -253,6 +253,8 @@ The conversation should feel like a REAL user chatting with a support agent acro
 
 6. CROSS-TURN REFERENCES: When a later turn needs to reference an ID that was created by a tool in an earlier turn (e.g., booking IDs, transaction IDs, ticket IDs), use a placeholder in the format `{{{{TURN{{N}}.{{tool_name}}.{{output_key}}}}}}`. For example: `{{{{TURN1.book_flight.booking_id}}}}`. DO NOT hardcode an ID that doesn't exist yet — always use a placeholder and it will be resolved automatically.
 
+7. CRITICAL FOR TRAVEL BOOKING: When Turn 2 references a booking created in Turn 1, you MUST use `{{{{TURN1.book_flight.booking_id}}}}` in the query. For example: "Purchase travel insurance for booking `{{{{TURN1.book_flight.booking_id}}}}` and retrieve the invoice." DO NOT say "the booking I just made" or hardcode a booking ID like "flight_001" — use the placeholder.
+
 === EXAMPLES OF GOOD TURN QUERIES ===
 - "Log me into the trading platform as trader_admin with password TradeAdmin2024! and then place a buy order for 100 shares of MSFT at market price."
 - "Now check my transaction history and add NVDA to my watchlist."
