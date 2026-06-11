@@ -54,8 +54,8 @@ def parse_args():
     parser.add_argument('--invocation-examples', type=str,
                         default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
                         help='Path to invocation examples file')
-    parser.add_argument('--model', '-m', type=str, default='z-ai/glm-5.1',
-                        help='Model to use for generation (default: z-ai/glm-5.1)')
+    parser.add_argument('--model', '-m', type=str, default='minimax-m2.7',
+                        help='Model to use for generation (default: minimax-m2.7)')
     return parser.parse_args()
 
 
