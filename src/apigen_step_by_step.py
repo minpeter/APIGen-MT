@@ -176,8 +176,6 @@ class StepByStepGenerator:
             schemas = [s for s in schemas if s['name'] in tools_subset]
         return json.dumps(schemas, indent=2, ensure_ascii=False)
 
-    def _generate_persona_seed(self) -> dict:
-        return generate_query_seed()
 
     def _get_tools_with_descriptions_str(self, category: Optional[str] = None) -> str:
         """Get a formatted string of tools with their full descriptions, organized by category."""
@@ -329,7 +327,7 @@ Respond with JSON:
 
         return "\n".join(result)
 
-    def generate_user_query(self, focus_category: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3, persona_seed: Optional[dict] = None) -> QueryGenerationResult:
+    def generate_user_query(self, focus_category: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3, query_seed: Optional[dict] = None) -> QueryGenerationResult:
         # Get tools with full descriptions
         tools_with_descriptions = self._get_tools_with_descriptions_str(category=focus_category)
 
@@ -337,9 +335,9 @@ Respond with JSON:
         example_queries = self._get_example_queries()
 
         persona_section = ""
-        if persona_seed:
-            p = persona_seed["persona"]
-            c = persona_seed["city"]
+        if query_seed:
+            p = query_seed["persona"]
+            c = query_seed["city"]
             persona_section = f"""
 === USER PERSONA (MANDATORY) ===
 The user's name is {p['name']}, they are based in {p['city']}, {p.get('country', '')}.
@@ -626,8 +624,8 @@ Respond ONLY with valid JSON:
         self._reset_token_tracking()
         self._capture_initial_usage()
 
-        persona_seed = self._generate_persona_seed()
-        print(f" Persona seed: {persona_seed['persona']['name']}, {persona_seed['city']['city']}")
+        query_seed = generate_query_seed()
+        print(f" Persona seed: {query_seed['persona']['name']}, {query_seed['city']['city']}")
 
         # Initialize API state with full, realistic configurations
         # This ensures login calls and subsequent operations succeed
@@ -642,7 +640,7 @@ Respond ONLY with valid JSON:
         print("STAGE 1: Generate and Verify Query")
         print("-" * 70)
         
-        query_result = self._stage1_generate_query(focus_category, context_hint, query_retries, persona_seed)
+        query_result = self._stage1_generate_query(focus_category, context_hint, query_retries, query_seed)
         
         if query_result is None:
             print("\n✗ Stage 1 failed: Could not generate valid query")
@@ -676,7 +674,7 @@ Respond ONLY with valid JSON:
         print("STAGE 2: Generate Tool Invocations")
         print("-" * 70)
         
-        trajectory, execution_context = self._stage2_generate_tools(query_result, tool_retries, persona_seed)
+        trajectory, execution_context = self._stage2_generate_tools(query_result, tool_retries, query_seed)
         
         if trajectory is None:
             print("\n✗ Stage 2 failed: Could not generate all tool invocations")
@@ -709,7 +707,7 @@ Respond ONLY with valid JSON:
         return datapoint
 
     def _stage1_generate_query(self, focus_category: Optional[str], context_hint: Optional[str], 
-                               max_retries: int, persona_seed: Optional[dict] = None) -> Optional[QueryGenerationResult]:
+                               max_retries: int, query_seed: Optional[dict] = None) -> Optional[QueryGenerationResult]:
         """
         Stage 1: Generate and verify user query.
         - Separate retry count for query generation
@@ -722,7 +720,7 @@ Respond ONLY with valid JSON:
             print(f"\n[Query Attempt {attempt + 1}/{max_retries}]")
             
             # Generate query
-            query_result = self.generate_user_query(focus_category, accumulated_feedback if accumulated_feedback else None, persona_seed=persona_seed)
+            query_result = self.generate_user_query(focus_category, accumulated_feedback if accumulated_feedback else None, query_seed=query_seed)
 
             if query_result is None or not query_result.query:
                 print("  ✗ Failed to generate query")
@@ -1033,7 +1031,7 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
                                  execution_context: Dict[str, Any],
                                  feedback: Optional[str] = None,
                                  current_api_state: Optional[Dict[str, Dict[str, Any]]] = None,
-                                 persona_seed: Optional[dict] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+                                 query_seed: Optional[dict] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """Generate arguments for a specific tool based on query and context."""
         # Get tool schema
         tool_schema = self.tool_manager.get_tool_schema(tool_name)
@@ -1053,9 +1051,9 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
         output_description = tool_schema.get('output_description', '')
 
         persona_arg_section = ""
-        if persona_seed:
-            p = persona_seed["persona"]
-            c = persona_seed["city"]
+        if query_seed:
+            p = query_seed["persona"]
+            c = query_seed["city"]
             persona_arg_section = f"""
 === USER CONTEXT ===
 User name: {p['name']}
@@ -1145,7 +1143,7 @@ Respond with JSON containing only the arguments:
             return None, f"JSON parsing error: {e}"
 
     def _stage2_generate_tools(self, query_result: QueryGenerationResult,
-                               max_retries_per_tool: int, persona_seed: Optional[dict] = None) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
+                               max_retries_per_tool: int, query_seed: Optional[dict] = None) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
         """
         Stage 2: Generate tool invocations tool-by-tool.
         Uses expected_tools from Stage 1 directly - no LLM selection needed.
@@ -1180,7 +1178,7 @@ Respond with JSON containing only the arguments:
             execution_context=execution_context,
             feedback=tool_feedback if tool_feedback else None,
             current_api_state=pre_state,
-            persona_seed=persona_seed,
+            query_seed=query_seed,
         )
 
                 if error:
