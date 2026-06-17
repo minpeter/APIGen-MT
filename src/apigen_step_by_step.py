@@ -2,6 +2,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Tuple
 import json
+import random
 import re
 import copy
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 from llm_client import LLMClient, LocalOpenAILLMClient
 from tool_manager import ToolManager, filter_api_state
 from prompts import StepByStepPrompts
+from config_pool import generate_query_seed
 
 
 class ToolCallWithOutput(BaseModel):
@@ -95,25 +97,30 @@ class QueryGenerationResult(BaseModel):
 class StepByStepGenerator:
     """Generator that creates datapoints step-by-step with immediate tool simulation."""
 
-    def __init__(self, llm_client: LLMClient, tool_manager: ToolManager, num_actions: int = 2, validate_outputs: bool = True):
+    def __init__(self, llm_client: LLMClient, tool_manager: ToolManager, num_actions: int = 2, validate_outputs: bool = True, judge_client: LLMClient = None):
         self.llm = llm_client
+        self.judge = judge_client or llm_client
         self.tool_manager = tool_manager
         self.num_actions = num_actions
         self.validate_outputs = validate_outputs
         self._python_tools_available = bool(tool_manager.python_tool_instances)
+        self._accumulated_prompt_tokens: int = 0
+        self._accumulated_completion_tokens: int = 0
+        self._accumulated_total_tokens: int = 0
+        self._accumulated_llm_calls: int = 0
+        self._initial_token_usage: Optional[Dict[str, int]] = None
 
-    def _safe_llm_generate(self, messages: list, max_retries: int = 5, **kwargs) -> str:
-        """Call self.llm.generate() with application-level retry on transient errors.
+    def _safe_llm_generate(self, messages: list, max_retries: int = 5, llm=None, **kwargs) -> str:
+        """Call LLM generate() with application-level retry on transient errors.
 
-        The underlying LocalOpenAILLMClient already retries 429/5xx/timeout
-        indefinitely, but this wrapper catches any exceptions that escape
-        (e.g. RuntimeError from unexpected API responses, JSON decode errors
-        from garbled responses, etc.) and retries with backoff.
+        Args:
+            llm: Override LLM client. Defaults to self.llm.
         """
+        client = llm or self.llm
         import random as _rng
         for attempt in range(max_retries):
             try:
-                result = self.llm.generate(messages, **kwargs)
+                result = client.generate(messages, **kwargs)
                 if result is None:
                     raise ValueError("LLM returned None")
                 if not result.strip():
@@ -131,13 +138,6 @@ class StepByStepGenerator:
                 time.sleep(delay)
         raise RuntimeError(f"LLM generate failed after {max_retries} application-level retries")
 
-        # Token tracking - accumulated across stages for current datapoint
-        self._accumulated_prompt_tokens: int = 0
-        self._accumulated_completion_tokens: int = 0
-        self._accumulated_total_tokens: int = 0
-        self._accumulated_llm_calls: int = 0
-        self._initial_token_usage: Optional[Dict[str, int]] = None
-    
     def _reset_token_tracking(self):
         """Reset token tracking for a new datapoint."""
         self._accumulated_prompt_tokens = 0
@@ -175,6 +175,9 @@ class StepByStepGenerator:
         if tools_subset:
             schemas = [s for s in schemas if s['name'] in tools_subset]
         return json.dumps(schemas, indent=2, ensure_ascii=False)
+
+    def _generate_persona_seed(self) -> dict:
+        return generate_query_seed()
 
     def _get_tools_with_descriptions_str(self, category: Optional[str] = None) -> str:
         """Get a formatted string of tools with their full descriptions, organized by category."""
@@ -246,11 +249,11 @@ Evaluate if the sequence logically fits the query intent.
 Respond with JSON:
 {{
     "is_valid": true/false,
-    "issues": ["list of issues if any"]
+             "issues": ["list of issues if any"]
 }}"""
 
         try:
-            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}], llm=self.judge)
             response_text = response.strip()
 
             if "```json" in response_text:
@@ -326,12 +329,25 @@ Respond with JSON:
 
         return "\n".join(result)
 
-    def generate_user_query(self, focus_category: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3) -> QueryGenerationResult:
+    def generate_user_query(self, focus_category: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3, persona_seed: Optional[dict] = None) -> QueryGenerationResult:
         # Get tools with full descriptions
         tools_with_descriptions = self._get_tools_with_descriptions_str(category=focus_category)
 
         accumulated_feedback = validation_feedback or ""
         example_queries = self._get_example_queries()
+
+        persona_section = ""
+        if persona_seed:
+            p = persona_seed["persona"]
+            c = persona_seed["city"]
+            persona_section = f"""
+=== USER PERSONA (MANDATORY) ===
+The user's name is {p['name']}, they are based in {p['city']}, {p.get('country', '')}.
+You MUST use this person's name and city in the query when mentioning people or locations.
+For example, if the query involves booking a flight, use {c['city']} as origin/destination.
+If the query involves a credit card, use the name {p['name']} as cardholder.
+Do NOT use "Michael Smith", "John", or generic American names — use {p['name']} exclusively.
+"""
 
         for attempt in range(max_retries):
             prompt = f"""You are generating a realistic user query for testing a tool-calling system.
@@ -348,6 +364,7 @@ Generate a natural, realistic user query that would require using EXACTLY {self.
 7. The tools should logically fit together to accomplish the query
 8. AUTH REQUIREMENT: Many tools require authentication FIRST. If you include a tool that needs auth (e.g., place_order, post_tweet, send_message, close_ticket, book_flight), you MUST also include the corresponding login tool (e.g., trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) as one of the {self.num_actions} tools. The login tool should come BEFORE the gated tool in the expected_tools list.
 
+{persona_section}
 === AVAILABLE TOOLS WITH DESCRIPTIONS ===
 {tools_with_descriptions}
 {example_queries}
@@ -542,6 +559,54 @@ Respond ONLY with valid JSON:
             return self.tool_manager.invoke_python_tool(tool_name, processed_args)
         return self.tool_manager.invoke_tool(tool_name=tool_name, params=processed_args)
 
+    @staticmethod
+    def _detect_tool_error(tool_name: str, output: dict) -> tuple:
+        """Detect errors in tool output using tool-specific keys and value checks.
+
+        Returns (has_error: bool, error_detail: str).
+        """
+        generic_error_keys = ['error', 'error_message', 'error_code']
+        for key in generic_error_keys:
+            if key in output:
+                return True, str(output[key])
+
+        tool_specific_checks = {
+            'comment': [('comment_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
+            'retweet': [('retweet_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
+            'mention': [('mention_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
+            'post_tweet': [('tweet_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
+            'follow_user': [('follow_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
+            'unfollow_user': [('follow_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
+            'authenticate_twitter': [('authentication_status', lambda v: v is False)],
+            'get_ticket': [
+                ('status', lambda v: isinstance(v, str) and 'not found' in v.lower()),
+            ],
+            'edit_ticket': [('status', lambda v: isinstance(v, str) and ('not found' in v.lower() or 'not authenticated' in v.lower()))],
+            'resolve_ticket': [('status', lambda v: isinstance(v, str) and ('not found' in v.lower() or 'not authenticated' in v.lower()))],
+            'close_ticket': [('status', lambda v: isinstance(v, str) and ('not found' in v.lower() or 'not authenticated' in v.lower()))],
+            'create_ticket': [('status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
+            'ticket_login': [('success', lambda v: v is False)],
+            'message_login': [('login_status', lambda v: v is False)],
+            'verify_traveler_information': [('verification_status', lambda v: v is False)],
+            'authenticate_travel': [('access_token', lambda v: v == '')],
+            'book_flight': [
+                ('booking_status', lambda v: isinstance(v, str) and ('fail' in v.lower() or 'error' in v.lower())),
+                ('booking_confirmation', lambda v: isinstance(v, str) and ('fail' in v.lower() or 'error' in v.lower())),
+            ],
+        }
+
+        checks = tool_specific_checks.get(tool_name, [])
+        for key, is_error in checks:
+            val = output.get(key)
+            if val is not None and is_error(val):
+                return True, f"{key}: {val}"
+
+        for key, val in output.items():
+            if isinstance(val, str) and val.startswith("Error:"):
+                return True, f"{key}: {val}"
+
+        return False, ""
+
     # ==================== REFACTORED THREE-STAGE GENERATION ====================
 
     def generate_datapoint(self, focus_category: Optional[str] = None, context_hint: Optional[str] = None,
@@ -561,6 +626,9 @@ Respond ONLY with valid JSON:
         self._reset_token_tracking()
         self._capture_initial_usage()
 
+        persona_seed = self._generate_persona_seed()
+        print(f" Persona seed: {persona_seed['persona']['name']}, {persona_seed['city']['city']}")
+
         # Initialize API state with full, realistic configurations
         # This ensures login calls and subsequent operations succeed
         initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None
@@ -574,7 +642,7 @@ Respond ONLY with valid JSON:
         print("STAGE 1: Generate and Verify Query")
         print("-" * 70)
         
-        query_result = self._stage1_generate_query(focus_category, context_hint, query_retries)
+        query_result = self._stage1_generate_query(focus_category, context_hint, query_retries, persona_seed)
         
         if query_result is None:
             print("\n✗ Stage 1 failed: Could not generate valid query")
@@ -608,7 +676,7 @@ Respond ONLY with valid JSON:
         print("STAGE 2: Generate Tool Invocations")
         print("-" * 70)
         
-        trajectory, execution_context = self._stage2_generate_tools(query_result, tool_retries)
+        trajectory, execution_context = self._stage2_generate_tools(query_result, tool_retries, persona_seed)
         
         if trajectory is None:
             print("\n✗ Stage 2 failed: Could not generate all tool invocations")
@@ -641,7 +709,7 @@ Respond ONLY with valid JSON:
         return datapoint
 
     def _stage1_generate_query(self, focus_category: Optional[str], context_hint: Optional[str], 
-                               max_retries: int) -> Optional[QueryGenerationResult]:
+                               max_retries: int, persona_seed: Optional[dict] = None) -> Optional[QueryGenerationResult]:
         """
         Stage 1: Generate and verify user query.
         - Separate retry count for query generation
@@ -654,7 +722,7 @@ Respond ONLY with valid JSON:
             print(f"\n[Query Attempt {attempt + 1}/{max_retries}]")
             
             # Generate query
-            query_result = self.generate_user_query(focus_category, accumulated_feedback if accumulated_feedback else None)
+            query_result = self.generate_user_query(focus_category, accumulated_feedback if accumulated_feedback else None, persona_seed=persona_seed)
 
             if query_result is None or not query_result.query:
                 print("  ✗ Failed to generate query")
@@ -764,15 +832,18 @@ Analyze each tool in the expected sequence and determine what state modification
 5. **Travel tools** (book_flight, cancel_booking, get_credit_card_balance, purchase_insurance, register_credit_card, retrieve_invoice, set_budget_limit): Require a valid `access_token` (set by `authenticate_travel`). Ungated tools (get_flight_cost, get_nearest_airport_by_city, etc.) don't need auth. If the sequence includes `authenticate_travel`, ensure the stored `client_id`/`client_secret`/`refresh_token` match what the LLM will use. IMPORTANT: When using `register_credit_card`, the returned `card_id` has format `card_XXXX` (e.g., card_1234 for card number ending in 1234). Use this exact format when passing `card_id` to subsequent tools like `book_flight` or `purchase_insurance`.
 6. **Posting tools** (post_tweet, comment, follow_user, mention, retweet, unfollow_user): Require `authenticated=True` (set by `authenticate_twitter`). If the sequence includes `authenticate_twitter`, ensure the stored `username`/`password` match what the LLM will use.
 7. **Vehicle tools**: Generally stateless, but may need specific status flags.
+8. **Filesystem tools** (ls, cat, cd, cp, mv, rm, mkdir, touch, echo, diff, sort, tail, grep, wc, du, find, rmdir): The filesystem is a tree rooted at `root` with directories (`type: "directory"`, `contents: {...}`) and files (`type: "file"`, `content: "..."`). Tools operate relative to `current_dir` (a list of path components). Do NOT modify `current_dir` — the `cd` tool handles navigation during execution. You MAY add files or directories to the tree (e.g., `root.new_dir`) if the query expects specific files to exist, but leave navigation to the tool sequence.
 
 CRITICAL RULES:
 - Only ADD or MODIFY state, never REMOVE existing entries
 - Do NOT set `authenticated=True`, `current_user`, or `access_token` directly — let login tools handle that
+- Do NOT modify `current_dir` on filesystem tools — let `cd` calls handle navigation
 - Instead, update the stored credentials (`username`/`password`, `client_id`/`client_secret`/`refresh_token`) so that login calls with those credentials will succeed
 - For ticket tools: if the query mentions specific ticket titles or IDs (e.g., "ticket ID 8392"), you MUST add those tickets with their exact IDs to `tickets_queue`. Use format: `{{"modifications": {{"ticket_api": {{"APPEND:tickets_queue": {{"id": 8392, "title": "...", "status": "Open", "priority": 3, "created_by": "support_agent"}}}}}}}}`
 - For message tools: if the query mentions specific usernames, add them to `user_map` if missing. IMPORTANT: `add_contact` will fail if user already exists in `user_map`. Before adding, check if user already exists by looking at `user_map` values.
 - For posting tools: `follow_user` will fail if user is already in `following_list`. Before following, check if already following.
 - For travel tools: After `register_credit_card`, use the returned `card_id` (format: `card_XXXX`) in subsequent calls. Do NOT use raw card numbers.
+- For filesystem tools: only add files/directories to the tree, never modify `current_dir`
 - Keep modifications MINIMAL — only add what's strictly necessary for the tools to succeed
 - Use the SAME ID format as existing entries (e.g., USR015 for new users, integer IDs for tickets)
 
@@ -893,6 +964,9 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
             for field_path, value in field_changes.items():
                 effective_field_path = (extra_prefix + field_path).rstrip(".")
                 try:
+                    if field_path == "current_dir" and class_key == "gorilla_file_system":
+                        print(f"   ⚠ Skipping gorilla_file_system.current_dir modification (must use cd tool)")
+                        continue
                     if field_path.startswith("APPEND:"):
                         list_field = field_path[len("APPEND:"):]
                         current_list = getattr(instance, list_field, None)
@@ -958,7 +1032,8 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
     def _generate_tool_arguments(self, tool_name: str, query: str, trajectory: List[TrajectoryStep],
                                  execution_context: Dict[str, Any],
                                  feedback: Optional[str] = None,
-                                 current_api_state: Optional[Dict[str, Dict[str, Any]]] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+                                 current_api_state: Optional[Dict[str, Dict[str, Any]]] = None,
+                                 persona_seed: Optional[dict] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """Generate arguments for a specific tool based on query and context."""
         # Get tool schema
         tool_schema = self.tool_manager.get_tool_schema(tool_name)
@@ -976,6 +1051,18 @@ If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "C
         # Get output type info for better argument generation
         output_type = tool_schema.get('output_type', 'unknown')
         output_description = tool_schema.get('output_description', '')
+
+        persona_arg_section = ""
+        if persona_seed:
+            p = persona_seed["persona"]
+            c = persona_seed["city"]
+            persona_arg_section = f"""
+=== USER CONTEXT ===
+User name: {p['name']}
+User city: {c['city']} ({c.get('code', '')})
+When generating arguments that need a person's name, use {p['name']}.
+When generating arguments that need a city or location, prefer {c['city']}.
+"""
 
         # Build API state section — prefer the class relevant to this tool
         api_state_section = ""
@@ -1002,6 +1089,7 @@ The following is the REAL current state of the API. You MUST use values from thi
 
 === EXECUTION CONTEXT ===
 {json.dumps(execution_context, indent=2, default=str)[:500]}
+{persona_arg_section}
 {api_state_section}
 === TOOL SCHEMA ===
 {json.dumps(tool_schema.get('parameters', {}), indent=2)}
@@ -1049,13 +1137,15 @@ Respond with JSON containing only the arguments:
                     response_text = response_text[start:end]
 
             arguments = json.loads(response_text)
+            if not isinstance(arguments, dict):
+                return None, f"Expected JSON object dict, got {type(arguments).__name__}"
             return arguments, None
         
         except json.JSONDecodeError as e:
             return None, f"JSON parsing error: {e}"
 
     def _stage2_generate_tools(self, query_result: QueryGenerationResult,
-                               max_retries_per_tool: int) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
+                               max_retries_per_tool: int, persona_seed: Optional[dict] = None) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
         """
         Stage 2: Generate tool invocations tool-by-tool.
         Uses expected_tools from Stage 1 directly - no LLM selection needed.
@@ -1090,6 +1180,7 @@ Respond with JSON containing only the arguments:
             execution_context=execution_context,
             feedback=tool_feedback if tool_feedback else None,
             current_api_state=pre_state,
+            persona_seed=persona_seed,
         )
 
                 if error:
@@ -1112,10 +1203,8 @@ Respond with JSON containing only the arguments:
 
                 # Check for tool errors
                 if isinstance(output, dict):
-                    error_fields = ['error', 'error_message', 'error_code']
-                    has_error = any(f in output for f in error_fields)
+                    has_error, error_detail = self._detect_tool_error(tool_name, output)
                     if has_error:
-                        error_detail = output.get('error', output.get('error_message', output.get('error_code', 'Unknown error')))
                         error_type = output.get('error_type', 'execution_error')
                         print(f" ✗ Tool returned error: {error_detail}")
                         if error_type == 'validation_failure' and attempt < max_retries_per_tool - 1:
@@ -1123,6 +1212,8 @@ Respond with JSON containing only the arguments:
                             print(f" Retrying due to validation failure...")
                             continue
                         elif attempt < max_retries_per_tool - 1:
+                            tool_feedback = f"Previous call failed: {error_detail}. Try different arguments or check prerequisites (e.g., login first, use correct IDs from API state)."
+                            print(f" Retrying with feedback...")
                             continue
                         break
 
@@ -1566,11 +1657,11 @@ Respond ONLY with valid JSON:
   "is_valid": true/false,
   "reasoning": "brief explanation of your verdict",
   "issues": ["list of issues found, empty if valid"],
-  "state_changes_summary": "human-readable summary of what changed"
+   "state_changes_summary": "human-readable summary of what changed"
 }}"""
 
         try:
-            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}], llm=self.judge)
             response_text = response.strip()
 
             if "```json" in response_text:

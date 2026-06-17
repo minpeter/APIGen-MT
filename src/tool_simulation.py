@@ -27,7 +27,10 @@ def simulate_tool_return(function_name: str, arguments: Dict[str, Any], tool_def
         return simulate_filesystem_return(function_name, arguments)
     
     # Math operations
-    elif function_name in ['add', 'subtract', 'multiply', 'divide', 'power', 'sqrt', 'log', 'sin', 'cos']:
+    elif function_name in ['add', 'subtract', 'multiply', 'divide', 'power', 'sqrt', 'log', 'sin', 'cos',
+                           'imperial_si_conversion', 'si_unit_conversion', 'logarithm', 'square_root',
+                           'absolute_value', 'percentage', 'round_number', 'mean', 'min_value', 'max_value',
+                           'standard_deviation', 'sum_values']:
         return simulate_math_return(function_name, arguments)
     
     # Stock/trading operations
@@ -158,7 +161,7 @@ def simulate_math_return(function_name: str, arguments: Dict) -> Dict:
             result = math.sqrt(arguments.get('number', 1))
         elif function_name == 'log':
             base = arguments.get('base', math.e)
-            result = math.log(arguments.get('number', 1), base)
+            result = math.log(arguments.get('number', arguments.get('value', 1)), base)
         elif function_name == 'sin':
             result = math.sin(arguments.get('angle', 0))
         elif function_name == 'cos':

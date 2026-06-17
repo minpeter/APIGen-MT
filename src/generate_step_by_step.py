@@ -88,14 +88,14 @@ def parse_args():
     parser.add_argument(
         '--tool-pool',
         type=str,
-        default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl',
+        default='/home/dpugacheva/Documents/SCC/shalyminov/synthetic/APIGen-MT/magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl',
         help='Path to tool pool file'
     )
 
     parser.add_argument(
         '--invocation-examples',
         type=str,
-        default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
+        default='/home/dpugacheva/Documents/SCC/shalyminov/synthetic/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
         help='Path to invocation examples file (for Python tool implementations)'
     )
 
@@ -111,6 +111,43 @@ def parse_args():
         type=str,
         default='minimaxai/minimax-m2.7',
         help='Model to use for generation (default: minimaxai/minimax-m2.7)'
+    )
+
+    parser.add_argument(
+        '--judge-model',
+        type=str,
+        default=None,
+        help='Model to use for judge tasks (state verification, sequence validation). Defaults to --model if not set.'
+    )
+
+    parser.add_argument(
+        '--judge-api-base',
+        type=str,
+        default=None,
+        help='API base URL for judge model. Defaults to OPENAI_API_BASE if not set.'
+    )
+
+    parser.add_argument(
+        '--judge-api-key',
+        type=str,
+        default=None,
+        help='API key for judge model. Defaults to OPENAI_API_KEY if not set.'
+    )
+
+    parser.add_argument(
+        '--num-actions-range',
+        type=int,
+        nargs=2,
+        default=None,
+        metavar=('MIN', 'MAX'),
+        help='Randomize num_actions per datapoint between MIN and MAX (inclusive). Overrides -a.'
+    )
+
+    parser.add_argument(
+        '--config-pool',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Use diverse config pool for initial API states (default: True). Use --no-config-pool to disable.'
     )
 
     return parser.parse_args()
@@ -135,12 +172,13 @@ def load_tool_categories(tool_pool_path: str) -> dict:
     return tools_by_category
 
 
-def run_step_by_step(args, llm_client, tool_manager, categories, output_path):
+def run_step_by_step(args, llm_client, tool_manager, categories, output_path, judge_client=None):
     """Run step-by-step (legacy single-query) generation."""
     generator = StepByStepGenerator(
         llm_client=llm_client,
         tool_manager=tool_manager,
-        num_actions=args.num_actions
+        num_actions=args.num_actions,
+        judge_client=judge_client
     )
 
     datapoints = []
@@ -156,7 +194,16 @@ def run_step_by_step(args, llm_client, tool_manager, categories, output_path):
         focus_category = random.choice(categories)
         print(f"Focus category: {focus_category}")
 
-        datapoint = generator.generate_datapoint(focus_category=focus_category)
+        # Randomize num_actions if range is specified
+        if args.num_actions_range:
+            num_actions = random.randint(args.num_actions_range[0], args.num_actions_range[1])
+            generator.num_actions = num_actions
+            print(f"Actions for this datapoint: {num_actions}")
+        
+        # Generate datapoint
+        datapoint = generator.generate_datapoint(
+            focus_category=focus_category
+        )
 
         if datapoint:
             datapoint_dict = datapoint.model_dump()
@@ -272,8 +319,22 @@ def main():
     tool_manager = ToolManager(
         llm=llm_client,
         tool_pool_path=args.tool_pool,
-        invocation_examples_path=args.invocation_examples
+        invocation_examples_path=args.invocation_examples,
+        use_config_pool=args.config_pool,
     )
+
+    # Initialize judge client if specified, otherwise reuse generator client
+    if args.judge_model:
+        judge_api_base = args.judge_api_base or api_base
+        judge_api_key = args.judge_api_key or api_key
+        judge_client = LocalOpenAILLMClient(
+            url=judge_api_base,
+            api_key=judge_api_key,
+            api_model=args.judge_model,
+            hf_tokenizer_id=None
+        )
+    else:
+        judge_client = llm_client
 
     output_dir = Path(args.output).parent
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -283,7 +344,7 @@ def main():
     if args.mode == "multi-turn":
         datapoints = run_multi_turn(args, llm_client, tool_manager, categories, args.output)
     else:
-        datapoints = run_step_by_step(args, llm_client, tool_manager, categories, args.output)
+        datapoints = run_step_by_step(args, llm_client, tool_manager, categories, args.output, judge_client=judge_client)
 
     # Summary
     print(f"\n{'='*70}")

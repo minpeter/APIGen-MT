@@ -52,6 +52,11 @@ class MathAPI:
         Convert a value between imperial and SI units.
         """
         try:
+            unit_in = unit_in.lower().strip()
+            unit_out = unit_out.lower().strip()
+            imperial_aliases = {"f": "fahrenheit", "c": "celsius"}
+            unit_in = imperial_aliases.get(unit_in, unit_in)
+            unit_out = imperial_aliases.get(unit_out, unit_out)
             conversion_factors = {
                 "inch_to_cm": 2.54,
                 "cm_to_inch": 1 / 2.54,
@@ -96,6 +101,7 @@ class MathAPI:
             if value <= 0 or base <= 0 or base == 1:
                 return {"result": 0.0}
             result = math.log(value, base)
+            precision = max(0, precision)
             return {"result": float(round(result, precision))}
         except Exception:
             return {"result": 0.0}
@@ -193,12 +199,25 @@ class MathAPI:
             }
 
             base_units = ["meter", "gram", "liter", "second", "ampere", "kelvin", "mole", "candela", "byte", "bit"]
-            unit_aliases = {"m": "meter", "g": "gram", "l": "liter", "s": "second", "a": "ampere", "k": "kelvin", "b": "byte"}
+            unit_aliases = {
+                "m": "meter", "g": "gram", "l": "liter", "s": "second", "a": "ampere", "k": "kelvin", "b": "byte",
+                "km": "kilometer", "cm": "centimeter", "mm": "millimeter",
+                "kg": "kilogram", "mg": "milligram",
+                "ml": "milliliter", "cl": "centiliter",
+                "ms": "millisecond", "us": "microsecond", "ns": "nanosecond",
+                "ma": "milliampere", "kb": "kilobyte", "mb": "megabyte", "gb": "gigabyte",
+            }
 
             def parse_unit(unit_str: str) -> Tuple[float, str]:
                 unit_str = unit_str.lower().strip()
                 if unit_str in unit_aliases:
-                    return 1.0, unit_aliases[unit_str]
+                    val = unit_aliases[unit_str]
+                    for prefix, factor in si_prefixes.items():
+                        if prefix:
+                            for base in base_units:
+                                if val == prefix + base:
+                                    return factor, base
+                    return 1.0, val
                 for prefix, factor in si_prefixes.items():
                     if prefix:
                         for base in base_units:
@@ -224,6 +243,7 @@ class MathAPI:
             if number < 0:
                 return {"result": 0.0}
             result = math.sqrt(number)
+            precision = max(0, precision)
             return {"result": float(round(result, precision))}
         except Exception:
             return {"result": 0.0}

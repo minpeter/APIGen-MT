@@ -13,7 +13,10 @@ class GorillaFileSystem:
 
     def __init__(self, initial_config: dict) -> None:
         """Initialize the GorillaFileSystem with the given configuration."""
-        self.root = copy.deepcopy(initial_config)
+        if "root" in initial_config and isinstance(initial_config["root"], dict):
+            self.root = copy.deepcopy(initial_config["root"])
+        else:
+            self.root = copy.deepcopy(initial_config)
         self.current_dir: List[str] = []
 
     def _get_current_directory_node(self) -> Optional[Dict[str, Any]]:

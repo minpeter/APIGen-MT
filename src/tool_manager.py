@@ -10,6 +10,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from llm_client import LLMClient
+from config_pool import generate_random_config
 
 
 CLASS_KEY_TO_INITIAL_CONFIG_KEY = {
@@ -661,7 +662,8 @@ class ToolManager:
         llm: LLMClient,
         tool_pool_path: Optional[str] = None,
         tools: Optional[List] = None,
-        invocation_examples_path: Optional[str] = None
+        invocation_examples_path: Optional[str] = None,
+        use_config_pool: bool = True,
     ):
         """
         Initialize the ToolManager.
@@ -675,8 +677,12 @@ class ToolManager:
             invocation_examples_path: Path to bfcl_v3_invocation_examples.jsonl.
             If provided, Python tool implementations will be loaded and used
             for actual execution instead of LLM simulation.
+            use_config_pool: If True, reset_python_tool_instances() picks a random
+            config from the config pool for diverse starting states. If False,
+            falls back to the single FULL_INITIAL_CONFIGS.
         """
         self.llm = llm
+        self.use_config_pool = use_config_pool
         self.tool_schemas: List[Dict[str, Any]] = []
         self.tool_implementations: Dict[str, Any] = {}
 
@@ -756,15 +762,17 @@ class ToolManager:
         print(f"Loaded {loaded} Python tool classes with {mapped} api_name mappings")
 
     def reset_python_tool_instances(self) -> None:
-        """Reset all Python tool instances to fresh state using FULL initial configs.
+        """Reset all Python tool instances to fresh state.
 
-        This initializes each API class with a complete, realistic state including
-        pre-existing users, messages, tickets, stocks, tweets, etc. so that login
-        and subsequent operations work correctly.
-
-        Call this before generating each datapoint to ensure state isolation.
+        If self.use_config_pool is True, picks a random config from the pool
+        for each domain, giving diverse starting states across datapoints.
+        Otherwise falls back to the original single FULL_INITIAL_CONFIGS.
         """
-        self.python_tool_instances = create_python_tool_instances(FULL_INITIAL_CONFIGS)
+        if self.use_config_pool:
+            config = generate_random_config()
+        else:
+            config = FULL_INITIAL_CONFIGS
+        self.python_tool_instances = create_python_tool_instances(config)
 
     def initialize_api_state(self) -> None:
         """Initialize all Python tool instances with full, realistic API state.
