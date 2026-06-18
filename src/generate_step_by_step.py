@@ -88,14 +88,14 @@ def parse_args():
     parser.add_argument(
         '--tool-pool',
         type=str,
-        default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl',
+        default='~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl',
         help='Path to tool pool file'
     )
 
     parser.add_argument(
         '--invocation-examples',
         type=str,
-        default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
+        default='~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
         help='Path to invocation examples file (for Python tool implementations)'
     )
 
@@ -223,6 +223,9 @@ def run_multi_turn(args, llm_client, tool_manager, categories, output_path):
 def main():
     args = parse_args()
 
+    tool_pool_path = str(Path(args.tool_pool).expanduser())
+    invocation_examples_path = str(Path(args.invocation_examples).expanduser())
+
     mode_label = "MULTI-TURN" if args.mode == "multi-turn" else "STEP-BY-STEP"
     print("=" * 70)
     print(f"{mode_label} DATAPOINT GENERATION")
@@ -252,7 +255,7 @@ def main():
     )
 
     print("\nLoading tools...")
-    tools_by_category = load_tool_categories(args.tool_pool)
+    tools_by_category = load_tool_categories(tool_pool_path)
 
     if args.category:
         filtered = {args.category: tools_by_category.get(args.category)}
@@ -271,8 +274,8 @@ def main():
 
     tool_manager = ToolManager(
         llm=llm_client,
-        tool_pool_path=args.tool_pool,
-        invocation_examples_path=args.invocation_examples
+        tool_pool_path=tool_pool_path,
+        invocation_examples_path=invocation_examples_path
     )
 
     output_dir = Path(args.output).parent

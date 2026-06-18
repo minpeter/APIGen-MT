@@ -163,8 +163,8 @@ def export_to_json(category_tools: dict, output_path: str):
 def main():
     """Main function."""
     # Configuration
-    tool_pool_path = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl"
-    output_json = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/top_tools_by_category.json"
+    tool_pool_path = Path("~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl").expanduser()
+    output_json = Path("~/data/APIGen-MT/magnet_tool_extraction/top_tools_by_category.json").expanduser()
     
     print("=" * 80)
     print("BFCL TOOL POOL ANALYSIS")

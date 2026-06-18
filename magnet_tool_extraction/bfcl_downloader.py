@@ -243,7 +243,7 @@ if __name__ == "__main__":
     # Example usage
     logging.basicConfig(level=logging.INFO)
     
-    data_dir = sys.argv[1] if len(sys.argv) > 1 else "/home/ishalyminov/data/magnet_mt/data"
+    data_dir = sys.argv[1] if len(sys.argv) > 1 else str(Path("~/data/magnet_mt/data").expanduser())
     version = sys.argv[2] if len(sys.argv) > 2 else BFCL_DEFAULT_VERSION
     
     print(f"Ensuring BFCL {version} data in {data_dir}...")

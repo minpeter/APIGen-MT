@@ -2,7 +2,7 @@
 """
 Analyze BFCL tool pool showing top-5 most frequent tools per category.
 
-ONLY uses: /home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl
+ONLY uses: ~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl
 
 Categories found in tool pool:
 - Communication (10 tools)
@@ -229,9 +229,9 @@ def export_to_markdown(category_tools: Dict[str, List[str]], output_path: str):
 def main():
     """Main function."""
     # Configuration - ONLY use this file
-    tool_pool_path = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl"
-    output_json = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/tool_pool_top5_analysis.json"
-    output_md = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/TOOL_POOL_TOP5_BY_CATEGORY.md"
+    tool_pool_path = Path("~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl").expanduser()
+    output_json = Path("~/data/APIGen-MT/magnet_tool_extraction/tool_pool_top5_analysis.json").expanduser()
+    output_md = Path("~/data/APIGen-MT/magnet_tool_extraction/TOOL_POOL_TOP5_BY_CATEGORY.md").expanduser()
     
     print("=" * 80)
     print("BFCL TOOL POOL ANALYSIS")

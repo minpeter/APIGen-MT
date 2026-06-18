@@ -296,9 +296,9 @@ def export_results(
 def main():
     """Main function."""
     # Configuration
-    tool_pool_path = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl"
-    bfcl_test_dir = "/home/ishalyminov/data/magnet_mt/data/BFCL_v3"
-    output_json = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_tool_frequency_analysis.json"
+    tool_pool_path = Path("~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl").expanduser()
+    bfcl_test_dir = Path("~/data/magnet_mt/data/BFCL_v3").expanduser()
+    output_json = Path("~/data/APIGen-MT/magnet_tool_extraction/bfcl_tool_frequency_analysis.json").expanduser()
     
     print("=" * 80)
     print("BFCL TOOL FREQUENCY ANALYSIS")
