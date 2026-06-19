@@ -166,8 +166,8 @@ def print_comparison(pool_counts: dict, test_counts: dict, top_n: int = 5):
 def main():
     """Main function."""
     # Configuration
-    tool_pool_path = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl"
-    test_data_dir = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction"
+    tool_pool_path = Path("~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_all_tool_definitions.jsonl").expanduser()
+    test_data_dir = Path("~/data/APIGen-MT/magnet_tool_extraction").expanduser()
     
     print("=" * 80)
     print("BFCL TOOL USAGE FREQUENCY ANALYSIS")

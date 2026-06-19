@@ -246,40 +246,49 @@ The conversation should feel like a REAL user chatting with a support agent acro
 
 === REQUIREMENTS ===
 1. Each turn's user_query must include SPECIFIC concrete entities: usernames, passwords, user IDs, ticket IDs, stock symbols, dates, prices, amounts, etc.
-2. Each turn's user_query must require EXACTLY {self.num_actions} tools to fulfill
+2. Each turn's user_query must require EXACTLY {self.num_actions} tools to fulfill - NOT MORE, NOT LESS.
 3. The conversation should flow naturally — each turn builds on the previous one's results
-4. AUTH: For the FIRST turn that uses an auth-gated tool (place_order, post_tweet, send_message, close_ticket, book_flight, etc.), the user MUST include the login tool (trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) in expected_tools. Later turns can skip the login tool because auth persists.
-5. Use STORED credentials from the API state: trader_admin/TradeAdmin2024! for trading, tech_user/TechUser2024! for posting, support_agent/SupportAgent2024! for tickets, travel_client_001/s3cretK3y!/refresh_abc123 for travel, valid user IDs (USR005-USR014) for messaging.
+4. AUTH PERSISTENCE: Authentication persists across turns. Only include login tools (trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) in the FIRST turn that needs auth. For subsequent turns that use auth-gated tools, DO NOT include the login tool again - the session already exists.
+   - Example CORRECT: Turn 1: [ticket_login, create_ticket], Turn 2: [get_user_tickets], Turn 3: [resolve_ticket] (no login needed!)
+   - Example WRONG: Turn 1: [ticket_login, create_ticket], Turn 2: [ticket_login, get_user_tickets] (don't re-login!)
+5. IMPORTANT: expected_tools MUST have EXACTLY {self.num_actions} items. Do NOT include more or fewer tools.
+6. Use STORED credentials from the API state: trader_admin/TradeAdmin2024! for trading, tech_user/TechUser2024! for posting, support_agent/SupportAgent2024! for tickets, travel_client_001/s3cretK3y!/refresh_abc123 for travel, valid user IDs (USR005-USR014) for messaging.
 
-6. CROSS-TURN REFERENCES: When a later turn needs to reference an ID that was created by a tool in an earlier turn (e.g., booking IDs, transaction IDs, ticket IDs), use a placeholder in the format `{{{{TURN{{N}}.{{tool_name}}.{{output_key}}}}}}`. For example: `{{{{TURN1.book_flight.booking_id}}}}`. DO NOT hardcode an ID that doesn't exist yet — always use a placeholder and it will be resolved automatically.
+7. CROSS-TURN REFERENCES: When a later turn needs to reference an ID that was created by a tool in an earlier turn (e.g., booking IDs, transaction IDs, ticket IDs), use a placeholder in the format `{{{{TURN{{N}}.{{tool_name}}.{{output_key}}}}}}`. For example: `{{{{TURN1.book_flight.booking_id}}}}`. DO NOT hardcode an ID that doesn't exist yet — always use a placeholder and it will be resolved automatically.
 
-7. CRITICAL FOR TRAVEL BOOKING: When Turn 2 references a booking created in Turn 1, you MUST use `{{{{TURN1.book_flight.booking_id}}}}` in the query. For example: "Purchase travel insurance for booking `{{{{TURN1.book_flight.booking_id}}}}` and retrieve the invoice." DO NOT say "the booking I just made" or hardcode a booking ID like "flight_001" — use the placeholder.
+8. CRITICAL FOR TRAVEL BOOKING: When Turn 2 references a booking created in Turn 1, you MUST use `{{{{TURN1.book_flight.booking_id}}}}` in the query. For example: "Purchase travel insurance for booking `{{{{TURN1.book_flight.booking_id}}}}` and retrieve the invoice." DO NOT say "the booking I just made" or hardcode a booking ID like "flight_001" — use the placeholder.
+
+9. NON-AUTH TOOLS: Many tools like get_user_tickets, get_stock_info, search_messages, get_available_stocks, get_nearest_airport_by_city, get_flight_cost, displayCarStatus, ls, cat, find, etc. do NOT require authentication. Only use login tools when the specific tool requires it.
 
 === EXAMPLES OF GOOD TURN QUERIES ===
-- "Log me into the trading platform as trader_admin with password TradeAdmin2024! and then place a buy order for 100 shares of MSFT at market price."
-- "Now check my transaction history and add NVDA to my watchlist."
-- "Show me the info for AAPL stock and filter stocks in the Technology sector."
-- "Log into the ticket system as support_agent with password SupportAgent2024! and create a ticket titled 'Network outage' with critical priority."
-- "Resolve ticket #123456 with resolution 'Rebooted the server' and close it."
-- "Authenticate me on Twitter as tech_user with password TechUser2024! and post a tweet saying 'Great day for AI!'"
-- "Get the user ID for Sarah and send her a message saying 'Meeting at 2pm'."
-- "Find the nearest airport to Miami and then get the flight cost from there to New York in economy class."
+- "Log me into the trading platform as trader_admin with password TradeAdmin2024! and then place a buy order for 100 shares of MSFT at market price." (2 tools: trading_login, place_order)
+- "Now check my transaction history and add NVDA to my watchlist." (2 tools: get_transaction_history, add_to_watchlist)
+- "Show me the info for AAPL stock and filter stocks in the Technology sector." (2 tools: get_stock_info, filter_stocks)
+- "Log into the ticket system as support_agent with password SupportAgent2024! and create a ticket titled 'Network outage' with critical priority." (2 tools: ticket_login, create_ticket)
+- "Resolve ticket #123456 with resolution 'Rebooted the server' and close it." (2 tools: resolve_ticket, close_ticket)
+- "Authenticate me on Twitter as tech_user with password TechUser2024! and post a tweet saying 'Great day for AI!'" (2 tools: authenticate_twitter, post_tweet)
+- "Get the user ID for Sarah and send her a message saying 'Meeting at 2pm'." (2 tools: get_user_id, send_message)
+- "Find the nearest airport to Miami and then get the flight cost from there to New York in economy class." (2 tools: get_nearest_airport_by_city, get_flight_cost)
 
 === OUTPUT FORMAT ===
-Respond ONLY with valid JSON. Each turn must have a SPECIFIC user_query with concrete entities:
+Respond ONLY with valid JSON. Each turn must have EXACTLY {self.num_actions} tools in expected_tools:
 {{
   "overall_task": "Specific description of the full conversation scenario with concrete entities",
   "turns": [
     {{
       "user_query": "The exact user request for this turn — MUST include concrete names, IDs, passwords, numbers",
-      "expected_tools": ["tool1", "tool2"]
+      "expected_tools": ["tool1", "tool2"]  // EXACTLY {self.num_actions} tools
     }},
     ...
   ]
-}}"""
+}}
+
+CRITICAL: Each turn's expected_tools array MUST have exactly {self.num_actions} items. Check your work before responding."""
 
         if focus_category:
-            prompt += f"\n\nFocus primarily on the '{focus_category}' category for tool selection, but you can use tools from other categories if they fit the conversation."
+            prompt += f"\n\nIMPORTANT: You MUST only use tools from the '{focus_category}' category. Do NOT use tools from other categories. All expected_tools must be from this category only."
+        else:
+            prompt += f"\n\nYou may use tools from any category as needed."
 
         for attempt in range(3):
             try:
@@ -299,6 +308,47 @@ Respond ONLY with valid JSON. Each turn must have a SPECIFIC user_query with con
                 turns = result.get("turns", [])
                 if not turns or len(turns) != self.num_turns:
                     print(f"  ✗ Expected {self.num_turns} turns, got {len(turns)}")
+                    continue
+
+                all_tools_valid = True
+                for i, t in enumerate(turns):
+                    expected = t.get("expected_tools", [])
+                    if len(expected) != self.num_actions:
+                        print(f"  ✗ Turn {i+1} has {len(expected)} tools, need {self.num_actions}: {expected}")
+                        all_tools_valid = False
+                        break
+
+                    # Validate category if focus_category is specified
+                    if focus_category:
+                        for tool_name in expected:
+                            tool_cat = self.tool_manager.get_tool_category(tool_name)
+                            if tool_cat != focus_category:
+                                print(f"  ✗ Turn {i+1} tool '{tool_name}' is from category '{tool_cat}', not '{focus_category}'")
+                                all_tools_valid = False
+                                break
+                        if not all_tools_valid:
+                            break
+
+                    # Validate placeholder references in user_query
+                    query = t.get("user_query", "")
+                    import re
+                    placeholders = re.findall(r'\{\{TURN(\d+)\.(\w+)\.(\w+)\}\}', query)
+                    for p in placeholders:
+                        ref_turn_idx = int(p[0]) - 1
+                        ref_tool = p[1]
+                        if ref_turn_idx >= i:
+                            print(f"  ✗ Turn {i+1} references future turn {p[0]} (placeholders can only reference prior turns)")
+                            all_tools_valid = False
+                            break
+                        if ref_turn_idx < len(turns):
+                            ref_tools = turns[ref_turn_idx].get("expected_tools", [])
+                            if ref_tool not in ref_tools:
+                                print(f"  ✗ Turn {i+1} references {ref_tool} from turn {p[0]}, but that turn uses {ref_tools}")
+                                all_tools_valid = False
+                                break
+                    if not all_tools_valid:
+                        break
+                if not all_tools_valid:
                     continue
 
                 all_tools_valid = all(

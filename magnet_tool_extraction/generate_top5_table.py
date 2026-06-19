@@ -113,8 +113,8 @@ def generate_console_table(results: dict):
 def main():
     """Main function."""
     # Configuration
-    analysis_json = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_tool_frequency_analysis.json"
-    output_md = "/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/TOP5_TOOLS_BY_CATEGORY.md"
+    analysis_json = Path("~/data/APIGen-MT/magnet_tool_extraction/bfcl_tool_frequency_analysis.json").expanduser()
+    output_md = Path("~/data/APIGen-MT/magnet_tool_extraction/TOP5_TOOLS_BY_CATEGORY.md").expanduser()
     
     # Load results
     print(f"Loading analysis from: {analysis_json}")

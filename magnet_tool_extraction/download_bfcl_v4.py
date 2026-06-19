@@ -161,7 +161,7 @@ def main():
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=Path("/home/ishalyminov/data/magnet_mt/data"),
+        default=Path("~/data/magnet_mt/data").expanduser(),
         help="Directory to store the dataset"
     )
     parser.add_argument(

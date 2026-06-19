@@ -49,13 +49,15 @@ def parse_args():
     parser.add_argument('--output', '-o', type=str, default='multi_turn_datapoints.jsonl',
                         help='Output file path')
     parser.add_argument('--tool-pool', type=str,
-                        default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl',
+                        default='~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl',
                         help='Path to tool pool file')
     parser.add_argument('--invocation-examples', type=str,
-                        default='/home/ishalyminov/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
+                        default='~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
                         help='Path to invocation examples file')
-    parser.add_argument('--model', '-m', type=str, default='z-ai/glm-5.1',
-                        help='Model to use for generation (default: z-ai/glm-5.1)')
+    parser.add_argument('--model', '-m', type=str, default='minimax-m2.7',
+                        help='Model to use for generation (default: minimax-m2.7)')
+    parser.add_argument('--category', '-c', type=str, default=None,
+                        help='Focus category (e.g., Communication, Events, Finance, Posting Api, Science, Storage, Travel Booking, Vehicle Control). If not specified, randomly selected.')
     return parser.parse_args()
 
 
@@ -74,6 +76,9 @@ def load_tool_categories(tool_pool_path: str) -> dict:
 
 def main():
     args = parse_args()
+
+    tool_pool_path = str(Path(args.tool_pool).expanduser())
+    invocation_examples_path = str(Path(args.invocation_examples).expanduser())
 
     print("=" * 70)
     print("MULTI-TURN DATAPOINT GENERATION")
@@ -99,7 +104,7 @@ def main():
     )
 
     print("\nLoading tools...")
-    tools_by_category = load_tool_categories(args.tool_pool)
+    tools_by_category = load_tool_categories(tool_pool_path)
     total_tools = sum(len(t) for t in tools_by_category.values())
     print(f"Loaded {total_tools} tools across {len(tools_by_category)} categories")
     for cat, tools in sorted(tools_by_category.items()):
@@ -107,8 +112,8 @@ def main():
 
     tool_manager = ToolManager(
         llm=llm_client,
-        tool_pool_path=args.tool_pool,
-        invocation_examples_path=args.invocation_examples,
+        tool_pool_path=tool_pool_path,
+        invocation_examples_path=invocation_examples_path,
     )
 
     generator = MultiTurnGenerator(
@@ -131,7 +136,13 @@ def main():
         print(f"Generated: {len(datapoints)}/{args.num_datapoints} | Remaining: {remaining}")
         print("=" * 70)
 
-        focus_category = random.choice(categories)
+        if args.category:
+            focus_category = args.category
+            if focus_category not in categories:
+                print(f"ERROR: Unknown category '{focus_category}'. Available: {categories}")
+                sys.exit(1)
+        else:
+            focus_category = random.choice(categories)
 
         print(f"\nFocus category: {focus_category}")
 

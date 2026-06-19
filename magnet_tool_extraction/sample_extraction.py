@@ -37,7 +37,7 @@ def main():
     """Run the sample extraction demonstration."""
     
     # Use the actual BFCL_v3 data path
-    bfcl_data_dir = Path("/home/ishalyminov/data/magnet_mt/data/BFCL_v3")
+    bfcl_data_dir = Path("~/data/magnet_mt/data/BFCL_v3").expanduser()
     func_doc_dir = bfcl_data_dir / "multi_turn_func_doc"
     
     print_separator("MAGNET TOOL POOL EXTRACTION - BFCL_v3 DEMONSTRATION")

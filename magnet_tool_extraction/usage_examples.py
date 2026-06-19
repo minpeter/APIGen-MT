@@ -19,7 +19,7 @@ def example_basic_usage():
     """Basic example: Load and filter tool definitions."""
     
     # Path to BFCL data (adjust as needed)
-    bfcl_data_dir = Path("/home/ishalyminov/data/magnet_mt/data/BFCL_v3")
+    bfcl_data_dir = Path("~/data/magnet_mt/data/BFCL_v3").expanduser()
     func_doc_dir = bfcl_data_dir / "multi_turn_func_doc"
     
     # Parse all function documentation
@@ -47,7 +47,7 @@ def example_basic_usage():
 def example_search_tools():
     """Example: Search for tools by name or description."""
     
-    bfcl_data_dir = Path("/home/ishalyminov/data/magnet_mt/data/BFCL_v3")
+    bfcl_data_dir = Path("~/data/magnet_mt/data/BFCL_v3").expanduser()
     func_doc_dir = bfcl_data_dir / "multi_turn_func_doc"
     
     definitions = parse_bfcl_func_doc(func_doc_dir, require_parameters=True)
@@ -68,7 +68,7 @@ def example_search_tools():
 def example_parameter_analysis():
     """Example: Analyze parameter complexity of tools."""
     
-    bfcl_data_dir = Path("/home/ishalyminov/data/magnet_mt/data/BFCL_v3")
+    bfcl_data_dir = Path("~/data/magnet_mt/data/BFCL_v3").expanduser()
     func_doc_dir = bfcl_data_dir / "multi_turn_func_doc"
     
     definitions = parse_bfcl_func_doc(func_doc_dir, require_parameters=True)
@@ -103,7 +103,7 @@ def example_parameter_analysis():
 def example_export_jsonl():
     """Example: Export tool definitions to JSONL format."""
     
-    bfcl_data_dir = Path("/home/ishalyminov/data/magnet_mt/data/BFCL_v3")
+    bfcl_data_dir = Path("~/data/magnet_mt/data/BFCL_v3").expanduser()
     func_doc_dir = bfcl_data_dir / "multi_turn_func_doc"
     
     definitions = parse_bfcl_func_doc(func_doc_dir, require_parameters=True)
@@ -122,7 +122,7 @@ def example_export_jsonl():
 def example_group_by_category():
     """Example: Group tool definitions by category."""
     
-    bfcl_data_dir = Path("/home/ishalyminov/data/magnet_mt/data/BFCL_v3")
+    bfcl_data_dir = Path("~/data/magnet_mt/data/BFCL_v3").expanduser()
     func_doc_dir = bfcl_data_dir / "multi_turn_func_doc"
     
     definitions = parse_bfcl_func_doc(func_doc_dir, require_parameters=True)

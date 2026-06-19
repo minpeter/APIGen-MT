@@ -26,55 +26,101 @@ CLASS_KEY_TO_INITIAL_CONFIG_KEY = {
 
 FULL_INITIAL_CONFIGS = {
     "GorillaFileSystem": {
-        "root": {
-            "home": {
-                "type": "directory",
-                "contents": {
-                    "user": {
-                        "type": "directory",
-                        "contents": {
-                            "documents": {
-                                "type": "directory",
-                                "contents": {
-                                    "readme.txt": {
-                                        "type": "file",
-                                        "content": "Welcome to the workspace.\nThis is a shared document area.\nPlease follow the naming conventions."
-                                    },
-                                    "report.csv": {
-                                        "type": "file",
-                                        "content": "name,score,grade\nAlice,92,A\nBob,78,B\nCharlie,85,B"
-                                    }
+        "home": {
+            "type": "directory",
+            "contents": {
+                "alice": {
+                    "type": "directory",
+                    "contents": {
+                        "documents": {
+                            "type": "directory",
+                            "contents": {
+                                "readme.txt": {
+                                    "type": "file",
+                                    "content": "Welcome to the workspace.\nThis is a shared document area.\nPlease follow the naming conventions."
+                                },
+                                "report.csv": {
+                                    "type": "file",
+                                    "content": "name,score,grade\nAlice,92,A\nBob,78,B\nCharlie,85,B"
                                 }
-                            },
-                            "projects": {
-                                "type": "directory",
-                                "contents": {
-                                    "alpha": {
-                                        "type": "directory",
-                                        "contents": {
-                                            "config.json": {
-                                                "type": "file",
-                                                "content": '{"version": "1.0", "debug": false, "port": 8080}'
-                                            }
+                            }
+                        },
+                        "project": {
+                            "type": "directory",
+                            "contents": {
+                                "src": {
+                                    "type": "directory",
+                                    "contents": {
+                                        "main.py": {
+                                            "type": "file",
+                                            "content": "def main():\n    print('Hello World')\n\nif __name__ == '__main__':\n    main()"
+                                        }
+                                    }
+                                },
+                                "config": {
+                                    "type": "directory",
+                                    "contents": {
+                                        "database.conf": {
+                                            "type": "file",
+                                            "content": "[database]\nhost=localhost\nport=5432\ndatabase=myapp"
+                                        }
+                                    }
+                                },
+                                "reports": {
+                                    "type": "directory",
+                                    "contents": {
+                                        "weekly_summary.pdf": {
+                                            "type": "file",
+                                            "content": "Weekly Summary Report\nWeek 24\nGenerated on 2024-01-15"
                                         }
                                     }
                                 }
-                            },
-                            "notes.txt": {
-                                "type": "file",
-                                "content": "Meeting notes from 2024-01-15\nAction items: review PR, update docs"
                             }
+                        },
+                        "logs": {
+                            "type": "directory",
+                            "contents": {
+                                "activity.log": {
+                                    "type": "file",
+                                    "content": "2024-01-15 09:00: Starting process\n2024-01-15 09:30: Processing data\n2024-01-15 10:00: Completed successfully"
+                                },
+                                "system.log": {
+                                    "type": "file",
+                                    "content": "Jan 15 09:00: server sshd[123]: Started\nJan 15 09:15: server kernel: eth0: link up\nJan 15 09:30: server app[456]: Connection timeout\nJan 15 09:45: server app[456]: Retrying connection"
+                                }
+                            }
+                        },
+                        "Archive": {
+                            "type": "directory",
+                            "contents": {}
+                        },
+                        "notes.txt": {
+                            "type": "file",
+                            "content": "Meeting notes from 2024-01-15\nAction items: review PR, update docs"
                         }
                     }
                 }
-            },
-            "tmp": {
-                "type": "directory",
-                "contents": {
-                    "temp_log.txt": {
-                        "type": "file",
-                        "content": "Process started at 09:00\nProcess completed at 17:30\nNo errors detected."
-                    }
+            }
+        },
+        "tmp": {
+            "type": "directory",
+            "contents": {
+                "temp_log.txt": {
+                    "type": "file",
+                    "content": "Process started at 09:00\nProcess completed at 17:30\nNo errors detected."
+                }
+            }
+        },
+        "documents": {
+            "type": "directory",
+            "contents": {
+                "readme.txt": {
+                    "type": "file",
+                    "content": "Welcome to the workspace.\nThis is a shared document area.\nPlease follow the naming conventions."
+                },
+                "report.csv": {
+                    "type": "file",
+                    "content": "name,score,grade\nAlice,92,A\nBob,78,B\nCharlie,85,B"
                 }
             }
         }

@@ -249,7 +249,7 @@ def extract_with_returns():
     Extract invocation examples with simulated return values.
     """
     
-    data_dir = Path("/home/ishalyminov/data/magnet_mt/data/BFCL_v3")
+    data_dir = Path("~/data/magnet_mt/data/BFCL_v3").expanduser()
     
     # Multi-turn test files
     test_files = [

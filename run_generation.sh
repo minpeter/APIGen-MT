@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /home/ishalyminov/data/APIGen-MT
+cd $HOME/data/APIGen-MT
 PYTHONPATH=src:. python src/generate_step_by_step.py \
   --num-datapoints 10 \
   --num-actions 10 \

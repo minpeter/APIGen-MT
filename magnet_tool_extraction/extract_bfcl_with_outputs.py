@@ -136,8 +136,8 @@ def main():
     )
     parser.add_argument(
         "--data-dir",
-        default="/home/ishalyminov/data/magnet_mt/data",
-        help="Base data directory (default: /home/ishalyminov/data/magnet_mt/data)"
+        default=str(Path("~/data/magnet_mt/data").expanduser()),
+        help="Base data directory (default: ~/data/magnet_mt/data)"
     )
     parser.add_argument(
         "--output",
