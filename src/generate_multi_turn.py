@@ -54,8 +54,8 @@ def parse_args():
     parser.add_argument('--invocation-examples', type=str,
                         default='~/data/APIGen-MT/magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl',
                         help='Path to invocation examples file')
-    parser.add_argument('--model', '-m', type=str, default='minimax-m2.7',
-                        help='Model to use for generation (default: minimax-m2.7)')
+    parser.add_argument('--model', '-m', type=str, default='minimaxai/minimax-m2.7',
+                        help='Model to use for generation (default: minimaxai/minimax-m2.7)')
     parser.add_argument('--category', '-c', type=str, default=None,
                         help='Focus category (e.g., Communication, Events, Finance, Posting Api, Science, Storage, Travel Booking, Vehicle Control). If not specified, randomly selected.')
     return parser.parse_args()

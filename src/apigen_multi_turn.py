@@ -156,8 +156,8 @@ class MultiTurnGenerator(StepByStepGenerator):
                 else:
                     print(" ⚡ No adjustment needed")
 
-            # Stage 2: Generate and execute tool invocations
-            trajectory, ec = self._stage2_generate_tools(query_result, tool_retries)
+            # Stage 2: Generate and execute tool invocations (pass persistent execution_context)
+            trajectory, ec = self._stage2_generate_tools(query_result, tool_retries, initial_execution_context=execution_context)
             if trajectory is None:
                 print(f"✗ Turn {turn_idx + 1} failed: Could not generate tool calls")
                 return None
@@ -166,6 +166,17 @@ class MultiTurnGenerator(StepByStepGenerator):
             # Merge turn context into persistent execution_context
             for k, v in ec.items():
                 execution_context[k] = v
+
+            # Store turn outputs for TURN{N} placeholder resolution
+            turn_output_aggregate = {}
+            for step in trajectory:
+                for tc in step.tool_calls:
+                    if tc.output and isinstance(tc.output, dict):
+                        # Store each tool's output by tool name
+                        turn_output_aggregate[tc.tool_name] = tc.output
+            if 'turn_outputs' not in execution_context:
+                execution_context['turn_outputs'] = []
+            execution_context['turn_outputs'].append(turn_output_aggregate)
 
             # Generate assistant response for this turn
             assistant_response = self._generate_final_response(
@@ -230,65 +241,34 @@ class MultiTurnGenerator(StepByStepGenerator):
             self, focus_category: Optional[str] = None
     ) -> Optional[DialogBlueprint]:
         """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
-        tools_str = self._get_tools_with_descriptions_str(category=focus_category)
+        tools_str = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
 
-        prompt = f"""You are designing a multi-turn user-agent conversation for testing a tool-calling system.
-
-The conversation has EXACTLY {self.num_turns} turns. Each turn works like this:
-  1. The USER says something (a natural request mentioning concrete entities)
-  2. The AGENT calls EXACTLY {self.num_actions} tools to fulfill that request
-  3. The AGENT responds to the user with a summary of what was done
-
-The conversation should feel like a REAL user chatting with a support agent across multiple steps.
+        prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
 === AVAILABLE TOOLS ===
 {tools_str}
 
 === REQUIREMENTS ===
-1. Each turn's user_query must include SPECIFIC concrete entities: usernames, passwords, user IDs, ticket IDs, stock symbols, dates, prices, amounts, etc.
-2. Each turn's user_query must require EXACTLY {self.num_actions} tools to fulfill - NOT MORE, NOT LESS.
-3. The conversation should flow naturally — each turn builds on the previous one's results
-4. AUTH PERSISTENCE: Authentication persists across turns. Only include login tools (trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) in the FIRST turn that needs auth. For subsequent turns that use auth-gated tools, DO NOT include the login tool again - the session already exists.
-   - Example CORRECT: Turn 1: [ticket_login, create_ticket], Turn 2: [get_user_tickets], Turn 3: [resolve_ticket] (no login needed!)
-   - Example WRONG: Turn 1: [ticket_login, create_ticket], Turn 2: [ticket_login, get_user_tickets] (don't re-login!)
-5. IMPORTANT: expected_tools MUST have EXACTLY {self.num_actions} items. Do NOT include more or fewer tools.
-6. Use STORED credentials from the API state: trader_admin/TradeAdmin2024! for trading, tech_user/TechUser2024! for posting, support_agent/SupportAgent2024! for tickets, travel_client_001/s3cretK3y!/refresh_abc123 for travel, valid user IDs (USR005-USR014) for messaging.
+1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
+2. Conversation flows naturally, each turn builds on previous
+3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
+4. expected_tools: EXACTLY {self.num_actions} tools per turn
+5. Credentials: trader_admin/TradeAdmin2024! (trading), tech_user/TechUser2024! (posting), support_agent/SupportAgent2024! (tickets), travel_client_001/s3cretK3y!/refresh_abc123 (travel), USR005-USR014 (messaging)
+6. Cross-turn refs: use placeholders like {{{{TURN1.book_flight.booking_id}}}} (not hardcoded IDs)
 
-7. CROSS-TURN REFERENCES: When a later turn needs to reference an ID that was created by a tool in an earlier turn (e.g., booking IDs, transaction IDs, ticket IDs), use a placeholder in the format `{{{{TURN{{N}}.{{tool_name}}.{{output_key}}}}}}`. For example: `{{{{TURN1.book_flight.booking_id}}}}`. DO NOT hardcode an ID that doesn't exist yet — always use a placeholder and it will be resolved automatically.
+=== EXAMPLES ===
+- "Log into trading as trader_admin/TradeAdmin2024! and buy 100 MSFT shares." (trading_login, place_order)
+- "Create ticket 'Network outage' with critical priority." (ticket_login, create_ticket)
+- "Post tweet 'Great day for AI!'" (authenticate_twitter, post_tweet)
+- "Get the user ID for Sarah and send her a message." (get_user_id, send_message)
 
-8. CRITICAL FOR TRAVEL BOOKING: When Turn 2 references a booking created in Turn 1, you MUST use `{{{{TURN1.book_flight.booking_id}}}}` in the query. For example: "Purchase travel insurance for booking `{{{{TURN1.book_flight.booking_id}}}}` and retrieve the invoice." DO NOT say "the booking I just made" or hardcode a booking ID like "flight_001" — use the placeholder.
-
-9. NON-AUTH TOOLS: Many tools like get_user_tickets, get_stock_info, search_messages, get_available_stocks, get_nearest_airport_by_city, get_flight_cost, displayCarStatus, ls, cat, find, etc. do NOT require authentication. Only use login tools when the specific tool requires it.
-
-=== EXAMPLES OF GOOD TURN QUERIES ===
-- "Log me into the trading platform as trader_admin with password TradeAdmin2024! and then place a buy order for 100 shares of MSFT at market price." (2 tools: trading_login, place_order)
-- "Now check my transaction history and add NVDA to my watchlist." (2 tools: get_transaction_history, add_to_watchlist)
-- "Show me the info for AAPL stock and filter stocks in the Technology sector." (2 tools: get_stock_info, filter_stocks)
-- "Log into the ticket system as support_agent with password SupportAgent2024! and create a ticket titled 'Network outage' with critical priority." (2 tools: ticket_login, create_ticket)
-- "Resolve ticket #123456 with resolution 'Rebooted the server' and close it." (2 tools: resolve_ticket, close_ticket)
-- "Authenticate me on Twitter as tech_user with password TechUser2024! and post a tweet saying 'Great day for AI!'" (2 tools: authenticate_twitter, post_tweet)
-- "Get the user ID for Sarah and send her a message saying 'Meeting at 2pm'." (2 tools: get_user_id, send_message)
-- "Find the nearest airport to Miami and then get the flight cost from there to New York in economy class." (2 tools: get_nearest_airport_by_city, get_flight_cost)
-
-=== OUTPUT FORMAT ===
-Respond ONLY with valid JSON. Each turn must have EXACTLY {self.num_actions} tools in expected_tools:
-{{
-  "overall_task": "Specific description of the full conversation scenario with concrete entities",
-  "turns": [
-    {{
-      "user_query": "The exact user request for this turn — MUST include concrete names, IDs, passwords, numbers",
-      "expected_tools": ["tool1", "tool2"]  // EXACTLY {self.num_actions} tools
-    }},
-    ...
-  ]
-}}
-
-CRITICAL: Each turn's expected_tools array MUST have exactly {self.num_actions} items. Check your work before responding."""
+=== OUTPUT ===
+{{"overall_task": "scenario", "turns": [{{"user_query": "request", "expected_tools": ["t1", "t2"]}}, ...]}}"""
 
         if focus_category:
-            prompt += f"\n\nIMPORTANT: You MUST only use tools from the '{focus_category}' category. Do NOT use tools from other categories. All expected_tools must be from this category only."
+            prompt += f"\n\nIMPORTANT: Use only '{focus_category}' category tools."
         else:
-            prompt += f"\n\nYou may use tools from any category as needed."
+            prompt += "\n\nYou may use tools from any category."
 
         for attempt in range(3):
             try:
@@ -348,6 +328,41 @@ CRITICAL: Each turn's expected_tools array MUST have exactly {self.num_actions} 
                                 break
                     if not all_tools_valid:
                         break
+
+                # Validate cross-turn entity references
+                # If Turn N uses a tool that operates on an entity created in Turn N-1,
+                # the query must use a placeholder for that entity's ID
+                cross_turn_entity_tools = {
+                    'comment': ('tweet_id', 'post_tweet'),
+                    'retweet': ('tweet_id', 'post_tweet'),
+                    'mention': ('tweet_id', 'post_tweet'),
+                    'edit_ticket': ('ticket_id', 'create_ticket'),
+                    'resolve_ticket': ('ticket_id', 'create_ticket'),
+                    'close_ticket': ('ticket_id', 'create_ticket'),
+                    'delete_message': ('message_id', 'send_message'),
+                    'purchase_insurance': ('booking_id', 'book_flight'),
+                }
+                for i, t in enumerate(turns):
+                    if i == 0:
+                        continue
+                    expected = t.get("expected_tools", [])
+                    query = t.get("user_query", "")
+                    for tool_name in expected:
+                        if tool_name in cross_turn_entity_tools:
+                            id_field, create_tool = cross_turn_entity_tools[tool_name]
+                            # Check if prior turn has the create tool
+                            if i > 0 and i - 1 < len(turns):
+                                prior_tools = turns[i - 1].get("expected_tools", [])
+                                if create_tool in prior_tools:
+                                    # Query should use placeholder for the created entity
+                                    placeholder_pattern = f'{{{{TURN{i}.{create_tool}.{id_field}}}}}'
+                                    if placeholder_pattern not in query:
+                                        print(f"  ✗ Turn {i+1} uses '{tool_name}' to operate on a {create_tool} result but query lacks placeholder '{id_field}'")
+                                        all_tools_valid = False
+                                        break
+                    if not all_tools_valid:
+                        break
+
                 if not all_tools_valid:
                     continue
 
