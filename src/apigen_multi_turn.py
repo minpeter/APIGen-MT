@@ -147,16 +147,9 @@ class MultiTurnGenerator(StepByStepGenerator):
                 return None
             self._update_token_usage()
 
-            # Stage 1.5: Adjust API state for this turn's expected tools
-            if self._python_tools_available and query_result.expected_tools:
-                print(f"\n Adjusting API state for turn {turn_idx + 1}...")
-                adjusted = self._stage1_5_adjust_initial_state(query_result)
-                if adjusted:
-                    print(" ✓ State adjusted")
-                else:
-                    print(" ⚡ No adjustment needed")
-
             # Stage 2: Generate and execute tool invocations (pass persistent execution_context)
+            # Note: State adjustment removed - tool calls modify API state which persists,
+            # and we pass current API state snapshot to the tool manager LLM
             trajectory, ec = self._stage2_generate_tools(query_result, tool_retries, initial_execution_context=execution_context)
             if trajectory is None:
                 print(f"✗ Turn {turn_idx + 1} failed: Could not generate tool calls")

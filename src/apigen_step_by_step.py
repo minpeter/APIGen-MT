@@ -130,11 +130,16 @@ class StepByStepGenerator:
                     requests.exceptions.ConnectionError,
                     requests.exceptions.HTTPError) as e:
                 delay = min(2 * (2 ** attempt), 60) + _rng.uniform(0, 2)
-                print(f" [_safe_llm_generate] Transient error (attempt {attempt+1}/{max_retries}): {e}, retrying in {delay:.1f}s...")
+                print(f" [_safe_llm_generate] Transient error (attempt {attempt+1}/{max_retries}): {type(e).__name__}: {e}, retrying in {delay:.1f}s...")
                 time.sleep(delay)
-            except (RuntimeError, ValueError, json.JSONDecodeError) as e:
+            except (RuntimeError, ValueError) as e:
                 delay = min(2 * (2 ** attempt), 30) + _rng.uniform(0, 1)
-                print(f" [_safe_llm_generate] Error (attempt {attempt+1}/{max_retries}): {e}, retrying in {delay:.1f}s...")
+                print(f" [_safe_llm_generate] Error (attempt {attempt+1}/{max_retries}): {type(e).__name__}: {e}, retrying in {delay:.1f}s...")
+                time.sleep(delay)
+            except json.JSONDecodeError as e:
+                delay = min(2 * (2 ** attempt), 30) + _rng.uniform(0, 1)
+                # Extra debug info for JSON errors
+                print(f" [_safe_llm_generate] JSON Error (attempt {attempt+1}/{max_retries}): {e}")
                 time.sleep(delay)
         raise RuntimeError(f"LLM generate failed after {max_retries} application-level retries")
 
@@ -177,14 +182,21 @@ class StepByStepGenerator:
         return json.dumps(schemas, indent=2, ensure_ascii=False)
 
 
-    def _get_tools_with_descriptions_str(self, category: Optional[str] = None) -> str:
+    def _get_tools_with_descriptions_str(self, category: Optional[str] = None, compact: bool = False) -> str:
         """Get a formatted string of tools with their full descriptions, organized by category."""
         tools = self.tool_manager.get_tools_json_schema()
 
         if category:
             tools = [t for t in tools if t.get('category') == category]
 
-        # Group by category
+        if compact:
+            result = []
+            for tool in tools:
+                name = tool['name']
+                desc = tool.get('description', '')[:80]
+                result.append(f"{name}: {desc}")
+            return "\n".join(result)
+
         tools_by_cat = {}
         for tool in tools:
             cat = tool.get('category', 'Unknown')
@@ -204,25 +216,50 @@ class StepByStepGenerator:
 
     def _process_placeholders(self, arguments: Dict[str, Any], execution_context: Dict[str, Any]) -> Dict[str, Any]:
         processed_args = copy.deepcopy(arguments)
+        
+        def resolve_placeholder(key_path: str) -> Any:
+            """Resolve a placeholder key, supporting TURN{N} references."""
+            keys = key_path.split('.')
+            
+            # Handle TURN{N} prefix
+            if keys[0].startswith('TURN'):
+                # Format: TURN{N}.{tool}.{field}
+                # e.g., TURN1.authenticate_travel.access_token
+                turn_ref = keys[0]  # e.g., TURN1
+                turn_num = int(turn_ref.replace('TURN', '')) - 1  # 0-indexed
+                
+                # Look up in turn_outputs
+                turn_outputs = execution_context.get('turn_outputs', [])
+                if turn_num < len(turn_outputs):
+                    current = turn_outputs[turn_num]
+                    for k in keys[1:]:  # Skip TURN{N}, go to tool name
+                        if isinstance(current, dict) and k in current:
+                            current = current[k]
+                        else:
+                            return None
+                    return current
+                return None
+            
+            # Standard nested key lookup
+            current = execution_context
+            for key in keys:
+                if isinstance(current, dict) and key in current:
+                    current = current[key]
+                else:
+                    return None
+            return current
+        
         for arg_name, arg_value in processed_args.items():
             if isinstance(arg_value, str):
                 placeholders = re.findall(r"\{\{([^{}]+)\}\}", arg_value)
                 for placeholder_full_key in placeholders:
-                    keys = placeholder_full_key.split('.')
-                    current_value = execution_context
-                    found = True
-                    for key in keys:
-                        if isinstance(current_value, dict) and key in current_value:
-                            current_value = current_value[key]
-                        else:
-                            found = False
-                            break
-                    if found:
+                    resolved_value = resolve_placeholder(placeholder_full_key)
+                    if resolved_value is not None:
                         placeholder_tag = "{{" + placeholder_full_key + "}}"
                         if arg_value == placeholder_tag:
-                            processed_args[arg_name] = current_value
+                            processed_args[arg_name] = resolved_value
                         else:
-                            processed_args[arg_name] = arg_value.replace(placeholder_tag, str(current_value))
+                            processed_args[arg_name] = arg_value.replace(placeholder_tag, str(resolved_value))
         return processed_args
 
     def validate_expected_tools(self, query: str, expected_tools: List[str], intent: str) -> tuple[bool, str]:
@@ -329,7 +366,7 @@ Respond with JSON:
 
     def generate_user_query(self, focus_category: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3, query_seed: Optional[dict] = None) -> QueryGenerationResult:
         # Get tools with full descriptions
-        tools_with_descriptions = self._get_tools_with_descriptions_str(category=focus_category)
+        tools_with_descriptions = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
 
         accumulated_feedback = validation_feedback or ""
         example_queries = self._get_example_queries()
@@ -348,43 +385,26 @@ Do NOT use "Michael Smith", "John", or generic American names — use {p['name']
 """
 
         for attempt in range(max_retries):
-            prompt = f"""You are generating a realistic user query for testing a tool-calling system.
-
-Generate a natural, realistic user query that would require using EXACTLY {self.num_actions} tools to fulfill.
+            prompt = f"""Generate a realistic user query requiring EXACTLY {self.num_actions} tools.
 
 === REQUIREMENTS ===
-1. The query should be specific and actionable
-2. It should mention concrete entities (names, IDs, dates, locations, etc.)
-3. It should require EXACTLY {self.num_actions} tool calls to complete - not more, not less
-4. The expected_tools list must contain EXACTLY {self.num_actions} tool names
-5. CRITICAL: Use ONLY the exact tool names from the AVAILABLE TOOLS section below
-6. CRITICAL: Do NOT invent tool names - only use tools that exist in the list
-7. The tools should logically fit together to accomplish the query
-8. AUTH REQUIREMENT: Many tools require authentication FIRST. If you include a tool that needs auth (e.g., place_order, post_tweet, send_message, close_ticket, book_flight), you MUST also include the corresponding login tool (e.g., trading_login, authenticate_twitter, message_login, ticket_login, authenticate_travel) as one of the {self.num_actions} tools. The login tool should come BEFORE the gated tool in the expected_tools list.
-
+1. Specific with concrete entities (names, IDs, dates, locations)
+2. EXACTLY {self.num_actions} tool calls needed - not more, not less
+3. expected_tools: EXACTLY {self.num_actions} tool names from AVAILABLE TOOLS
+4. CRITICAL: Use ONLY tools from AVAILABLE TOOLS - no invented names
+5. Auth tools need login FIRST (e.g., place_order needs trading_login)
 {persona_section}
-=== AVAILABLE TOOLS WITH DESCRIPTIONS ===
+=== AVAILABLE TOOLS ===
 {tools_with_descriptions}
-{example_queries}
-"""
+{example_queries}"""
             if focus_category:
-                prompt += f"\n=== FOCUS CATEGORY ===\nPrimary category: {focus_category} (select tools primarily from this category)\n"
-
+                prompt += f"\n=== FOCUS CATEGORY ===\nPrimary: {focus_category}\n"
             if accumulated_feedback:
-                prompt += f"\n=== PREVIOUS ATTEMPT FEEDBACK ===\n{accumulated_feedback}\n=== END FEEDBACK ===\n"
-
+                prompt += f"\n=== FEEDBACK ===\n{accumulated_feedback}\n"
             prompt += f"""
-=== YOUR TASK ===
-Generate a query for category: {focus_category or 'any'} that requires EXACTLY {self.num_actions} tools from the AVAILABLE TOOLS list above.
-
-The query should be realistic and the expected_tools must be EXACT names from the available tools list.
-
-Respond ONLY with valid JSON in this exact format:
-{{
-    "query": "the generated user query - be specific with names, dates, IDs",
-    "intent": "brief description of what the user wants to accomplish",
-    "expected_tools": ["tool_name_1", "tool_name_2", ...] // EXACTLY {self.num_actions} tools from AVAILABLE TOOLS
-}}"""
+=== TASK ===
+Generate query requiring EXACTLY {self.num_actions} tools. Respond JSON:
+{{"query": "specific with names/IDs", "intent": "what user wants", "expected_tools": ["tool1", ...]}}"""
 
             try:
                 response = self._safe_llm_generate([{"role": "user", "content": prompt}])
@@ -806,77 +826,50 @@ Respond ONLY with valid JSON:
 
         state_json = json.dumps(relevant_state, indent=2, default=str)[:6000]
 
-        prompt = f"""You are preparing the initial state of API instances so that a sequence of tool calls will execute successfully.
+        prompt_parts = [
+            """You are preparing the initial state of API instances so that tool calls execute successfully.
 
 === USER QUERY ===
-{query_result.query}
+""",
+            query_result.query,
+            """
 
 === EXPECTED TOOL SEQUENCE ===
-{json.dumps(query_result.expected_tools)}
+""",
+            json.dumps(query_result.expected_tools),
+            """
 
 === TOOL SCHEMAS ===
-{tool_schemas_str}
+""",
+            tool_schemas_str,
+            """
 
-=== CURRENT API STATE (relevant classes only) ===
-{state_json}
+=== CURRENT API STATE ===
+""",
+            state_json,
+            """
 
-=== YOUR TASK ===
-Analyze each tool in the expected sequence and determine what state modifications are needed so that EVERY tool call will succeed. Common issues:
+=== RULES ===
+- To add user: user_map.Username = "USR015"
+- To append to list: "APPEND:array_key": value
+- Set fields directly: "field_name": "value"
+- Never do string operations like "APPEND:foo = bar"
+- MINIMAL changes only
 
-1. **Ticket tools** (get_ticket, edit_ticket, close_ticket, resolve_ticket, create_ticket): Need ticket IDs that exist in `tickets_queue`. Also require `authenticated=True` (set by `ticket_login`). If the query references a ticket by ID (e.g., "ticket ID 8392"), you MUST add a ticket with that exact ID to `tickets_queue` using `APPEND:tickets_queue` with JSON like: `{{"id": 8392, "title": "...", "status": "Open", "priority": 3, "created_by": "support_agent"}}`.
-2. **Message tools** (send_message, get_user_id, search_messages, delete_message, add_contact): Need user IDs in `user_map`. `user_map` is a dict mapping username (str) to user_id (str). To add a user, use format like: `user_map.NewUserName: USR015` (the value must be a string user_id, NOT a dict). Do NOT use dict values - that will cause errors. `send_message`, `search_messages`, and `delete_message` require `current_user` set (via `message_login`).
-3. **Login tools**: These VALIDATE credentials against stored values. Do NOT set `authenticated=True` or `access_token` directly — instead, ensure the stored credentials match what the LLM will use in the login call. If the query uses specific credentials, update the stored values to match.
-   - `trading_login(username, password)`: Validates against `trading_bot.username` / `trading_bot.password`
-   - `ticket_login(username, password)`: Validates against `ticket_api.username` / `ticket_api.password`
-   - `authenticate_twitter(username, password)`: Validates against `posting_api.username` / `posting_api.password`
-   - `authenticate_travel(client_id, client_secret, refresh_token, ...)`: Validates against `travel_booking.client_id` / `travel_booking.client_secret` / `travel_booking.refresh_token`
-   - `message_login(user_id)`: Only validates that the user_id exists in `user_map` values — no password check, no username/password fields needed
-4. **Trading tools** (place_order, cancel_order, fund_account, make_transaction, add_to_watchlist, remove_stock_from_watchlist, update_market_status, update_stock_price): Require `authenticated=True` (set by `trading_login`). If the sequence doesn't include `trading_login`, ensure the stored `username`/`password` match what the LLM will use.
-5. **Travel tools** (book_flight, cancel_booking, get_credit_card_balance, purchase_insurance, register_credit_card, retrieve_invoice, set_budget_limit): Require a valid `access_token` (set by `authenticate_travel`). Ungated tools (get_flight_cost, get_nearest_airport_by_city, etc.) don't need auth. If the sequence includes `authenticate_travel`, ensure the stored `client_id`/`client_secret`/`refresh_token` match what the LLM will use. IMPORTANT: When using `register_credit_card`, the returned `card_id` has format `card_XXXX` (e.g., card_1234 for card number ending in 1234). Use this exact format when passing `card_id` to subsequent tools like `book_flight` or `purchase_insurance`.
-6. **Posting tools** (post_tweet, comment, follow_user, mention, retweet, unfollow_user): Require `authenticated=True` (set by `authenticate_twitter`). If the sequence includes `authenticate_twitter`, ensure the stored `username`/`password` match what the LLM will use.
-7. **Vehicle tools**: Generally stateless, but may need specific status flags.
-8. **File system tools** (cat, cd, cp, diff, du, echo, find, grep, ls, mkdir, mv, rm, rmdir, sort, tail, touch, wc):
-   - These operate relative to current_dir (a list of directory names like ["data_processor"])
-   - Files should be placed in root[current_dir][...][contents] or directly in root[...] if current_dir is empty
-   - When current_dir is set to ["data_processor"], tools look for files IN that directory
-   - To add a file config.json when current_dir is ["data_processor"], the file should be at root.data_processor.config.json with value like type-value-file-content-placeholder. Do NOT use paths like root.home.alice.project.src.contents.config.json
-   - The root contains directories like home, tmp, documents at the top level - do not confuse these with current_dir
-   - **CRITICAL for mkdir**: Do NOT pre-create directories that mkdir will create. Only set `current_dir` to indicate where mkdir should create the directory. Let mkdir itself create the directory — do not add `root.<dir_name>` entries for mkdir calls.
-   - **CRITICAL for touch**: Do NOT pre-create files that touch will create. Only set `current_dir`. Let touch create the file.
-   - **CRITICAL for echo**: Do NOT pre-add content to files that echo will write. Only ensure the parent directory exists via `current_dir`. Let echo create/overwrite the file content.
-   - **CRITICAL: File names with extensions** (like invoice.txt, report.pdf): At the ROOT level (current_dir = []), files with extensions can be problematic due to dot-splitting. Use bracket notation like `root['invoice.txt']` to avoid ambiguity. Example: `gorilla_file_system.root['invoice.txt']` instead of `gorilla_file_system.root.invoice.txt`. For files inside directories (current_dir is non-empty), normal dot notation works because they're accessed via `contents` key.
-   - For cat, ls, find, wc, du: Pre-create files/directories as needed so these tools can read/list/find them
+=== EXAMPLES ===
+Add user to message_api:
+{"modifications": {"message_api": {"user_map.Username": "USR015"}}, "reasoning": "..."}
 
-CRITICAL RULES:
-- Only ADD or MODIFY state, never REMOVE existing entries
-- For file system tools: ALWAYS put files relative to `current_dir`. If `current_dir = ["data_processor"]`, the file should be at `root.data_processor.filename`. If `current_dir = []`, it should be at `root.filename`. NEVER use paths like `root.home.alice...` unless current_dir includes those directories.
-- Do NOT set `authenticated=True`, `current_user`, or `access_token` directly EXCEPT when auth-gated tools (edit_ticket, resolve_ticket, create_ticket for ticket tools; place_order, cancel_order, update_stock_price etc. for trading; delete_message, search_messages, send_message etc. for messaging; post_tweet, follow_user etc. for posting; book_flight, purchase_insurance etc. for travel) are in `expected_tools` but no login tool is present — this handles multi-turn where login happened in a previous turn
-- Instead, update the stored credentials (`username`/`password`, `client_id`/`client_secret`/`refresh_token`) so that login calls with those credentials will succeed
-- For ticket tools: if the query mentions specific ticket titles or IDs (e.g., "ticket ID 8392"), you MUST add those tickets with their exact IDs to `tickets_queue`. Use format: `{{"modifications": {{"ticket_api": {{"APPEND:tickets_queue": {{"id": 8392, "title": "...", "status": "Open", "priority": 3, "created_by": "support_agent"}}}}}}}}`
-- For message tools: if the query mentions specific usernames, FIRST check if they already exist in user_map (both as keys and values). If a user with that name OR ID already exists, do NOT add a new entry. Only add if the user truly doesn't exist. When adding, use an ID that is NOT already used by another user.
-- For posting tools: `follow_user` will fail if user is already in `following_list`. Before following, check if already following.
-- For travel tools: After `register_credit_card`, use the returned `card_id` (format: `card_XXXX`) in subsequent calls. Do NOT use raw card numbers.
-- For filesystem tools: only add files/directories to the tree, never modify `current_dir`
-- Keep modifications MINIMAL — only add what's strictly necessary for the tools to succeed
-- Use the SAME ID format as existing entries (e.g., USR015 for new users, integer IDs for tickets)
+Append ticket:
+{"modifications": {"ticket_api": {"APPEND:tickets_queue": {"id": 1234}}}, "reasoning": "..."}
 
-Respond ONLY with valid JSON in this exact format:
-{{
-  "modifications": {{
-    "class_key": {{
-      "field_path": "value_to_set"
-    }}
-  }},
-  "reasoning": "Brief explanation of what was added and why"
-}}
+No changes needed:
+{"modifications": {}, "reasoning": "no changes needed"}
 
-The `modifications` dict maps class_key (e.g., "ticket_api", "message_api") to a dict of field-level changes. Each field_path can be:
-- A top-level attribute name (e.g., "username": "new_user")
-- A nested path using dot notation for dicts (e.g., "user_map.NewUser": "USR015")
-- An array append using the special key "APPEND:tickets_queue" (value is the item to append)
-- An array append multiple using "EXTEND:tickets_queue" (value is a list of items to append)
-
-If no modifications are needed, return: {{"modifications": {{}}, "reasoning": "Current state is sufficient"}}"""
+=== RESPONSE ===
+Respond only with valid JSON in one of these formats"""
+        ]
+        prompt = "".join(prompt_parts)
 
         try:
             response = self._safe_llm_generate([{"role": "user", "content": prompt}])
@@ -1248,9 +1241,9 @@ When generating arguments that need a city or location, prefer {c['city']}.
 The following is the REAL current state of the API. You MUST use values from this state when providing arguments (e.g., user IDs, ticket IDs, usernames, access tokens). Do NOT invent or guess values — use the ones shown below.
 
 {json.dumps(state_for_tool, indent=2, default=str)[:4000]}
-"""
+            """
 
-        prompt = f"""Generate arguments for the tool '{tool_name}' based on the user query and previous steps.
+        prompt = f"""Generate arguments for '{tool_name}' based on user query and previous steps.
 
 === USER QUERY ===
 {query}
@@ -1259,10 +1252,8 @@ The following is the REAL current state of the API. You MUST use values from thi
 {trajectory_str if trajectory_str else "None"}
 
 === EXECUTION CONTEXT ===
-{json.dumps(execution_context, indent=2, default=str)[:500]}
-{persona_arg_section}
-{api_state_section}
-=== TOOL SCHEMA ===
+{json.dumps(execution_context, indent=2, default=str)[:2000]}
+{persona_arg_section}{api_state_section}=== TOOL SCHEMA ===
 {json.dumps(tool_schema.get('parameters', {}), indent=2)}
 
 === EXPECTED OUTPUT ===
@@ -1270,28 +1261,16 @@ Type: {output_type}
 Description: {output_description}
 """
         if feedback:
-            prompt += f"""
-=== PREVIOUS ATTEMPT FEEDBACK ===
-{feedback}
-"""
+            prompt += f"\n=== FEEDBACK ===\n{feedback}\n"
+        prompt += """
+=== TASK ===
+Generate args matching schema and fulfilling query:
+- Use REAL values from API STATE (user IDs, ticket IDs, tokens) - do NOT invent
+- For LOGIN: use stored credentials from API state
+- card_id: 'card_XXXX' (from register_credit_card), access_token: from prior authenticate_travel, booking_id: 'flight_XXX'
 
-        prompt += f"""
-=== YOUR TASK ===
-Generate arguments for '{tool_name}' that:
-1. Match the schema above
-2. Fulfill the user query
-3. Use values from the CURRENT API STATE or Execution Context when available (e.g., real user_id from user_map, ticket_id from ticket_queue, access_token from state)
-4. For LOGIN/AUTH tools: use the stored credentials from the API state (e.g., username/password fields, client_id/client_secret/refresh_token). These are the ONLY valid credentials — the API validates against them.
-5. Do NOT invent or guess IDs, usernames, or tokens — use the real values from the API state
-6. Are specific and realistic
-7. Will produce an output that matches the Expected Output type and description above
+Respond JSON: {"arg1": "value1", ...}}"""
 
-Respond with JSON containing only the arguments:
-{{
-  "arg1": "value1",
-  "arg2": "value2"
-}}"""
-        
         try:
             response = self._safe_llm_generate([{"role": "user", "content": prompt}])
             response_text = response.strip()
@@ -1316,7 +1295,8 @@ Respond with JSON containing only the arguments:
             return None, f"JSON parsing error: {e}"
 
     def _stage2_generate_tools(self, query_result: QueryGenerationResult,
-                               max_retries_per_tool: int, query_seed: Optional[dict] = None) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
+                               max_retries_per_tool: int, query_seed: Optional[dict] = None,
+                               initial_execution_context: Optional[Dict[str, Any]] = None) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
         """
         Stage 2: Generate tool invocations tool-by-tool.
         Uses expected_tools from Stage 1 directly - no LLM selection needed.
@@ -1328,7 +1308,7 @@ Respond with JSON containing only the arguments:
         - Returns (trajectory, execution_context) or None
         """
         trajectory: List[TrajectoryStep] = []
-        execution_context: Dict[str, Any] = {}
+        execution_context: Dict[str, Any] = initial_execution_context.copy() if initial_execution_context else {}
 
         for step_num, tool_name in enumerate(query_result.expected_tools, 1):
             print(f"\n[Step {step_num}/{self.num_actions}] Processing tool: {tool_name}")
@@ -1443,6 +1423,9 @@ Respond with JSON containing only the arguments:
                 if isinstance(output, dict):
                     for k, v in output.items():
                         execution_context[f"{tool_name}_{k}"] = v
+                    # Store access_token directly for convenience (critical for auth-gated tools)
+                    if 'access_token' in output:
+                        execution_context['access_token'] = output['access_token']
                 execution_context[f"{tool_name}_output"] = output
 
                 # Add to trajectory (with state snapshots + verification)
