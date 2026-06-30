@@ -235,11 +235,26 @@ class MultiTurnGenerator(StepByStepGenerator):
     ) -> Optional[DialogBlueprint]:
         """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
         tools_str = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
+        tools_json = self.tool_manager.get_tools_json_schema()
+        if focus_category:
+            tools_json = [t for t in tools_json if t.get('category') == focus_category]
+
+        output_fields = []
+        for tool in tools_json[:20]:
+            name = tool['name']
+            output_type = tool.get('output_type', 'object')
+            output_desc = tool.get('output_description', '')[:100]
+            output_fields.append(f"- {name}: returns {output_type} with fields: {output_desc}")
+
+        output_fields_str = "\n".join(output_fields)
 
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
 === AVAILABLE TOOLS ===
 {tools_str}
+
+=== TOOL OUTPUT FIELDS (use these exact field names in placeholders) ===
+{output_fields_str}
 
 === REQUIREMENTS ===
 1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
@@ -247,7 +262,7 @@ class MultiTurnGenerator(StepByStepGenerator):
 3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
 4. expected_tools: EXACTLY {self.num_actions} tools per turn
 5. Credentials: trader_admin/TradeAdmin2024! (trading), tech_user/TechUser2024! (posting), support_agent/SupportAgent2024! (tickets), travel_client_001/s3cretK3y!/refresh_abc123 (travel), USR005-USR014 (messaging)
-6. Cross-turn refs: use placeholders like {{{{TURN1.book_flight.booking_id}}}} (not hardcoded IDs)
+6. Cross-turn refs: use placeholders with EXACT field names like {{{{TURN1.mkdir.dir_name}}}}, {{{{TURN3.touch.file_name}}}}, etc.
 
 === EXAMPLES ===
 - "Log into trading as trader_admin/TradeAdmin2024! and buy 100 MSFT shares." (trading_login, place_order)
@@ -317,6 +332,7 @@ class MultiTurnGenerator(StepByStepGenerator):
                     for p in placeholders:
                         ref_turn_idx = int(p[0]) - 1
                         ref_tool = p[1]
+                        ref_field = p[2]
                         if ref_turn_idx >= i:
                             validation_errors.append(f"Turn {i+1} placeholder references future turn {p[0]}")
                             all_tools_valid = False
@@ -327,6 +343,21 @@ class MultiTurnGenerator(StepByStepGenerator):
                                 validation_errors.append(f"Turn {i+1} references {ref_tool} from turn {p[0]}, but that turn uses {ref_tools}")
                                 all_tools_valid = False
                                 break
+                            # Validate that the placeholder field exists in tool output
+                            tool_schema = self.tool_manager.get_tool_schema(ref_tool)
+                            if tool_schema:
+                                output_fields = set()
+                                output_type = tool_schema.get('output_type', '')
+                                output_desc = tool_schema.get('output_description', '').lower()
+                                if 'dict' in output_type or 'object' in output_type:
+                                    output_fields.add('success')
+                                if output_desc:
+                                    words = re.findall(r'\b\w+\b', output_desc)
+                                    output_fields.update(words)
+                                if ref_field.lower() not in output_fields and ref_field not in ['success', 'message']:
+                                    validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}} - '{ref_field}' not in {ref_tool} output. Available: {output_fields}")
+                                    all_tools_valid = False
+                                    break
                     if not all_tools_valid:
                         break
 
