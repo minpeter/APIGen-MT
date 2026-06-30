@@ -238,14 +238,18 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         output_fields_map = {
             'Storage': {
-                # Fields from simulation output (which transforms Python returns)
-                'mkdir': ['success', 'message'],
+                # mkdir now returns dir_name explicitly
+                'mkdir': ['success', 'message', 'dir_name', 'path'],
+                # touch output: {"success": true, "file_name": "X", "message": "..."}
                 'touch': ['success', 'file_name', 'message'],
                 'cd': ['success', 'current_path', 'error'],
                 'cat': ['content', 'file_name', 'error'],
+                # echo output: {"success": true, "id": "X", "file_name": "X", "content": "X"}
                 'echo': ['success', 'id', 'file_name', 'content', 'status'],
-                'ls': ['id', 'path', 'files', 'show_hidden', 'total_count'],
+                # ls output: {"id": "...", "path": ".", "files": [...], ...}
+                'ls': ['id', 'path', 'files', 'show_hidden', 'total_count', 'contents'],
                 'rm': ['success', 'error'],
+                # mv output: {"success": true, "source": "X", "destination": "Y", ...}
                 'mv': ['success', 'source', 'destination', 'message', 'error'],
                 'cp': ['success', 'source', 'destination', 'message', 'error'],
                 'grep': ['matches', 'count', 'error'],

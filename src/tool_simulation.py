@@ -119,13 +119,10 @@ def simulate_filesystem_return(function_name: str, arguments: Dict) -> Dict:
     
     elif function_name == 'mkdir':
         return {
-            'status': 'success',
-            'result': {
-                'type': 'acknowledgment',
-                'message': f"Created directory '{arguments.get('dir_name')}'",
-                'path': arguments.get('dir_name')
-            },
-            'simulated': True
+            'success': True,
+            'message': f"Directory {arguments.get('dir_name')} created successfully.",
+            'dir_name': arguments.get('dir_name'),
+            'path': arguments.get('dir_name')
         }
     
     elif function_name == 'mv':
