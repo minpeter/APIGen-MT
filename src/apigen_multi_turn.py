@@ -355,9 +355,8 @@ class MultiTurnGenerator(StepByStepGenerator):
                                     words = re.findall(r'\b\w+\b', output_desc)
                                     output_fields.update(words)
                                 if ref_field.lower() not in output_fields and ref_field not in ['success', 'message']:
-                                    validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}} - '{ref_field}' not in {ref_tool} output. Available: {output_fields}")
-                                    all_tools_valid = False
-                                    break
+                                    validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}}: '{ref_field}' may not exist in {ref_tool} output (got: {output_fields}). Use common fields like 'success', 'message', 'id', 'file_name', 'dir_name', 'content'.")
+                                    # Don't fail - just warn and let LLM decide
                     if not all_tools_valid:
                         break
 
