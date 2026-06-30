@@ -285,6 +285,14 @@ class MultiTurnGenerator(StepByStepGenerator):
 === OUTPUT SCHEMAS (use these exact field names in placeholders) ===
 {output_fields_str}
 
+=== CRITICAL: PATH HANDLING ===
+- file_name/dir_name must be simple names, NOT paths (e.g., "config.ini" not "folder/config.ini")
+- To work in a subdirectory: first use cd to navigate there, THEN use file operations
+- Example CORRECT sequence:
+  1. mkdir project
+  2. cd project  
+  3. touch file.txt (NOT "project/file.txt")
+
 === REQUIREMENTS ===
 1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
 2. Conversation flows naturally, each turn builds on previous
