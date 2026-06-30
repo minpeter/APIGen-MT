@@ -235,25 +235,49 @@ class MultiTurnGenerator(StepByStepGenerator):
     ) -> Optional[DialogBlueprint]:
         """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
         tools_str = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
-        tools_json = self.tool_manager.get_tools_json_schema()
-        if focus_category:
-            tools_json = [t for t in tools_json if t.get('category') == focus_category]
 
-        output_fields = []
-        for tool in tools_json[:20]:
-            name = tool['name']
-            output_type = tool.get('output_type', 'object')
-            output_desc = tool.get('output_description', '')[:100]
-            output_fields.append(f"- {name}: returns {output_type} with fields: {output_desc}")
+        output_fields_map = {
+            'Storage': {
+                'mkdir': ['success', 'message', 'dir_name'],
+                'touch': ['success', 'message', 'file_name', 'created'],
+                'cd': ['success', 'message', 'current_path'],
+                'cat': ['success', 'content', 'file_name'],
+                'echo': ['success', 'message', 'file_name', 'id'],
+                'ls': ['success', 'files', 'path', 'id'],
+                'rm': ['success', 'message'],
+                'mv': ['success', 'message', 'source', 'destination'],
+                'cp': ['success', 'message', 'source', 'destination'],
+                'grep': ['success', 'lines', 'count'],
+                'wc': ['success', 'lines', 'words', 'chars', 'file_name'],
+                'head': ['success', 'first_n_lines', 'file_name'],
+                'tail': ['success', 'last_lines', 'file_name'],
+                'find': ['success', 'matching_files'],
+                'du': ['success', 'total_size', 'unit'],
+            },
+            'Travel Booking': {
+                'authenticate_travel': ['success', 'access_token', 'token_type', 'expires_in'],
+                'book_flight': ['success', 'booking_id', 'flight_number', 'total_cost'],
+                'get_flight_cost': ['success', 'price_usd', 'flight_number', 'currency'],
+                'get_nearest_airport_by_city': ['success', 'airport_name', 'iata_code', 'distance'],
+                'cancel_booking': ['success', 'cancel_status', 'booking_id'],
+                'retrieve_invoice': ['success', 'invoice_id', 'amount', 'line_items'],
+                'purchase_insurance': ['success', 'insurance_policy_id', 'amount_charged'],
+            }
+        }
 
-        output_fields_str = "\n".join(output_fields)
+        output_fields_str = ""
+        for cat, fields in output_fields_map.items():
+            if focus_category is None or cat == focus_category:
+                output_fields_str += f"\n=== {cat} OUTPUT FIELDS ===\n"
+                for tool, flds in fields.items():
+                    output_fields_str += f"- {tool}: {', '.join(flds)}\n"
 
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
 === AVAILABLE TOOLS ===
 {tools_str}
 
-=== TOOL OUTPUT FIELDS (use these exact field names in placeholders) ===
+=== OUTPUT SCHEMAS (use these exact field names in placeholders) ===
 {output_fields_str}
 
 === REQUIREMENTS ===
@@ -262,7 +286,7 @@ class MultiTurnGenerator(StepByStepGenerator):
 3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
 4. expected_tools: EXACTLY {self.num_actions} tools per turn
 5. Credentials: trader_admin/TradeAdmin2024! (trading), tech_user/TechUser2024! (posting), support_agent/SupportAgent2024! (tickets), travel_client_001/s3cretK3y!/refresh_abc123 (travel), USR005-USR014 (messaging)
-6. Cross-turn refs: use placeholders with EXACT field names like {{{{TURN1.mkdir.dir_name}}}}, {{{{TURN3.touch.file_name}}}}, etc.
+6. Cross-turn refs: use EXACT output field names like {{{{TURN1.mkdir.dir_name}}}}, {{{{TURN3.touch.file_name}}}}, etc.
 
 === EXAMPLES ===
 - "Log into trading as trader_admin/TradeAdmin2024! and buy 100 MSFT shares." (trading_login, place_order)
@@ -343,20 +367,24 @@ class MultiTurnGenerator(StepByStepGenerator):
                                 validation_errors.append(f"Turn {i+1} references {ref_tool} from turn {p[0]}, but that turn uses {ref_tools}")
                                 all_tools_valid = False
                                 break
-                            # Validate that the placeholder field exists in tool output
-                            tool_schema = self.tool_manager.get_tool_schema(ref_tool)
-                            if tool_schema:
-                                output_fields = set()
-                                output_type = tool_schema.get('output_type', '')
-                                output_desc = tool_schema.get('output_description', '').lower()
-                                if 'dict' in output_type or 'object' in output_type:
-                                    output_fields.add('success')
-                                if output_desc:
-                                    words = re.findall(r'\b\w+\b', output_desc)
-                                    output_fields.update(words)
-                                if ref_field.lower() not in output_fields and ref_field not in ['success', 'message']:
-                                    validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}}: '{ref_field}' may not exist in {ref_tool} output (got: {output_fields}). Use common fields like 'success', 'message', 'id', 'file_name', 'dir_name', 'content'.")
-                                    # Don't fail - just warn and let LLM decide
+                            # Validate that the placeholder field exists in tool output using known schema
+                            output_fields_map = {
+                                'mkdir': ['success', 'message', 'dir_name'],
+                                'touch': ['success', 'message', 'file_name', 'created'],
+                                'cd': ['success', 'message', 'current_path'],
+                                'cat': ['success', 'content', 'file_name'],
+                                'echo': ['success', 'message', 'file_name', 'id'],
+                                'ls': ['success', 'files', 'path', 'id'],
+                                'rm': ['success', 'message'],
+                                'mv': ['success', 'message', 'source', 'destination'],
+                                'cp': ['success', 'message', 'source', 'destination'],
+                                'grep': ['success', 'lines', 'count'],
+                                'wc': ['success', 'lines', 'words', 'chars', 'file_name'],
+                            }
+                            known_fields = output_fields_map.get(ref_tool, ['success', 'message', 'id', 'result'])
+                            if ref_field not in known_fields:
+                                validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}}: '{ref_field}' not in {ref_tool} output. Use: {known_fields}")
+                                # Don't fail - just warn
                     if not all_tools_valid:
                         break
 
