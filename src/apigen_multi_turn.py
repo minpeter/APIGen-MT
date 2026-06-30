@@ -259,13 +259,19 @@ class MultiTurnGenerator(StepByStepGenerator):
 {{"overall_task": "scenario", "turns": [{{"user_query": "request", "expected_tools": ["t1", "t2"]}}, ...]}}"""
 
         if focus_category:
-            prompt += f"\n\nIMPORTANT: Use only '{focus_category}' category tools."
+            prompt += f"\n\nIMPORTANT: Use ONLY tools from '{focus_category}' category. Do NOT use tools from other categories."
         else:
             prompt += "\n\nYou may use tools from any category."
 
+        accumulated_feedback = ""
         for attempt in range(3):
             try:
-                response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+                if accumulated_feedback:
+                    prompt_with_feedback = prompt + f"\n\n=== PREVIOUS ATTEMPT FEEDBACK ===\n{accumulated_feedback}\n=== END FEEDBACK ===\n"
+                else:
+                    prompt_with_feedback = prompt
+
+                response = self._safe_llm_generate([{"role": "user", "content": prompt_with_feedback}])
                 response_text = response.strip()
 
                 if "```json" in response_text:
@@ -280,14 +286,16 @@ class MultiTurnGenerator(StepByStepGenerator):
                 result = json.loads(response_text)
                 turns = result.get("turns", [])
                 if not turns or len(turns) != self.num_turns:
-                    print(f"  ✗ Expected {self.num_turns} turns, got {len(turns)}")
+                    accumulated_feedback = f"Expected {self.num_turns} turns, got {len(turns)}. Please generate exactly {self.num_turns} turns."
+                    print(f"  ✗ {accumulated_feedback}")
                     continue
 
+                validation_errors = []
                 all_tools_valid = True
                 for i, t in enumerate(turns):
                     expected = t.get("expected_tools", [])
                     if len(expected) != self.num_actions:
-                        print(f"  ✗ Turn {i+1} has {len(expected)} tools, need {self.num_actions}: {expected}")
+                        validation_errors.append(f"Turn {i+1} has {len(expected)} tools, need exactly {self.num_actions}: {expected}")
                         all_tools_valid = False
                         break
 
@@ -296,7 +304,7 @@ class MultiTurnGenerator(StepByStepGenerator):
                         for tool_name in expected:
                             tool_cat = self.tool_manager.get_tool_category(tool_name)
                             if tool_cat != focus_category:
-                                print(f"  ✗ Turn {i+1} tool '{tool_name}' is from category '{tool_cat}', not '{focus_category}'")
+                                validation_errors.append(f"Turn {i+1} tool '{tool_name}' is from category '{tool_cat}', not '{focus_category}'. Use only {focus_category} tools.")
                                 all_tools_valid = False
                                 break
                         if not all_tools_valid:
@@ -310,21 +318,19 @@ class MultiTurnGenerator(StepByStepGenerator):
                         ref_turn_idx = int(p[0]) - 1
                         ref_tool = p[1]
                         if ref_turn_idx >= i:
-                            print(f"  ✗ Turn {i+1} references future turn {p[0]} (placeholders can only reference prior turns)")
+                            validation_errors.append(f"Turn {i+1} placeholder references future turn {p[0]}")
                             all_tools_valid = False
                             break
                         if ref_turn_idx < len(turns):
                             ref_tools = turns[ref_turn_idx].get("expected_tools", [])
                             if ref_tool not in ref_tools:
-                                print(f"  ✗ Turn {i+1} references {ref_tool} from turn {p[0]}, but that turn uses {ref_tools}")
+                                validation_errors.append(f"Turn {i+1} references {ref_tool} from turn {p[0]}, but that turn uses {ref_tools}")
                                 all_tools_valid = False
                                 break
                     if not all_tools_valid:
                         break
 
                 # Validate cross-turn entity references
-                # If Turn N uses a tool that operates on an entity created in Turn N-1,
-                # the query must use a placeholder for that entity's ID
                 cross_turn_entity_tools = {
                     'comment': ('tweet_id', 'post_tweet'),
                     'retweet': ('tweet_id', 'post_tweet'),
@@ -343,20 +349,20 @@ class MultiTurnGenerator(StepByStepGenerator):
                     for tool_name in expected:
                         if tool_name in cross_turn_entity_tools:
                             id_field, create_tool = cross_turn_entity_tools[tool_name]
-                            # Check if prior turn has the create tool
                             if i > 0 and i - 1 < len(turns):
                                 prior_tools = turns[i - 1].get("expected_tools", [])
                                 if create_tool in prior_tools:
-                                    # Query should use placeholder for the created entity
                                     placeholder_pattern = f'{{{{TURN{i}.{create_tool}.{id_field}}}}}'
                                     if placeholder_pattern not in query:
-                                        print(f"  ✗ Turn {i+1} uses '{tool_name}' to operate on a {create_tool} result but query lacks placeholder '{id_field}'")
+                                        validation_errors.append(f"Turn {i+1} uses '{tool_name}' to operate on {create_tool} result but query lacks placeholder '{id_field}'")
                                         all_tools_valid = False
                                         break
                     if not all_tools_valid:
                         break
 
                 if not all_tools_valid:
+                    accumulated_feedback = "\n".join(validation_errors) if validation_errors else "Validation failed. Please check tool categories and placeholders."
+                    print(f"  ✗ {accumulated_feedback}")
                     continue
 
                 all_tools_valid = all(
@@ -365,7 +371,8 @@ class MultiTurnGenerator(StepByStepGenerator):
                     for t in t_dict.get("expected_tools", [])
                 )
                 if not all_tools_valid:
-                    print("  ✗ Some expected_tools are invalid")
+                    accumulated_feedback = "Some expected_tools are invalid. Please use only valid tool names from the provided list."
+                    print(f"  ✗ {accumulated_feedback}")
                     continue
 
                 print(f" ✓ Blueprint generated: {result.get('overall_task', '')[:100]}")
@@ -375,6 +382,7 @@ class MultiTurnGenerator(StepByStepGenerator):
                     turns=turns,
                 )
             except (json.JSONDecodeError, ValueError, KeyError) as e:
+                accumulated_feedback = f"JSON parse error: {e}. Please return valid JSON."
                 print(f"  ✗ Attempt {attempt + 1}: {e}")
                 continue
 
