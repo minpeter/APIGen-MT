@@ -22,9 +22,10 @@ def simulate_tool_return(function_name: str, arguments: Dict[str, Any], tool_def
         Simulated return value dictionary
     """
     
-    # File system operations
+    # File system operations - now handled by GorillaFileSystem in tools/gorilla_file_system.py
+    # Kept here for reference only; actual execution uses invoke_python_tool via tool_manager
     if function_name in ['ls', 'cat', 'pwd', 'cd', 'mkdir', 'mv', 'rm', 'rmdir', 'touch', 'cp']:
-        return simulate_filesystem_return(function_name, arguments)
+        return {'status': 'deprecated', 'note': 'Use invoke_python_tool instead'}
     
     # Math operations
     elif function_name in ['add', 'subtract', 'multiply', 'divide', 'power', 'sqrt', 'log', 'sin', 'cos',
@@ -66,79 +67,6 @@ def simulate_tool_return(function_name: str, arguments: Dict[str, Any], tool_def
             'arguments_used': arguments,
             'simulated': True
         }
-
-
-def simulate_filesystem_return(function_name: str, arguments: Dict) -> Dict:
-    """Simulate file system tool returns."""
-    
-    if function_name == 'ls':
-        return {
-            'status': 'success',
-            'result': {
-                'type': 'list',
-                'contents': ['file1.txt', 'file2.pdf', 'document.docx', 'subdir/'],
-                'count': 4,
-                'path': arguments.get('path', '.')
-            },
-            'simulated': True
-        }
-    
-    elif function_name == 'cat':
-        return {
-            'status': 'success',
-            'result': {
-                'type': 'string',
-                'content': f'This is the content of {arguments.get("file_name", "file")}. Lorem ipsum dolor sit amet...',
-                'file': arguments.get('file_name'),
-                'size': 1024
-            },
-            'simulated': True
-        }
-    
-    elif function_name == 'pwd':
-        return {
-            'status': 'success',
-            'result': {
-                'type': 'string',
-                'current_directory': '/workspace/project',
-                'user': 'analyst'
-            },
-            'simulated': True
-        }
-    
-    elif function_name == 'cd':
-        return {
-            'status': 'success',
-            'result': {
-                'type': 'acknowledgment',
-                'message': f"Changed directory to '{arguments.get('folder')}'",
-                'new_path': f"/workspace/{arguments.get('folder')}"
-            },
-            'simulated': True
-        }
-    
-    elif function_name == 'mkdir':
-        return {
-            'status': 'success',
-            'result': {
-                'type': 'acknowledgment',
-                'message': f"Created directory '{arguments.get('dir_name')}'",
-                'path': arguments.get('dir_name')
-            },
-            'simulated': True
-        }
-    
-    elif function_name == 'mv':
-        return {
-            'status': 'success',
-            'result': {
-                'type': 'acknowledgment',
-                'message': f"Moved '{arguments.get('source')}' to '{arguments.get('destination')}'"
-            },
-            'simulated': True
-        }
-    
-    return {'status': 'unknown_function', 'function': function_name}
 
 
 def simulate_math_return(function_name: str, arguments: Dict) -> Dict:

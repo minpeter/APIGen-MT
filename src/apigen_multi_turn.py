@@ -147,16 +147,9 @@ class MultiTurnGenerator(StepByStepGenerator):
                 return None
             self._update_token_usage()
 
-            # Stage 1.5: Adjust API state for this turn's expected tools
-            if self._python_tools_available and query_result.expected_tools:
-                print(f"\n Adjusting API state for turn {turn_idx + 1}...")
-                adjusted = self._stage1_5_adjust_initial_state(query_result)
-                if adjusted:
-                    print(" ✓ State adjusted")
-                else:
-                    print(" ⚡ No adjustment needed")
-
             # Stage 2: Generate and execute tool invocations (pass persistent execution_context)
+            # Note: State adjustment removed - tool calls modify API state which persists,
+            # and we pass current API state snapshot to the tool manager LLM
             trajectory, ec = self._stage2_generate_tools(query_result, tool_retries, initial_execution_context=execution_context)
             if trajectory is None:
                 print(f"✗ Turn {turn_idx + 1} failed: Could not generate tool calls")
@@ -243,10 +236,62 @@ class MultiTurnGenerator(StepByStepGenerator):
         """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
         tools_str = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
 
+        output_fields_map = {
+            'Storage': {
+                # mkdir now returns dir_name explicitly
+                'mkdir': ['success', 'message', 'dir_name', 'path'],
+                # touch output: {"success": true, "file_name": "X", "message": "..."}
+                'touch': ['success', 'file_name', 'message'],
+                'cd': ['success', 'current_path', 'error'],
+                'cat': ['content', 'file_name', 'error'],
+                # echo output: {"success": true, "id": "X", "file_name": "X", "content": "X"}
+                'echo': ['success', 'id', 'file_name', 'content', 'status'],
+                # ls output: {"id": "...", "path": ".", "files": [...], ...}
+                'ls': ['id', 'path', 'files', 'show_hidden', 'total_count', 'contents'],
+                'rm': ['success', 'error'],
+                # mv output: {"success": true, "source": "X", "destination": "Y", ...}
+                'mv': ['success', 'source', 'destination', 'message', 'error'],
+                'cp': ['success', 'source', 'destination', 'message', 'error'],
+                'grep': ['matches', 'count', 'error'],
+                'wc': ['lines', 'words', 'characters', 'file_name', 'mode'],
+                'head': ['first_n_lines', 'file_name'],
+                'tail': ['last_lines', 'file_name'],
+                'find': ['files', 'error'],
+                'du': ['total_size', 'unit', 'error'],
+            },
+            'Travel Booking': {
+                'authenticate_travel': ['success', 'access_token', 'token_type', 'expires_in'],
+                'book_flight': ['success', 'booking_id', 'flight_number', 'total_cost'],
+                'get_flight_cost': ['success', 'price_usd', 'flight_number', 'currency'],
+                'get_nearest_airport_by_city': ['success', 'airport_name', 'iata_code', 'distance'],
+                'cancel_booking': ['success', 'cancel_status', 'booking_id'],
+                'retrieve_invoice': ['success', 'invoice_id', 'amount', 'line_items'],
+                'purchase_insurance': ['success', 'insurance_policy_id', 'amount_charged'],
+            }
+        }
+
+        output_fields_str = ""
+        for cat, fields in output_fields_map.items():
+            if focus_category is None or cat == focus_category:
+                output_fields_str += f"\n=== {cat} OUTPUT FIELDS ===\n"
+                for tool, flds in fields.items():
+                    output_fields_str += f"- {tool}: {', '.join(flds)}\n"
+
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
 === AVAILABLE TOOLS ===
 {tools_str}
+
+=== OUTPUT SCHEMAS (use these exact field names in placeholders) ===
+{output_fields_str}
+
+=== CRITICAL: PATH HANDLING ===
+- file_name/dir_name must be simple names, NOT paths (e.g., "config.ini" not "folder/config.ini")
+- To work in a subdirectory: first use cd to navigate there, THEN use file operations
+- Example CORRECT sequence:
+  1. mkdir project
+  2. cd project  
+  3. touch file.txt (NOT "project/file.txt")
 
 === REQUIREMENTS ===
 1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
@@ -254,7 +299,7 @@ class MultiTurnGenerator(StepByStepGenerator):
 3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
 4. expected_tools: EXACTLY {self.num_actions} tools per turn
 5. Credentials: trader_admin/TradeAdmin2024! (trading), tech_user/TechUser2024! (posting), support_agent/SupportAgent2024! (tickets), travel_client_001/s3cretK3y!/refresh_abc123 (travel), USR005-USR014 (messaging)
-6. Cross-turn refs: use placeholders like {{{{TURN1.book_flight.booking_id}}}} (not hardcoded IDs)
+6. Cross-turn refs: use EXACT output field names like {{{{TURN1.mkdir.dir_name}}}}, {{{{TURN3.touch.file_name}}}}, etc.
 
 === EXAMPLES ===
 - "Log into trading as trader_admin/TradeAdmin2024! and buy 100 MSFT shares." (trading_login, place_order)
@@ -266,13 +311,19 @@ class MultiTurnGenerator(StepByStepGenerator):
 {{"overall_task": "scenario", "turns": [{{"user_query": "request", "expected_tools": ["t1", "t2"]}}, ...]}}"""
 
         if focus_category:
-            prompt += f"\n\nIMPORTANT: Use only '{focus_category}' category tools."
+            prompt += f"\n\nIMPORTANT: Use ONLY tools from '{focus_category}' category. Do NOT use tools from other categories."
         else:
             prompt += "\n\nYou may use tools from any category."
 
+        accumulated_feedback = ""
         for attempt in range(3):
             try:
-                response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+                if accumulated_feedback:
+                    prompt_with_feedback = prompt + f"\n\n=== PREVIOUS ATTEMPT FEEDBACK ===\n{accumulated_feedback}\n=== END FEEDBACK ===\n"
+                else:
+                    prompt_with_feedback = prompt
+
+                response = self._safe_llm_generate([{"role": "user", "content": prompt_with_feedback}])
                 response_text = response.strip()
 
                 if "```json" in response_text:
@@ -287,14 +338,16 @@ class MultiTurnGenerator(StepByStepGenerator):
                 result = json.loads(response_text)
                 turns = result.get("turns", [])
                 if not turns or len(turns) != self.num_turns:
-                    print(f"  ✗ Expected {self.num_turns} turns, got {len(turns)}")
+                    accumulated_feedback = f"Expected {self.num_turns} turns, got {len(turns)}. Please generate exactly {self.num_turns} turns."
+                    print(f"  ✗ {accumulated_feedback}")
                     continue
 
+                validation_errors = []
                 all_tools_valid = True
                 for i, t in enumerate(turns):
                     expected = t.get("expected_tools", [])
                     if len(expected) != self.num_actions:
-                        print(f"  ✗ Turn {i+1} has {len(expected)} tools, need {self.num_actions}: {expected}")
+                        validation_errors.append(f"Turn {i+1} has {len(expected)} tools, need exactly {self.num_actions}: {expected}")
                         all_tools_valid = False
                         break
 
@@ -303,7 +356,7 @@ class MultiTurnGenerator(StepByStepGenerator):
                         for tool_name in expected:
                             tool_cat = self.tool_manager.get_tool_category(tool_name)
                             if tool_cat != focus_category:
-                                print(f"  ✗ Turn {i+1} tool '{tool_name}' is from category '{tool_cat}', not '{focus_category}'")
+                                validation_errors.append(f"Turn {i+1} tool '{tool_name}' is from category '{tool_cat}', not '{focus_category}'. Use only {focus_category} tools.")
                                 all_tools_valid = False
                                 break
                         if not all_tools_valid:
@@ -316,22 +369,39 @@ class MultiTurnGenerator(StepByStepGenerator):
                     for p in placeholders:
                         ref_turn_idx = int(p[0]) - 1
                         ref_tool = p[1]
+                        ref_field = p[2]
                         if ref_turn_idx >= i:
-                            print(f"  ✗ Turn {i+1} references future turn {p[0]} (placeholders can only reference prior turns)")
+                            validation_errors.append(f"Turn {i+1} placeholder references future turn {p[0]}")
                             all_tools_valid = False
                             break
                         if ref_turn_idx < len(turns):
                             ref_tools = turns[ref_turn_idx].get("expected_tools", [])
                             if ref_tool not in ref_tools:
-                                print(f"  ✗ Turn {i+1} references {ref_tool} from turn {p[0]}, but that turn uses {ref_tools}")
+                                validation_errors.append(f"Turn {i+1} references {ref_tool} from turn {p[0]}, but that turn uses {ref_tools}")
                                 all_tools_valid = False
                                 break
+                            # Validate that the placeholder field exists in tool output using known schema
+                            output_fields_map = {
+                                'mkdir': ['success', 'message', 'dir_name'],
+                                'touch': ['success', 'message', 'file_name', 'created'],
+                                'cd': ['success', 'message', 'current_path'],
+                                'cat': ['success', 'content', 'file_name'],
+                                'echo': ['success', 'message', 'file_name', 'id'],
+                                'ls': ['success', 'files', 'path', 'id'],
+                                'rm': ['success', 'message'],
+                                'mv': ['success', 'message', 'source', 'destination'],
+                                'cp': ['success', 'message', 'source', 'destination'],
+                                'grep': ['success', 'lines', 'count'],
+                                'wc': ['success', 'lines', 'words', 'chars', 'file_name'],
+                            }
+                            known_fields = output_fields_map.get(ref_tool, ['success', 'message', 'id', 'result'])
+                            if ref_field not in known_fields:
+                                validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}}: '{ref_field}' not in {ref_tool} output. Use: {known_fields}")
+                                # Don't fail - just warn
                     if not all_tools_valid:
                         break
 
                 # Validate cross-turn entity references
-                # If Turn N uses a tool that operates on an entity created in Turn N-1,
-                # the query must use a placeholder for that entity's ID
                 cross_turn_entity_tools = {
                     'comment': ('tweet_id', 'post_tweet'),
                     'retweet': ('tweet_id', 'post_tweet'),
@@ -350,20 +420,20 @@ class MultiTurnGenerator(StepByStepGenerator):
                     for tool_name in expected:
                         if tool_name in cross_turn_entity_tools:
                             id_field, create_tool = cross_turn_entity_tools[tool_name]
-                            # Check if prior turn has the create tool
                             if i > 0 and i - 1 < len(turns):
                                 prior_tools = turns[i - 1].get("expected_tools", [])
                                 if create_tool in prior_tools:
-                                    # Query should use placeholder for the created entity
                                     placeholder_pattern = f'{{{{TURN{i}.{create_tool}.{id_field}}}}}'
                                     if placeholder_pattern not in query:
-                                        print(f"  ✗ Turn {i+1} uses '{tool_name}' to operate on a {create_tool} result but query lacks placeholder '{id_field}'")
+                                        validation_errors.append(f"Turn {i+1} uses '{tool_name}' to operate on {create_tool} result but query lacks placeholder '{id_field}'")
                                         all_tools_valid = False
                                         break
                     if not all_tools_valid:
                         break
 
                 if not all_tools_valid:
+                    accumulated_feedback = "\n".join(validation_errors) if validation_errors else "Validation failed. Please check tool categories and placeholders."
+                    print(f"  ✗ {accumulated_feedback}")
                     continue
 
                 all_tools_valid = all(
@@ -372,7 +442,8 @@ class MultiTurnGenerator(StepByStepGenerator):
                     for t in t_dict.get("expected_tools", [])
                 )
                 if not all_tools_valid:
-                    print("  ✗ Some expected_tools are invalid")
+                    accumulated_feedback = "Some expected_tools are invalid. Please use only valid tool names from the provided list."
+                    print(f"  ✗ {accumulated_feedback}")
                     continue
 
                 print(f" ✓ Blueprint generated: {result.get('overall_task', '')[:100]}")
@@ -382,6 +453,7 @@ class MultiTurnGenerator(StepByStepGenerator):
                     turns=turns,
                 )
             except (json.JSONDecodeError, ValueError, KeyError) as e:
+                accumulated_feedback = f"JSON parse error: {e}. Please return valid JSON."
                 print(f"  ✗ Attempt {attempt + 1}: {e}")
                 continue
 
