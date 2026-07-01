@@ -1,320 +1,290 @@
-"""GorillaFileSystem - A proper file system implementation with actual state."""
+"""Virtual in-memory filesystem for tool simulation."""
 
-import copy
-from typing import Any, Dict, List, Optional
+import os
+import shutil
+import tempfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 
 class GorillaFileSystem:
     """
-    A simple file system that maintains actual file/folder dict structure.
+    A virtual in-memory filesystem that persists state between tool calls.
     
-    State structure:
-    {
-        "root": {
-            "dirname": {"type": "directory", "contents": {...}},
-            "file.txt": {"type": "file", "content": "..."}
-        },
-        "current_dir": ["path", "to", "dir"]
-    }
+    State is maintained as actual files/directories on disk in a temp directory,
+    allowing realistic operations while maintaining state between calls.
     """
 
-    def __init__(self, initial_config: dict) -> None:
-        if "root" in initial_config and isinstance(initial_config["root"], dict):
-            self.root = copy.deepcopy(initial_config["root"])
+    def __init__(self, initial_config: Optional[Dict] = None):
+        """Initialize with optional initial state."""
+        self._temp_dir = tempfile.mkdtemp(prefix="vfs_")
+        self.current_dir = self._temp_dir
+        
+        if initial_config:
+            self._load_from_config(initial_config)
         else:
-            self.root = copy.deepcopy(initial_config)
-        self.current_dir: List[str] = []
+            self._setup_default_structure()
 
-    def _get_current_node(self) -> Dict[str, Any]:
-        """Get the current directory node."""
-        node = self.root
-        for part in self.current_dir:
-            if part not in node:
-                return None
-            if node[part]["type"] != "directory":
-                return None
-            node = node[part]["contents"]
-        return node
+    def _setup_default_structure(self):
+        """Set up a default directory structure."""
+        Path(self._temp_dir).joinpath("workspace").mkdir(exist_ok=True)
 
-    def _resolve_path(self, path: str) -> tuple[Optional[Dict], Optional[str], Optional[str]]:
-        """
-        Resolve a path to (parent_node, basename, error).
-        Handles both absolute paths (from root) and relative paths (from current_dir).
-        """
-        if not path:
-            return None, None, "Empty path"
-        
-        parts = path.replace("\\", "/").split("/")
-        if parts[0] == "":
-            return None, None, "Absolute paths not supported"
-        
-        current = self._get_current_node()
-        if current is None:
-            return None, None, "Current directory does not exist"
-        
-        for name in parts[:-1]:
-            if name not in current:
-                return None, None, f"Directory '{name}' not found"
-            if current[name]["type"] != "directory":
-                return None, None, f"'{name}' is not a directory"
-            current = current[name]["contents"]
-        
-        return current, parts[-1], None
+    def _load_from_config(self, config: Dict):
+        """Load filesystem structure from config dict."""
+        if "root" in config and isinstance(config["root"], dict):
+            self._build_from_dict(config["root"], Path(self._temp_dir))
+        elif isinstance(config, dict):
+            self._build_from_dict(config, Path(self._temp_dir))
+
+    def _build_from_dict(self, node: Dict, path: Path):
+        """Recursively build filesystem from nested dict."""
+        for name, entry in node.items():
+            entry_path = path / name
+            if isinstance(entry, dict):
+                if entry.get("type") == "directory":
+                    entry_path.mkdir(exist_ok=True)
+                    if "contents" in entry:
+                        self._build_from_dict(entry["contents"], entry_path)
+                elif entry.get("type") == "file":
+                    entry_path.parent.mkdir(parents=True, exist_ok=True)
+                    entry_path.write_text(entry.get("content", ""))
+
+    def _get_relative_path(self, name: str) -> Path:
+        """Get absolute path from current directory."""
+        if name.startswith("/"):
+            return Path(name.lstrip("/"))
+        return Path(self.current_dir) / name
+
+    def _get_node_from_cwd(self, name: str) -> Optional[Dict]:
+        """Get file/dir info relative to current working directory."""
+        p = self._get_relative_path(name)
+        if not p.exists():
+            return None
+        stat = p.stat()
+        return {
+            "type": "directory" if p.is_dir() else "file",
+            "size": stat.st_size,
+            "modified": stat.st_mtime
+        }
 
     def cat(self, file_name: str) -> Dict[str, Any]:
-        """Display the contents of a file. Returns content as a string."""
-        parent, basename, error = self._resolve_path(file_name)
-        if error:
-            return {"error": error}
-        if basename not in parent:
-            return {"error": f"File '{basename}' not found"}
-        if parent[basename]["type"] != "file":
-            return {"error": f"'{basename}' is not a file"}
-        return {"content": parent[basename]["content"]}
+        """Read and return file contents."""
+        path = self._get_relative_path(file_name)
+        if not path.exists():
+            return {"error": f"File '{file_name}' not found"}
+        if path.is_dir():
+            return {"error": f"'{file_name}' is a directory"}
+        return {"content": path.read_text()}
 
     def cd(self, folder: str) -> Dict[str, Any]:
-        """Change the current working directory."""
+        """Change current working directory."""
         if folder == "..":
-            if self.current_dir:
-                self.current_dir.pop()
-            return {"success": True, "current_path": "/" + "/".join(self.current_dir) if self.current_dir else "/"}
+            parent = Path(self.current_dir).parent
+            if parent == Path(self._temp_dir).parent:
+                return {"error": "Already at root"}
+            self.current_dir = str(parent)
+            return {"success": True, "current_path": self.current_dir}
         
-        current = self._get_current_node()
-        if current is None:
-            return {"error": "Current directory does not exist"}
-        
-        if folder not in current:
+        path = self._get_relative_path(folder)
+        if not path.exists():
             return {"error": f"Directory '{folder}' not found"}
-        
-        if current[folder]["type"] != "directory":
+        if not path.is_dir():
             return {"error": f"'{folder}' is not a directory"}
         
-        self.current_dir.append(folder)
-        return {"success": True, "current_path": "/" + "/".join(self.current_dir)}
+        self.current_dir = str(path)
+        return {"success": True, "current_path": self.current_dir}
 
     def cp(self, source: str, destination: str) -> Dict[str, Any]:
-        """Copy a file or directory to destination."""
-        src_parent, src_name, error = self._resolve_path(source)
-        if error:
-            return {"error": f"Source error: {error}"}
-        if src_name not in src_parent:
+        """Copy file or directory."""
+        src_path = self._get_relative_path(source)
+        if not src_path.exists():
             return {"error": f"Source '{source}' not found"}
         
-        src_entry = copy.deepcopy(src_parent[src_name])
-        
-        dst_parent, dst_name, _ = self._resolve_path(destination)
-        if dst_parent is None:
-            return {"error": "Destination error: Current directory does not exist"}
-        
-        if dst_name in dst_parent:
+        dst_path = self._get_relative_path(destination)
+        if dst_path.exists():
             return {"error": f"Destination '{destination}' already exists"}
         
-        dst_parent[dst_name] = src_entry
-        return {"success": True, "message": f"Copied '{src_name}' to '{dst_name}'"}
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            if src_path.is_dir():
+                shutil.copytree(src_path, dst_path)
+            else:
+                shutil.copy2(src_path, dst_path)
+            return {"success": True, "message": f"Copied '{source}' to '{destination}'"}
+        except Exception as e:
+            return {"error": str(e)}
 
     def du(self, human_readable: bool = False) -> Dict[str, Any]:
-        """Calculate disk usage of current directory."""
-        current = self._get_current_node()
-        if current is None:
-            return {"error": "Current directory does not exist"}
-        
-        def calc_size(node: Dict) -> int:
-            total = 0
-            for entry in node.values():
-                if entry["type"] == "file":
-                    total += len(entry.get("content", ""))
-                elif entry["type"] == "directory":
-                    total += calc_size(entry["contents"])
-            return total
-        
-        size = calc_size(current)
+        """Calculate disk usage."""
+        total = sum(
+            f.stat().st_size 
+            for f in Path(self.current_dir).rglob("*") 
+            if f.is_file()
+        )
         if human_readable:
-            if size < 1024:
-                return {"disk_usage": f"{size}B"}
-            elif size < 1024 * 1024:
-                return {"disk_usage": f"{size / 1024:.1f}KB"}
+            if total < 1024:
+                return {"disk_usage": f"{total}B"}
+            elif total < 1024 * 1024:
+                return {"disk_usage": f"{total / 1024:.1f}KB"}
             else:
-                return {"disk_usage": f"{size / (1024 * 1024):.1f}MB"}
-        return {"disk_usage": str(size)}
+                return {"disk_usage": f"{total / (1024 * 1024):.1f}MB"}
+        return {"disk_usage": str(total)}
 
     def echo(self, content: str, file_name: Optional[str] = None) -> Dict[str, Any]:
         """Write content to file or display in terminal."""
         if not file_name or file_name == "None":
             return {"content": content}
         
-        parent, basename, error = self._resolve_path(file_name)
-        if error and "not found" in error:
-            parent = self._get_current_node()
-            basename = file_name
-        elif error:
-            return {"error": error}
-        
-        if parent is None:
-            return {"error": "Cannot access current directory"}
-        
-        parent[basename] = {"type": "file", "content": content}
-        return {"success": True, "message": f"File '{basename}' written successfully"}
+        path = self._get_relative_path(file_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        return {"success": True, "message": f"File '{file_name}' written successfully"}
 
     def find(self, path: str = ".", name: Optional[str] = None) -> Dict[str, Any]:
-        """Find files matching name pattern. Returns list of paths."""
+        """Find files matching pattern."""
         if path == ".":
-            current = self._get_current_node()
-            start_parts = list(self.current_dir)
+            search_root = Path(self.current_dir)
         else:
-            parent, _, error = self._resolve_path(path)
-            if error:
-                return {"files": [], "error": error}
-            current = parent
-            start_parts = path.split("/")
-        
-        if current is None:
-            return {"files": [], "error": "Path not found"}
+            search_root = self._get_relative_path(path)
+            if not search_root.exists():
+                return {"files": [], "error": f"Path '{path}' not found"}
         
         matches = []
-        def search(node: Dict, path_parts: List[str]):
-            for entry_name, entry in node.items():
-                full_path = "/".join(path_parts + [entry_name]) if path_parts else entry_name
-                if name is None or name in entry_name:
-                    matches.append(full_path)
-                if entry["type"] == "directory":
-                    search(entry["contents"], path_parts + [entry_name])
+        pattern = name if name and name != "None" else ""
         
-        search(current, start_parts if path != "." else [])
+        for p in search_root.rglob("*"):
+            if pattern and pattern not in p.name:
+                continue
+            rel = p.relative_to(search_root)
+            matches.append(str(rel))
+        
         return {"files": matches}
 
     def grep(self, file_name: str, pattern: str) -> Dict[str, Any]:
-        """Search for pattern in file. Returns list of matching lines."""
-        parent, basename, error = self._resolve_path(file_name)
-        if error:
-            return {"lines": [], "error": error}
-        if basename not in parent:
-            return {"lines": [], "error": f"File '{basename}' not found"}
+        """Search for pattern in file."""
+        path = self._get_relative_path(file_name)
+        if not path.exists():
+            return {"lines": [], "error": f"File '{file_name}' not found"}
+        if path.is_dir():
+            return {"lines": [], "error": f"'{file_name}' is a directory"}
         
-        content = parent[basename]["content"]
+        content = path.read_text()
         lines = content.splitlines()
         matching = [line for line in lines if pattern in line]
         return {"lines": matching}
 
     def head(self, file_name: str, lines: int = 10) -> Dict[str, Any]:
         """Return first n lines of file."""
-        parent, basename, error = self._resolve_path(file_name)
-        if error:
-            return {"first_n_lines": "", "error": error}
-        if basename not in parent:
-            return {"first_n_lines": "", "error": f"File '{basename}' not found"}
+        path = self._get_relative_path(file_name)
+        if not path.exists():
+            return {"first_n_lines": "", "error": f"File '{file_name}' not found"}
         
-        content = parent[basename]["content"]
-        all_lines = content.splitlines()
+        all_lines = path.read_text().splitlines()
         return {"first_n_lines": "\n".join(all_lines[:lines])}
 
     def ls(self, a: bool = False) -> Dict[str, Any]:
-        """List directory contents. Returns list of names."""
-        current = self._get_current_node()
-        if current is None:
-            return {"files": [], "error": "Current directory does not exist"}
-        
-        names = []
-        for name in current.keys():
-            if not a and name.startswith("."):
-                continue
-            names.append(name)
-        return {"files": names}
+        """List directory contents."""
+        try:
+            entries = os.listdir(self.current_dir)
+            if not a:
+                entries = [e for e in entries if not e.startswith(".")]
+            return {"files": sorted(entries)}
+        except Exception as e:
+            return {"files": [], "error": str(e)}
 
     def mkdir(self, dir_name: str) -> Dict[str, Any]:
-        """Create a directory. Returns success message or error."""
-        current = self._get_current_node()
-        if current is None:
-            return {"error": "Current directory does not exist", "success": False}
-        
-        if dir_name in current:
-            if current[dir_name]["type"] == "directory":
+        """Create a directory."""
+        path = self._get_relative_path(dir_name)
+        if path.exists():
+            if path.is_dir():
                 return {"error": f"Directory '{dir_name}' already exists", "success": False}
             return {"error": f"'{dir_name}' already exists as a file", "success": False}
         
-        current[dir_name] = {"type": "directory", "contents": {}}
-        return {"success": True, "message": f"Directory {dir_name} created successfully.", "dir_name": dir_name}
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            return {"success": True, "message": f"Directory {dir_name} created successfully.", "dir_name": dir_name}
+        except Exception as e:
+            return {"error": str(e), "success": False}
 
     def mv(self, source: str, destination: str) -> Dict[str, Any]:
-        """Move file or directory to destination."""
-        src_parent, src_name, error = self._resolve_path(source)
-        if error:
-            return {"error": f"Source error: {error}"}
-        if src_name not in src_parent:
+        """Move file or directory."""
+        src_path = self._get_relative_path(source)
+        if not src_path.exists():
             return {"error": f"Source '{source}' not found"}
         
-        src_entry = src_parent.pop(src_name)
+        dst_path = self._get_relative_path(destination)
+        if dst_path.exists():
+            return {"error": f"Destination '{destination}' already exists"}
         
-        dst_parent, dst_name, _ = self._resolve_path(destination)
-        if dst_parent is None:
-            src_parent[src_name] = src_entry
-            return {"error": "Destination error: Current directory does not exist"}
-        
-        dst_parent[dst_name] = src_entry
-        return {"success": True, "message": f"Moved '{source}' to '{destination}'", "source": source, "destination": destination}
+        try:
+            shutil.move(str(src_path), str(dst_path))
+            return {"success": True, "message": f"Moved '{source}' to '{destination}'", "source": source, "destination": destination}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def pwd(self) -> Dict[str, Any]:
+        """Return current working directory."""
+        return {"path": self.current_dir}
 
     def rm(self, file_name: str) -> Dict[str, Any]:
-        """Remove a file. Returns True/False."""
-        parent, basename, error = self._resolve_path(file_name)
-        if error:
-            return {"success": False, "error": error}
-        if basename not in parent:
-            return {"success": False, "error": f"File '{basename}' not found"}
+        """Remove file or directory."""
+        path = self._get_relative_path(file_name)
+        if not path.exists():
+            return {"success": False, "error": f"'{file_name}' not found"}
         
-        del parent[basename]
-        return {"success": True}
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     def rmdir(self, dir_name: str) -> Dict[str, Any]:
-        """Remove an empty directory."""
-        parent, basename, error = self._resolve_path(dir_name)
-        if error:
-            return {"success": False, "error": error}
-        if basename not in parent:
-            return {"success": False, "error": f"Directory '{basename}' not found"}
+        """Remove empty directory."""
+        path = self._get_relative_path(dir_name)
+        if not path.exists():
+            return {"success": False, "error": f"Directory '{dir_name}' not found"}
+        if not path.is_dir():
+            return {"success": False, "error": f"'{dir_name}' is not a directory"}
         
-        entry = parent[basename]
-        if entry["type"] != "directory":
-            return {"success": False, "error": f"'{basename}' is not a directory"}
-        if entry["contents"]:
-            return {"success": False, "error": f"Directory '{basename}' is not empty"}
-        
-        del parent[basename]
-        return {"success": True, "message": f"Directory '{basename}' removed"}
+        try:
+            path.rmdir()
+            return {"success": True}
+        except OSError:
+            return {"success": False, "error": f"Directory '{dir_name}' is not empty"}
 
     def tail(self, file_name: str, lines: int = 10) -> Dict[str, Any]:
         """Return last n lines of file."""
-        parent, basename, error = self._resolve_path(file_name)
-        if error:
-            return {"last_lines": "", "error": error}
-        if basename not in parent:
-            return {"last_lines": "", "error": f"File '{basename}' not found"}
+        path = self._get_relative_path(file_name)
+        if not path.exists():
+            return {"last_lines": "", "error": f"File '{file_name}' not found"}
         
-        content = parent[basename]["content"]
-        all_lines = content.splitlines()
+        all_lines = path.read_text().splitlines()
         return {"last_lines": "\n".join(all_lines[-lines:])}
 
     def touch(self, file_name: str) -> Dict[str, Any]:
-        """Create an empty file. Returns success message or error."""
-        current = self._get_current_node()
-        if current is None:
-            return {"error": "Current directory does not exist", "success": False}
+        """Create or update a file."""
+        path = self._get_relative_path(file_name)
+        if path.exists() and path.is_dir():
+            return {"error": f"'{file_name}' already exists as a directory", "success": False}
         
-        if file_name in current:
-            if current[file_name]["type"] == "directory":
-                return {"error": f"'{file_name}' already exists as a directory", "success": False}
-            return {"error": f"'{file_name}' already exists", "success": False}
-        
-        current[file_name] = {"type": "file", "content": ""}
-        return {"success": True, "message": f"File created successfully.", "file_name": file_name}
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch()
+            return {"success": True, "message": "File created successfully.", "file_name": file_name}
+        except Exception as e:
+            return {"error": str(e), "success": False}
 
     def wc(self, file_name: str, mode: str = "l") -> Dict[str, Any]:
         """Count lines, words, or characters in file."""
-        parent, basename, error = self._resolve_path(file_name)
-        if error:
-            return {"error": error}
-        if basename not in parent:
-            return {"error": f"File '{basename}' not found"}
+        path = self._get_relative_path(file_name)
+        if not path.exists():
+            return {"error": f"File '{file_name}' not found"}
         
-        content = parent[basename]["content"]
+        content = path.read_text()
         
         if mode == "l":
             return {"lines": len(content.splitlines()), "words": len(content.split()), "characters": len(content)}
@@ -322,4 +292,35 @@ class GorillaFileSystem:
             return {"words": len(content.split())}
         elif mode == "c":
             return {"characters": len(content)}
-        return {"lines": len(content.splitlines())}
+        else:
+            return {"lines": len(content.splitlines())}
+
+    def get_state(self) -> Dict[str, Any]:
+        """Export current filesystem state."""
+        def dict_from_path(p: Path) -> Dict:
+            result = {}
+            for item in p.iterdir():
+                if item.is_dir():
+                    result[item.name] = {
+                        "type": "directory",
+                        "contents": dict_from_path(item)
+                    }
+                else:
+                    result[item.name] = {
+                        "type": "file",
+                        "content": item.read_text()
+                    }
+            return result
+        
+        return {
+            "root": dict_from_path(Path(self._temp_dir)),
+            "current_dir": self.current_dir
+        }
+
+    def cleanup(self):
+        """Remove temp directory."""
+        shutil.rmtree(self._temp_dir, ignore_errors=True)
+
+    def __del__(self):
+        """Cleanup on deletion."""
+        self.cleanup()
