@@ -578,8 +578,10 @@ Respond ONLY with valid JSON:
             else:
                 arguments = arguments[0] if arguments else {}
         processed_args = self._process_placeholders(arguments, execution_context)
-        if self._python_tools_available and self.tool_manager.has_python_implementation(tool_name):
-            return self.tool_manager.invoke_python_tool(tool_name, processed_args)
+        if self._python_tools_available:
+            if self.tool_manager.has_python_implementation(tool_name):
+                return self.tool_manager.invoke_python_tool(tool_name, processed_args)
+            raise NotImplementedError(f"No Python implementation for '{tool_name}' (api_name_to_class_key={self.tool_manager.api_name_to_class_key.get(tool_name, 'NOT IN MAP')}, has_impl={self.tool_manager.has_python_implementation(tool_name)}). LLM simulation disabled - implement the Python tool.")
         return self.tool_manager.invoke_tool(tool_name=tool_name, params=processed_args)
 
     @staticmethod
@@ -611,7 +613,8 @@ Respond ONLY with valid JSON:
             'ticket_login': [('success', lambda v: v is False)],
             'message_login': [('login_status', lambda v: v is False)],
             'verify_traveler_information': [('verification_status', lambda v: v is False)],
-            'authenticate_travel': [('access_token', lambda v: v == '')],
+            'authenticate_travel': [('success', lambda v: v is False), ('access_token', lambda v: v == '')],
+            'get_flight_cost': [('error', lambda v: bool(v)), ('travel_cost_list', lambda v: isinstance(v, list) and len(v) == 0)],
             'book_flight': [
                 ('booking_status', lambda v: isinstance(v, str) and ('fail' in v.lower() or 'error' in v.lower())),
                 ('booking_confirmation', lambda v: isinstance(v, str) and ('fail' in v.lower() or 'error' in v.lower())),

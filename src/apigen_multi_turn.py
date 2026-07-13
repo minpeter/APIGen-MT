@@ -114,7 +114,7 @@ class MultiTurnGenerator(StepByStepGenerator):
         print("\n" + "=" * 70)
         print("STAGE 0: Generate Dialog Blueprint")
         print("=" * 70)
-        blueprint = self._stage0_generate_blueprint(focus_category)
+        blueprint = self._stage0_generate_blueprint(focus_category, initial_api_state)
         if blueprint is None:
             print("✗ Stage 0 failed: Could not generate dialog blueprint")
             return None
@@ -150,9 +150,32 @@ class MultiTurnGenerator(StepByStepGenerator):
             # Stage 2: Generate and execute tool invocations (pass persistent execution_context)
             # Note: State adjustment removed - tool calls modify API state which persists,
             # and we pass current API state snapshot to the tool manager LLM
-            trajectory, ec = self._stage2_generate_tools(query_result, tool_retries, initial_execution_context=execution_context)
+            trajectory = None
+            for attempt in range(tool_retries):
+                raw_trajectory, ec = self._stage2_generate_tools(
+                    query_result, tool_retries - attempt, initial_execution_context=execution_context
+                )
+                if raw_trajectory is None:
+                    print(f"✗ Turn {turn_idx + 1}: Could not generate tool calls")
+                    return None
+
+                errors = self._validate_tool_arguments(raw_trajectory)
+                cross_errors = self._validate_cross_turn_consistency(raw_trajectory, execution_context)
+                all_errors = errors + cross_errors
+                if not all_errors:
+                    trajectory = raw_trajectory
+                    break
+
+                print(f"  ⚠ Turn {turn_idx + 1} validation failed (attempt {attempt + 1}/{tool_retries}):")
+                for err in errors:
+                    print(f"    arg: {err}")
+                for err in cross_errors:
+                    print(f"    cross: {err}")
+                if attempt < tool_retries - 1:
+                    print(f"  Retrying turn {turn_idx + 1}...")
+
             if trajectory is None:
-                print(f"✗ Turn {turn_idx + 1} failed: Could not generate tool calls")
+                print(f"✗ Turn {turn_idx + 1}: Too many validation failures, rejecting datapoint")
                 return None
             self._update_token_usage()
 
@@ -231,7 +254,7 @@ class MultiTurnGenerator(StepByStepGenerator):
     # ─────────────────────── Stage 0: Blueprint ───────────────────────
 
     def _stage0_generate_blueprint(
-            self, focus_category: Optional[str] = None
+            self, focus_category: Optional[str] = None, initial_api_state: Optional[Dict[str, Any]] = None
     ) -> Optional[DialogBlueprint]:
         """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
         tools_str = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
@@ -262,7 +285,7 @@ class MultiTurnGenerator(StepByStepGenerator):
             'Travel Booking': {
                 'authenticate_travel': ['success', 'access_token', 'token_type', 'expires_in'],
                 'book_flight': ['success', 'booking_id', 'flight_number', 'total_cost'],
-                'get_flight_cost': ['success', 'price_usd', 'flight_number', 'currency'],
+                'get_flight_cost': ['success', 'price_usd', 'flight_number', 'currency', 'travel_from', 'travel_to', 'travel_date', 'travel_class'],
                 'get_nearest_airport_by_city': ['success', 'airport_name', 'iata_code', 'distance'],
                 'cancel_booking': ['success', 'cancel_status', 'booking_id'],
                 'retrieve_invoice': ['success', 'invoice_id', 'amount', 'line_items'],
@@ -277,6 +300,15 @@ class MultiTurnGenerator(StepByStepGenerator):
                 for tool, flds in fields.items():
                     output_fields_str += f"- {tool}: {', '.join(flds)}\n"
 
+        travel_cred_str = "travel_client_001/s3cretK3y!/refresh_abc123"
+        if initial_api_state and 'travel_booking' in initial_api_state:
+            ta = initial_api_state['travel_booking']
+            cid = ta.get('client_id', '')
+            csec = ta.get('client_secret', '')
+            rtok = ta.get('refresh_token', '')
+            if cid and csec and rtok:
+                travel_cred_str = f"{cid}/{csec}/{rtok}"
+
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
 === AVAILABLE TOOLS ===
@@ -290,7 +322,7 @@ class MultiTurnGenerator(StepByStepGenerator):
 - To work in a subdirectory: first use cd to navigate there, THEN use file operations
 - Example CORRECT sequence:
   1. mkdir project
-  2. cd project  
+  2. cd project
   3. touch file.txt (NOT "project/file.txt")
 
 === REQUIREMENTS ===
@@ -298,8 +330,9 @@ class MultiTurnGenerator(StepByStepGenerator):
 2. Conversation flows naturally, each turn builds on previous
 3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
 4. expected_tools: EXACTLY {self.num_actions} tools per turn
-5. Credentials: trader_admin/TradeAdmin2024! (trading), tech_user/TechUser2024! (posting), support_agent/SupportAgent2024! (tickets), travel_client_001/s3cretK3y!/refresh_abc123 (travel), USR005-USR014 (messaging)
+5. Credentials: trader_admin/TradeAdmin2024! (trading), tech_user/TechUser2024! (posting), support_agent/SupportAgent2024! (tickets), {travel_cred_str} (travel), USR005-USR014 (messaging)
 6. Cross-turn refs: use EXACT output field names like {{{{TURN1.mkdir.dir_name}}}}, {{{{TURN3.touch.file_name}}}}, etc.
+7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
 
 === EXAMPLES ===
 - "Log into trading as trader_admin/TradeAdmin2024! and buy 100 MSFT shares." (trading_login, place_order)
@@ -311,9 +344,13 @@ class MultiTurnGenerator(StepByStepGenerator):
 {{"overall_task": "scenario", "turns": [{{"user_query": "request", "expected_tools": ["t1", "t2"]}}, ...]}}"""
 
         if focus_category:
-            prompt += f"\n\nIMPORTANT: Use ONLY tools from '{focus_category}' category. Do NOT use tools from other categories."
-        else:
-            prompt += "\n\nYou may use tools from any category."
+            prompt += f"\n\nAll available tools below are from the '{focus_category}' category."
+
+        if initial_api_state and focus_category == 'Travel Booking' and 'travel_booking' in initial_api_state:
+            ta = initial_api_state['travel_booking']
+            card_ids = list(ta.get('credit_card_list', {}).keys())
+            if card_ids:
+                prompt += f"\n\n=== Travel Booking Initial State ===\nAvailable credit card IDs: {', '.join(card_ids)}"
 
         accumulated_feedback = ""
         for attempt in range(3):
@@ -362,6 +399,18 @@ class MultiTurnGenerator(StepByStepGenerator):
                         if not all_tools_valid:
                             break
 
+                    # Validate duplicate tools that can't coexist (same tool called twice in one turn)
+                    from collections import Counter
+                    dup_tools = [t for t, c in Counter(expected).items() if c > 1]
+                    if dup_tools:
+                        validation_errors.append(
+                            f"Turn {i+1} has duplicate tools that can't share arguments: {dup_tools}. "
+                            f"A single LLM call can't generate distinct args for the same tool called twice. "
+                            f"Use different tools instead."
+                        )
+                        all_tools_valid = False
+                        break
+
                     # Validate placeholder references in user_query
                     query = t.get("user_query", "")
                     import re
@@ -393,11 +442,25 @@ class MultiTurnGenerator(StepByStepGenerator):
                                 'cp': ['success', 'message', 'source', 'destination'],
                                 'grep': ['success', 'lines', 'count'],
                                 'wc': ['success', 'lines', 'words', 'chars', 'file_name'],
+                                'authenticate_travel': ['access_token', 'token_type', 'expires_in', 'scope'],
+                                'book_flight': ['booking_id', 'transaction_id', 'booking_status', 'booking_history'],
+                                'purchase_insurance': ['insurance_id', 'insurance_status'],
+                                'cancel_booking': ['cancel_status'],
+                                'retrieve_invoice': ['invoice'],
+                                'get_credit_card_balance': ['card_balance'],
+                                'get_budget_fiscal_year': ['budget_fiscal_year'],
+                                'contact_customer_support': ['customer_support_message'],
+                                'register_credit_card': ['card_id'],
+                                'set_budget_limit': ['budget_limit'],
+                                'get_flight_cost': ['travel_cost_list'],
+                                'compute_exchange_rate': ['exchanged_value'],
+                                'get_nearest_airport_by_city': ['nearest_airport'],
                             }
                             known_fields = output_fields_map.get(ref_tool, ['success', 'message', 'id', 'result'])
                             if ref_field not in known_fields:
                                 validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}}: '{ref_field}' not in {ref_tool} output. Use: {known_fields}")
-                                # Don't fail - just warn
+                                all_tools_valid = False
+                                break
                     if not all_tools_valid:
                         break
 
@@ -429,6 +492,9 @@ class MultiTurnGenerator(StepByStepGenerator):
                                         all_tools_valid = False
                                         break
                     if not all_tools_valid:
+                        break
+
+                if not all_tools_valid:
                         break
 
                 if not all_tools_valid:
@@ -545,6 +611,147 @@ class MultiTurnGenerator(StepByStepGenerator):
         return resolved
 
     # ─────────────────────── Helpers ───────────────────────
+
+    @staticmethod
+    def _validate_tool_arguments(trajectory: List[TrajectoryStep]) -> List[str]:
+        """Check tool call arguments and outputs for hallucination indicators.
+
+        Returns list of error strings (empty = valid).
+        Hallucinated empty required args cause datapoint rejection + retry.
+        """
+        errors = []
+        for step in trajectory:
+            for tc in step.tool_calls:
+                args = tc.arguments or {}
+                out = tc.output or {}
+                name = tc.tool_name
+
+                if name == 'book_flight':
+                    for field in ['travel_date', 'travel_to', 'travel_from']:
+                        if not args.get(field) or str(args.get(field, '')).strip() == '':
+                            errors.append(
+                                f"book_flight: hallucinated empty '{field}' in arguments"
+                            )
+                    bh = out.get('booking_history', {})
+                    if not bh.get('travel_date') or not bh.get('travel_to'):
+                        errors.append(
+                            f"book_flight: output booking_history missing travel_date/travel_to"
+                        )
+                    if not out.get('booking_id'):
+                        errors.append(f"book_flight: empty booking_id in output")
+
+                elif name == 'purchase_insurance':
+                    if not args.get('booking_id'):
+                        errors.append("purchase_insurance: empty booking_id in arguments")
+                    ins_id = out.get('insurance_id', '')
+                    ins_status = out.get('insurance_status')
+                    if (ins_id == '' or ins_id is None) and ins_status is False:
+                        errors.append(
+                            f"purchase_insurance: failed (ins_id='{ins_id}', status={ins_status}), "
+                            f"likely operating on cancelled booking"
+                        )
+
+                elif name == 'retrieve_invoice':
+                    inv = out.get('invoice', {})
+                    if isinstance(inv, dict) and len(inv) == 0:
+                        errors.append("retrieve_invoice: empty invoice dict in output")
+
+                elif name == 'cancel_booking':
+                    if not out.get('cancel_status') and out.get('cancel_status') is not None:
+                        errors.append(f"cancel_booking: cancel_status=False")
+
+                elif name == 'authenticate_travel':
+                    if not out.get('success') and out.get('success') is not None:
+                        errors.append(
+                            f"authenticate_travel: failed success={out.get('success')} "
+                            f"error={out.get('error', '')[:60]}"
+                        )
+
+                elif name == 'get_flight_cost':
+                    if out.get('error'):
+                        errors.append(f"get_flight_cost: error={out['error'][:80]}")
+
+        return errors
+
+    def _validate_cross_turn_consistency(
+        self,
+        trajectory: List[TrajectoryStep],
+        execution_context: Dict[str, Any],
+    ) -> List[str]:
+        """Validate that tool calls are consistent with prior turn outputs.
+
+        Returns list of error strings (empty = valid).
+        Cross-turn hallucination (e.g., book_flight with wrong route) causes rejection.
+        """
+        errors = []
+        turn_outputs = execution_context.get('turn_outputs', [])
+
+        current_tc_by_name = {}
+        for step in trajectory:
+            for tc in step.tool_calls:
+                current_tc_by_name[tc.tool_name] = tc
+
+        prior_tc_by_name = {}
+        for turn_out in turn_outputs:
+            for tool_name, output in turn_out.items():
+                if tool_name not in prior_tc_by_name:
+                    prior_tc_by_name[tool_name] = []
+                prior_tc_by_name[tool_name].append(output)
+
+        if 'book_flight' in current_tc_by_name:
+            bf_args = current_tc_by_name['book_flight'].arguments or {}
+            bf_out = current_tc_by_name['book_flight'].output or {}
+
+            if 'get_flight_cost' in prior_tc_by_name:
+                gfc_output = prior_tc_by_name['get_flight_cost'][-1]
+                gfc_from = gfc_output.get('travel_from', '').upper()
+                gfc_to = gfc_output.get('travel_to', '').upper()
+                bf_from = bf_args.get('travel_from', '').upper()
+                bf_to = bf_args.get('travel_to', '').upper()
+
+                if gfc_from and gfc_to and (bf_from != gfc_from or bf_to != gfc_to):
+                    errors.append(
+                        f"book_flight: route mismatch. get_flight_cost used {gfc_from}→{gfc_to} "
+                        f"but book_flight called with {bf_from}→{bf_to}"
+                    )
+
+            if 'get_nearest_airport_by_city' in prior_tc_by_name:
+                airport_outputs = prior_tc_by_name['get_nearest_airport_by_city']
+                prior_cities = set()
+                prior_airports = set()
+                for ao in airport_outputs:
+                    nearest = ao.get('nearest_airport', '')
+                    if nearest:
+                        prior_airports.add(nearest.upper())
+
+                if prior_airports and bf_from and bf_from.upper() not in prior_airports:
+                    errors.append(
+                        f"book_flight: travel_from='{bf_from}' not in prior airport lookups {prior_airports}"
+                    )
+
+        if 'purchase_insurance' in current_tc_by_name:
+            pi_args = current_tc_by_name['purchase_insurance'].arguments or {}
+            pi_out = current_tc_by_name['purchase_insurance'].output or {}
+            pi_booking_id = pi_args.get('booking_id', '')
+
+            if 'book_flight' in prior_tc_by_name:
+                prior_booking_ids = set()
+                for bo in prior_tc_by_name['book_flight']:
+                    bid = bo.get('booking_id', '')
+                    if bid:
+                        prior_booking_ids.add(bid)
+
+                if prior_booking_ids and pi_booking_id and pi_booking_id not in prior_booking_ids:
+                    errors.append(
+                        f"purchase_insurance: booking_id='{pi_booking_id}' not in prior bookings {prior_booking_ids}"
+                    )
+
+            if pi_out.get('insurance_status') is False:
+                errors.append(
+                    f"purchase_insurance: failed (booking_id='{pi_booking_id}', status=False)"
+                )
+
+        return errors
 
     def _format_conversation_history(self, conversation: MultiTurnConversation) -> str:
         """Format completed turns as readable history for the LLM."""

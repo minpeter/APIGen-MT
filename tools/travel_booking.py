@@ -39,6 +39,8 @@ class TravelBooking:
         valid_grant_types = ["read_write", "read", "write"]
         if grant_type not in valid_grant_types:
             return {
+                "success": False,
+                "error": f"Invalid grant_type '{grant_type}'. Must be one of {valid_grant_types}.",
                 "expires_in": 0,
                 "access_token": "",
                 "token_type": "",
@@ -49,6 +51,8 @@ class TravelBooking:
             client_secret != self.client_secret or
             refresh_token != self.refresh_token):
             return {
+                "success": False,
+                "error": f"Invalid credentials: client_id/secret/refresh_token do not match. Use the credentials from the blueprint.",
                 "expires_in": 0,
                 "access_token": "",
                 "token_type": "",
@@ -80,7 +84,7 @@ class TravelBooking:
         travel_cost: float,
     ) -> Dict[str, Any]:
         """Book a flight given the travel information."""
-        if access_token != self.access_token:
+        if not access_token or access_token != self.access_token:
             return {
                 "booking_id": "",
                 "transaction_id": "",
@@ -140,7 +144,7 @@ class TravelBooking:
 
     def cancel_booking(self, access_token: str, booking_id: str) -> Dict[str, Any]:
         """Cancel a booking."""
-        if access_token != self.access_token:
+        if not access_token or access_token != self.access_token:
             return {"cancel_status": False}
 
         if booking_id not in self.booking_record:
@@ -217,7 +221,7 @@ class TravelBooking:
         self, access_token: str, card_id: str
     ) -> Dict[str, Any]:
         """Get the balance of a credit card."""
-        if access_token != self.access_token:
+        if not access_token or access_token != self.access_token:
             return {"card_balance": 0.0}
 
         if card_id not in self.credit_card_list:
@@ -233,27 +237,48 @@ class TravelBooking:
         travel_class: str,
     ) -> Dict[str, Any]:
         """Get the list of cost of a flight in USD based on location, date, and class."""
+        if not travel_date or not travel_date.strip():
+            return {
+                "error": "travel_date is required and must be a non-empty date string (YYYY-MM-DD).",
+                "travel_cost_list": []
+            }
+
+        if not travel_from or not travel_to:
+            return {
+                "error": "travel_from and travel_to are required.",
+                "travel_cost_list": []
+            }
+
         base_costs = {
             "economy": 300.0,
             "business": 800.0,
             "first": 1500.0,
         }
-        
-        travel_class_lower = travel_class.lower()
+
+        travel_class_lower = travel_class.lower() if travel_class else ""
         if travel_class_lower not in base_costs:
             return {"travel_cost_list": []}
 
         base_cost = base_costs[travel_class_lower]
-        
+
         try:
             date_obj = datetime.datetime.strptime(travel_date, "%Y-%m-%d")
             day_of_year = date_obj.timetuple().tm_yday
-            # Generate deterministic pseudo-random variation based on route and date
             variation = math.sin(day_of_year * 0.1 + len(travel_from) * 0.5 + len(travel_to) * 0.3) * 50
             cost = base_cost + variation
-            return {"travel_cost_list": [round(cost, 2), round(cost * 1.1, 2), round(cost * 0.9, 2)]}
+            return {
+                "travel_cost_list": [round(cost, 2), round(cost * 1.1, 2), round(cost * 0.9, 2)],
+                "travel_from": travel_from,
+                "travel_to": travel_to,
+                "travel_date": travel_date,
+                "travel_class": travel_class,
+                "currency": "USD",
+            }
         except ValueError:
-            return {"travel_cost_list": []}
+            return {
+                "error": f"Invalid travel_date '{travel_date}'. Expected format: YYYY-MM-DD.",
+                "travel_cost_list": []
+            }
 
     def get_nearest_airport_by_city(self, location: str) -> Dict[str, Any]:
         """Get the nearest airport to the given location."""
@@ -356,7 +381,7 @@ class TravelBooking:
         card_id: str,
     ) -> Dict[str, Any]:
         """Purchase insurance."""
-        if access_token != self.access_token:
+        if not access_token or access_token != self.access_token:
             return {"insurance_id": "", "insurance_status": False}
 
         if booking_id not in self.booking_record:
@@ -384,7 +409,7 @@ class TravelBooking:
         card_verification_number: int,
     ) -> Dict[str, Any]:
         """Register a credit card."""
-        if access_token != self.access_token:
+        if not access_token or access_token != self.access_token:
             return {"card_id": ""}
 
         card_id = f"card_{card_number[-4:]}"
@@ -402,7 +427,7 @@ class TravelBooking:
         self, access_token: str, booking_id: str = "None", insurance_id: str = "None"
     ) -> Dict[str, Any]:
         """Retrieve the invoice for a booking."""
-        if access_token != self.access_token:
+        if not access_token or access_token != self.access_token:
             return {"invoice": {}}
 
         if booking_id == "None" or booking_id not in self.booking_record:
@@ -423,7 +448,7 @@ class TravelBooking:
 
     def set_budget_limit(self, access_token: str, budget_limit: float) -> Dict[str, Any]:
         """Set the budget limit for the user."""
-        if access_token != self.access_token:
+        if not access_token or access_token != self.access_token:
             return {"budget_limit": 0.0}
 
         self.budget_limit = budget_limit
@@ -433,8 +458,8 @@ class TravelBooking:
         self,
         first_name: str,
         last_name: str,
-        date_of_birth: str,
-        passport_number: str,
+        date_of_birth: str = "",
+        passport_number: str = "",
     ) -> Dict[str, Any]:
         """Verify the traveler information."""
         if not first_name or not last_name:
@@ -442,10 +467,25 @@ class TravelBooking:
                 "verification_status": False,
                 "verification_failure": "Name fields cannot be empty.",
             }
+        if not date_of_birth:
+            return {
+                "verification_status": True,
+                "verification_message": "Traveler information verified (date of birth skipped).",
+            }
+        if not passport_number:
+            return {
+                "verification_status": True,
+                "verification_message": "Traveler information verified (passport number skipped).",
+            }
 
         try:
             datetime.datetime.strptime(date_of_birth, "%Y-%m-%d")
         except ValueError:
+            return {
+                "verification_status": False,
+                "verification_failure": "Invalid date of birth format. Expected YYYY-MM-DD.",
+            }
+        except TypeError:
             return {
                 "verification_status": False,
                 "verification_failure": "Invalid date of birth format. Expected YYYY-MM-DD.",
