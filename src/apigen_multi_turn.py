@@ -251,6 +251,75 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         return datapoint
 
+    def _get_tool_output_fields(self, category: Optional[str] = None) -> Dict[str, List[str]]:
+        """Extract output field names by calling each Python tool with valid minimal inputs.
+
+        Returns dict mapping tool_api_name -> list of output field names.
+        Uses read-only calls to avoid state mutation.
+        """
+        if not self._python_tools_available:
+            return {}
+
+        result: Dict[str, List[str]] = {}
+
+        # Build api_name -> class_key mapping filtered by category
+        api_names = []
+        for api_name, class_key in self.tool_manager.api_name_to_class_key.items():
+            if category:
+                tool_cat = self.tool_manager.get_tool_category(api_name)
+                if tool_cat != category:
+                    continue
+            api_names.append((api_name, class_key))
+
+        for api_name, class_key in api_names:
+            instance = self.tool_manager.python_tool_instances.get(class_key)
+            if not instance:
+                continue
+            method = getattr(instance, api_name, None)
+            if not method or not callable(method):
+                continue
+
+            try:
+                import inspect
+                sig = inspect.signature(method)
+                bound = []
+                for pname, param in sig.parameters.items():
+                    if pname == 'self':
+                        continue
+                    if param.annotation in (int, float) and param.default is inspect.Parameter.empty:
+                        bound.append(1)
+                    elif param.annotation == str and param.default is inspect.Parameter.empty:
+                        if 'city' in pname.lower() or 'location' in pname.lower():
+                            bound.append('New York')
+                        elif 'date' in pname.lower():
+                            bound.append('2025-03-15')
+                        elif 'token' in pname.lower():
+                            bound.append('DUMMY_TOKEN')
+                        elif 'card' in pname.lower() or 'number' in pname.lower() or 'id' in pname.lower():
+                            bound.append('12345')
+                        elif 'message' in pname.lower() or 'name' in pname.lower():
+                            bound.append('Test')
+                        elif 'currency' in pname.lower():
+                            bound.append('USD')
+                        elif 'type' in pname.lower():
+                            bound.append('basic')
+                        elif 'cost' in pname.lower() or 'balance' in pname.lower() or 'value' in pname.lower() or 'limit' in pname.lower():
+                            bound.append(100.0)
+                        else:
+                            bound.append('x')
+                    elif param.annotation == bool:
+                        bound.append(True)
+
+                out = method(*bound)
+                if isinstance(out, dict):
+                    result[api_name] = sorted(out.keys())
+                else:
+                    result[api_name] = []
+            except Exception:
+                result[api_name] = ['success', 'message', 'id', 'result', 'error']
+
+        return result
+
     # ─────────────────────── Stage 0: Blueprint ───────────────────────
 
     def _stage0_generate_blueprint(
@@ -259,55 +328,58 @@ class MultiTurnGenerator(StepByStepGenerator):
         """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
         tools_str = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
 
-        output_fields_map = {
-            'Storage': {
-                # mkdir now returns dir_name explicitly
-                'mkdir': ['success', 'message', 'dir_name', 'path'],
-                # touch output: {"success": true, "file_name": "X", "message": "..."}
-                'touch': ['success', 'file_name', 'message'],
-                'cd': ['success', 'current_path', 'error'],
-                'cat': ['content', 'file_name', 'error'],
-                # echo output: {"success": true, "id": "X", "file_name": "X", "content": "X"}
-                'echo': ['success', 'id', 'file_name', 'content', 'status'],
-                # ls output: {"id": "...", "path": ".", "files": [...], ...}
-                'ls': ['id', 'path', 'files', 'show_hidden', 'total_count', 'contents'],
-                'rm': ['success', 'error'],
-                # mv output: {"success": true, "source": "X", "destination": "Y", ...}
-                'mv': ['success', 'source', 'destination', 'message', 'error'],
-                'cp': ['success', 'source', 'destination', 'message', 'error'],
-                'grep': ['matches', 'count', 'error'],
-                'wc': ['lines', 'words', 'characters', 'file_name', 'mode'],
-                'head': ['first_n_lines', 'file_name'],
-                'tail': ['last_lines', 'file_name'],
-                'find': ['files', 'error'],
-                'du': ['total_size', 'unit', 'error'],
-            },
-            'Travel Booking': {
-                'authenticate_travel': ['success', 'access_token', 'token_type', 'expires_in'],
-                'book_flight': ['success', 'booking_id', 'flight_number', 'total_cost'],
-                'get_flight_cost': ['success', 'price_usd', 'flight_number', 'currency', 'travel_from', 'travel_to', 'travel_date', 'travel_class'],
-                'get_nearest_airport_by_city': ['success', 'airport_name', 'iata_code', 'distance'],
-                'cancel_booking': ['success', 'cancel_status', 'booking_id'],
-                'retrieve_invoice': ['success', 'invoice_id', 'amount', 'line_items'],
-                'purchase_insurance': ['success', 'insurance_policy_id', 'amount_charged'],
-            }
-        }
-
+        # Build output fields dynamically from tool definitions for the prompt
+        tools_json = self.tool_manager.get_tools_json_schema()
+        if focus_category:
+            tools_json = [t for t in tools_json if t.get('category') == focus_category]
         output_fields_str = ""
-        for cat, fields in output_fields_map.items():
-            if focus_category is None or cat == focus_category:
-                output_fields_str += f"\n=== {cat} OUTPUT FIELDS ===\n"
-                for tool, flds in fields.items():
-                    output_fields_str += f"- {tool}: {', '.join(flds)}\n"
+        for tool in tools_json:
+            name = tool.get('name', tool.get('api_name', ''))
+            schema = tool.get('output_schema', {})
+            props = schema.get('properties', {}) if schema else {}
+            if props:
+                fields = ', '.join(props.keys())
+                output_fields_str += f"- {name}: {fields}\n"
+            else:
+                output_fields_str += f"- {name}\n"
 
-        travel_cred_str = "travel_client_001/s3cretK3y!/refresh_abc123"
-        if initial_api_state and 'travel_booking' in initial_api_state:
-            ta = initial_api_state['travel_booking']
-            cid = ta.get('client_id', '')
-            csec = ta.get('client_secret', '')
-            rtok = ta.get('refresh_token', '')
-            if cid and csec and rtok:
-                travel_cred_str = f"{cid}/{csec}/{rtok}"
+        # Build output_fields_map dynamically for placeholder validation
+        output_fields_validation_map: Dict[str, List[str]] = {}
+        for tool in tools_json:
+            name = tool.get('name', tool.get('api_name', ''))
+            if name:
+                # Collect all known fields from tool definition's output schema if available,
+                # otherwise use a generic fallback
+                props = tool.get('output_schema', {}).get('properties', {}) if isinstance(tool, dict) else {}
+                if props:
+                    output_fields_validation_map[name] = list(props.keys())
+                else:
+                    output_fields_validation_map[name] = ['success', 'message', 'id', 'result', 'error']
+
+        # Inject actual credentials from initial_api_state into the prompt
+        credential_context = ""
+        if initial_api_state:
+            for class_key, state in initial_api_state.items():
+                if isinstance(state, dict):
+                    # Credentials
+                    if 'client_id' in state and 'client_secret' in state and 'refresh_token' in state:
+                        cid = state['client_id']
+                        csec = state['client_secret']
+                        rtok = state['refresh_token']
+                        credential_context += f"\nCredential format: {cid}/{csec}/{rtok}"
+                    # Card IDs
+                    if 'credit_card_list' in state and isinstance(state['credit_card_list'], dict):
+                        card_ids = list(state['credit_card_list'].keys())
+                        if card_ids:
+                            credential_context += f"\nAvailable card IDs: {', '.join(card_ids)}"
+                    # User list (messaging)
+                    if 'user_map' in state and isinstance(state['user_map'], dict):
+                        user_ids = list(state['user_map'].keys())
+                        if user_ids:
+                            credential_context += f"\nAvailable user IDs: {', '.join(user_ids[:10])}"
+                    # Trading account
+                    if 'account_type' in state and 'balance' in state:
+                        credential_context += f"\nTrading account balance: {state.get('balance')}"
 
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
@@ -317,21 +389,13 @@ class MultiTurnGenerator(StepByStepGenerator):
 === OUTPUT SCHEMAS (use these exact field names in placeholders) ===
 {output_fields_str}
 
-=== CRITICAL: PATH HANDLING ===
-- file_name/dir_name must be simple names, NOT paths (e.g., "config.ini" not "folder/config.ini")
-- To work in a subdirectory: first use cd to navigate there, THEN use file operations
-- Example CORRECT sequence:
-  1. mkdir project
-  2. cd project
-  3. touch file.txt (NOT "project/file.txt")
-
 === REQUIREMENTS ===
 1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
 2. Conversation flows naturally, each turn builds on previous
 3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
 4. expected_tools: EXACTLY {self.num_actions} tools per turn
-5. Credentials: trader_admin/TradeAdmin2024! (trading), tech_user/TechUser2024! (posting), support_agent/SupportAgent2024! (tickets), {travel_cred_str} (travel), USR005-USR014 (messaging)
-6. Cross-turn refs: use EXACT output field names like {{{{TURN1.mkdir.dir_name}}}}, {{{{TURN3.touch.file_name}}}}, etc.
+5. All authentication credentials, card IDs, and entity IDs come from the initial API state provided separately - do NOT invent credentials or IDs.
+6. Cross-turn refs: use EXACT output field names like {{{{TURN1.tool_name.field_name}}}} where field_name matches the tool's output schema.
 7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
 
 === EXAMPLES ===
@@ -346,11 +410,8 @@ class MultiTurnGenerator(StepByStepGenerator):
         if focus_category:
             prompt += f"\n\nAll available tools below are from the '{focus_category}' category."
 
-        if initial_api_state and focus_category == 'Travel Booking' and 'travel_booking' in initial_api_state:
-            ta = initial_api_state['travel_booking']
-            card_ids = list(ta.get('credit_card_list', {}).keys())
-            if card_ids:
-                prompt += f"\n\n=== Travel Booking Initial State ===\nAvailable credit card IDs: {', '.join(card_ids)}"
+        if credential_context:
+            prompt += f"\n\n=== Initial API State (use these values, do NOT invent) ==={credential_context}"
 
         accumulated_feedback = ""
         for attempt in range(3):
@@ -430,33 +491,7 @@ class MultiTurnGenerator(StepByStepGenerator):
                                 all_tools_valid = False
                                 break
                             # Validate that the placeholder field exists in tool output using known schema
-                            output_fields_map = {
-                                'mkdir': ['success', 'message', 'dir_name'],
-                                'touch': ['success', 'message', 'file_name', 'created'],
-                                'cd': ['success', 'message', 'current_path'],
-                                'cat': ['success', 'content', 'file_name'],
-                                'echo': ['success', 'message', 'file_name', 'id'],
-                                'ls': ['success', 'files', 'path', 'id'],
-                                'rm': ['success', 'message'],
-                                'mv': ['success', 'message', 'source', 'destination'],
-                                'cp': ['success', 'message', 'source', 'destination'],
-                                'grep': ['success', 'lines', 'count'],
-                                'wc': ['success', 'lines', 'words', 'chars', 'file_name'],
-                                'authenticate_travel': ['access_token', 'token_type', 'expires_in', 'scope'],
-                                'book_flight': ['booking_id', 'transaction_id', 'booking_status', 'booking_history'],
-                                'purchase_insurance': ['insurance_id', 'insurance_status'],
-                                'cancel_booking': ['cancel_status'],
-                                'retrieve_invoice': ['invoice'],
-                                'get_credit_card_balance': ['card_balance'],
-                                'get_budget_fiscal_year': ['budget_fiscal_year'],
-                                'contact_customer_support': ['customer_support_message'],
-                                'register_credit_card': ['card_id'],
-                                'set_budget_limit': ['budget_limit'],
-                                'get_flight_cost': ['travel_cost_list'],
-                                'compute_exchange_rate': ['exchanged_value'],
-                                'get_nearest_airport_by_city': ['nearest_airport'],
-                            }
-                            known_fields = output_fields_map.get(ref_tool, ['success', 'message', 'id', 'result'])
+                            known_fields = output_fields_validation_map.get(ref_tool, ['success', 'message', 'id', 'result'])
                             if ref_field not in known_fields:
                                 validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}}: '{ref_field}' not in {ref_tool} output. Use: {known_fields}")
                                 all_tools_valid = False
