@@ -968,6 +968,10 @@ class MultiTurnGenerator(StepByStepGenerator):
                     if out.get('error'):
                         errors.append(f"get_flight_cost: error={out['error'][:80]}")
 
+                elif name in ('ls', 'cat', 'cd', 'mkdir', 'mv', 'rm', 'rmdir', 'touch', 'cp', 'grep', 'find', 'wc', 'tail', 'echo', 'du', 'sort'):
+                    if 'calls' in args:
+                        errors.append(f"{name}: LLM generated 'calls' batch format - use single tool call with direct arguments")
+
         return errors
 
     def _validate_cross_turn_consistency(
