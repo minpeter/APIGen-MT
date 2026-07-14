@@ -166,6 +166,8 @@ class TradingBot:
 
     def get_transaction_history(self, start_date: str = 'None', end_date: str = 'None') -> Dict[str, Any]:
         """Get the transaction history within a specified date range."""
+        if not self.authenticated:
+            return {"transaction_history": [], "status": "User not authenticated"}
         result = []
         for t in self.transaction_history:
             ts_str = t.get("timestamp", "")
@@ -173,7 +175,7 @@ class TradingBot:
                 ts_dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
             except (ValueError, TypeError):
                 continue
-            
+
             include = True
             if start_date and start_date != 'None':
                 try:
@@ -189,11 +191,17 @@ class TradingBot:
                         include = False
                 except ValueError:
                     pass
-            
+
             if include:
+                amount = t.get("amount")
+                if amount is None:
+                    price = t.get("price", 0)
+                    num_shares = t.get("num_shares", 0)
+                    amount = price * num_shares
                 result.append({
                     "type": t.get("type", ""),
-                    "amount": t.get("amount", 0.0),
+                    "symbol": t.get("symbol", ""),
+                    "amount": amount,
                     "timestamp": ts_str
                 })
         return {"transaction_history": result}
@@ -247,6 +255,17 @@ class TradingBot:
             "amount": amount,
             "status": "Open"
         }
+        total_cost = price * amount
+        self.transaction_history.append({
+            "order_id": order_id,
+            "type": order_type,
+            "symbol": symbol,
+            "price": price,
+            "num_shares": amount,
+            "amount": total_cost,
+            "status": "Filled",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
         return {
             "order_id": order_id,
             "order_type": order_type,
