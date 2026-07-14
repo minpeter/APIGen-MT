@@ -759,7 +759,7 @@ If ALL turns are achievable with their selected tools, set is_valid to true with
 === EXAMPLES ===
 - "Log into my account with username user123 and password SecretPass! then perform an action." (login_action, perform_action)
 - "Create ticket 'Network outage' with critical priority." (ticket_login, create_ticket)
-- "Post tweet 'Great day for AI!'" (authenticate_twitter, post_tweet)
+- "Submit a new post 'Great day for AI!' to my social feed." (authenticate_twitter, post_tweet)
 - "Get the user ID for Sarah and send her a message." (get_user_id, send_message)
 
 === OUTPUT ===
