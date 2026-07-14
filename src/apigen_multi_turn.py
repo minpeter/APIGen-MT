@@ -125,6 +125,19 @@ class MultiTurnGenerator(StepByStepGenerator):
             print(f"   Turn {i}: {uq[:80]}...")
 
         conversation = MultiTurnConversation(overall_task=blueprint.overall_task)
+
+        # Stage 0.5: Ensure user identity coherence
+        if self._python_tools_available:
+            print("\n" + "-" * 70)
+            print("STAGE 0.5: Ensure User Identity Coherence")
+            print("-" * 70)
+            identity_adjusted = self._ensure_user_identity_coherence(blueprint.overall_task)
+            if identity_adjusted:
+                initial_api_state = self.tool_manager.get_api_state()
+                print(f" ✓ Identity coherence adjusted")
+            else:
+                print(f" No identity adjustment needed")
+
         execution_context: Dict[str, Any] = {}
         tools_used = set()
         categories_used = set()
@@ -356,10 +369,21 @@ class MultiTurnGenerator(StepByStepGenerator):
                 else:
                     output_fields_validation_map[name] = ['success', 'message', 'id', 'result', 'error']
 
+        # Build set of class_keys that belong to the focus_category
+        focus_class_keys = set()
+        if focus_category:
+            for api_name, class_key in self.tool_manager.api_name_to_class_key.items():
+                tool_cat = self.tool_manager.get_tool_category(api_name)
+                if tool_cat == focus_category:
+                    focus_class_keys.add(class_key)
+
         # Inject actual credentials from initial_api_state into the prompt
         credential_context = ""
         if initial_api_state:
             for class_key, state in initial_api_state.items():
+                # Skip APIs not in the focus category to avoid credential_context pollution
+                if focus_category and class_key not in focus_class_keys:
+                    continue
                 if isinstance(state, dict):
                     # Credentials
                     if 'client_id' in state and 'client_secret' in state and 'refresh_token' in state:
@@ -380,6 +404,9 @@ class MultiTurnGenerator(StepByStepGenerator):
                     # Trading account
                     if 'account_type' in state and 'balance' in state:
                         credential_context += f"\nTrading account balance: {state.get('balance')}"
+                    # Finance username/password credentials
+                    if 'username' in state and 'password' in state:
+                        credential_context += f"\nFinance credentials: {state['username']}/{state['password']}"
 
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
@@ -736,13 +763,13 @@ class MultiTurnGenerator(StepByStepGenerator):
         if 'book_flight' in current_tc_by_name:
             bf_args = current_tc_by_name['book_flight'].arguments or {}
             bf_out = current_tc_by_name['book_flight'].output or {}
+            bf_from = bf_args.get('travel_from', '').upper()
+            bf_to = bf_args.get('travel_to', '').upper()
 
             if 'get_flight_cost' in prior_tc_by_name:
                 gfc_output = prior_tc_by_name['get_flight_cost'][-1]
                 gfc_from = gfc_output.get('travel_from', '').upper()
                 gfc_to = gfc_output.get('travel_to', '').upper()
-                bf_from = bf_args.get('travel_from', '').upper()
-                bf_to = bf_args.get('travel_to', '').upper()
 
                 if gfc_from and gfc_to and (bf_from != gfc_from or bf_to != gfc_to):
                     errors.append(
