@@ -57,6 +57,17 @@ class MathAPI:
             imperial_aliases = {"f": "fahrenheit", "c": "celsius"}
             unit_in = imperial_aliases.get(unit_in, unit_in)
             unit_out = imperial_aliases.get(unit_out, unit_out)
+            plural_to_singular = {
+                "miles": "mile", "kilometers": "km", "km": "km",
+                "pounds": "pound", "kilograms": "kg", "kg": "kg",
+                "inches": "inch", "centimeters": "cm", "cm": "cm",
+                "gallons": "gallon", "liters": "liter", "liter": "liter",
+                "feet": "foot", "meters": "meter", "meter": "meter",
+                "yards": "yard", "ounce": "ounce", "ounces": "ounce",
+                "gram": "gram", "grams": "gram",
+            }
+            unit_in = plural_to_singular.get(unit_in, unit_in)
+            unit_out = plural_to_singular.get(unit_out, unit_out)
             conversion_factors = {
                 "inch_to_cm": 2.54,
                 "cm_to_inch": 1 / 2.54,
@@ -210,6 +221,18 @@ class MathAPI:
 
             def parse_unit(unit_str: str) -> Tuple[float, str]:
                 unit_str = unit_str.lower().strip()
+                plural_to_singular = {
+                    "meters": "meter", "grams": "gram", "liters": "liter", "seconds": "second",
+                    "amperes": "ampere", "kelvins": "kelvin", "moles": "mole", "candelas": "candela",
+                    "bytes": "byte", "bits": "bit",
+                    "meters": "meter", "centimeters": "centimeter", "millimeters": "millimeter",
+                    "kilometers": "kilometer", "kilograms": "kilogram", "milligrams": "milligram",
+                    "milliliters": "milliliter", "centiliters": "centiliter",
+                    "milliseconds": "millisecond", "microseconds": "microsecond", "nanoseconds": "nanosecond",
+                    "kibibytes": "kilobyte", "mebibytes": "megabyte", "gibibytes": "gigabyte",
+                    "kilobytes": "kilobyte", "megabytes": "megabyte", "gigabytes": "gigabyte",
+                }
+                unit_str = plural_to_singular.get(unit_str, unit_str)
                 if unit_str in unit_aliases:
                     val = unit_aliases[unit_str]
                     for prefix, factor in si_prefixes.items():
