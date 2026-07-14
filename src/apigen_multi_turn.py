@@ -114,7 +114,7 @@ class MultiTurnGenerator(StepByStepGenerator):
         print("\n" + "=" * 70)
         print("STAGE 0: Generate Dialog Blueprint")
         print("=" * 70)
-        blueprint = self._stage0_generate_blueprint(focus_category)
+        blueprint = self._stage0_generate_blueprint(focus_category, initial_api_state)
         if blueprint is None:
             print("✗ Stage 0 failed: Could not generate dialog blueprint")
             return None
@@ -125,6 +125,19 @@ class MultiTurnGenerator(StepByStepGenerator):
             print(f"   Turn {i}: {uq[:80]}...")
 
         conversation = MultiTurnConversation(overall_task=blueprint.overall_task)
+
+        # Stage 0.5: Ensure user identity coherence
+        if self._python_tools_available:
+            print("\n" + "-" * 70)
+            print("STAGE 0.5: Ensure User Identity Coherence")
+            print("-" * 70)
+            identity_adjusted = self._ensure_user_identity_coherence(blueprint.overall_task)
+            if identity_adjusted:
+                initial_api_state = self.tool_manager.get_api_state()
+                print(f" ✓ Identity coherence adjusted")
+            else:
+                print(f" No identity adjustment needed")
+
         execution_context: Dict[str, Any] = {}
         tools_used = set()
         categories_used = set()
@@ -150,9 +163,32 @@ class MultiTurnGenerator(StepByStepGenerator):
             # Stage 2: Generate and execute tool invocations (pass persistent execution_context)
             # Note: State adjustment removed - tool calls modify API state which persists,
             # and we pass current API state snapshot to the tool manager LLM
-            trajectory, ec = self._stage2_generate_tools(query_result, tool_retries, initial_execution_context=execution_context)
+            trajectory = None
+            for attempt in range(tool_retries):
+                raw_trajectory, ec = self._stage2_generate_tools(
+                    query_result, tool_retries - attempt, initial_execution_context=execution_context
+                )
+                if raw_trajectory is None:
+                    print(f"✗ Turn {turn_idx + 1}: Could not generate tool calls")
+                    return None
+
+                errors = self._validate_tool_arguments(raw_trajectory)
+                cross_errors = self._validate_cross_turn_consistency(raw_trajectory, execution_context)
+                all_errors = errors + cross_errors
+                if not all_errors:
+                    trajectory = raw_trajectory
+                    break
+
+                print(f"  ⚠ Turn {turn_idx + 1} validation failed (attempt {attempt + 1}/{tool_retries}):")
+                for err in errors:
+                    print(f"    arg: {err}")
+                for err in cross_errors:
+                    print(f"    cross: {err}")
+                if attempt < tool_retries - 1:
+                    print(f"  Retrying turn {turn_idx + 1}...")
+
             if trajectory is None:
-                print(f"✗ Turn {turn_idx + 1} failed: Could not generate tool calls")
+                print(f"✗ Turn {turn_idx + 1}: Too many validation failures, rejecting datapoint")
                 return None
             self._update_token_usage()
 
@@ -228,54 +264,149 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         return datapoint
 
+    def _get_tool_output_fields(self, category: Optional[str] = None) -> Dict[str, List[str]]:
+        """Extract output field names by calling each Python tool with valid minimal inputs.
+
+        Returns dict mapping tool_api_name -> list of output field names.
+        Uses read-only calls to avoid state mutation.
+        """
+        if not self._python_tools_available:
+            return {}
+
+        result: Dict[str, List[str]] = {}
+
+        # Build api_name -> class_key mapping filtered by category
+        api_names = []
+        for api_name, class_key in self.tool_manager.api_name_to_class_key.items():
+            if category:
+                tool_cat = self.tool_manager.get_tool_category(api_name)
+                if tool_cat != category:
+                    continue
+            api_names.append((api_name, class_key))
+
+        for api_name, class_key in api_names:
+            instance = self.tool_manager.python_tool_instances.get(class_key)
+            if not instance:
+                continue
+            method = getattr(instance, api_name, None)
+            if not method or not callable(method):
+                continue
+
+            try:
+                import inspect
+                sig = inspect.signature(method)
+                bound = []
+                for pname, param in sig.parameters.items():
+                    if pname == 'self':
+                        continue
+                    if param.annotation in (int, float) and param.default is inspect.Parameter.empty:
+                        bound.append(1)
+                    elif param.annotation == str and param.default is inspect.Parameter.empty:
+                        if 'city' in pname.lower() or 'location' in pname.lower():
+                            bound.append('New York')
+                        elif 'date' in pname.lower():
+                            bound.append('2025-03-15')
+                        elif 'token' in pname.lower():
+                            bound.append('DUMMY_TOKEN')
+                        elif 'card' in pname.lower() or 'number' in pname.lower() or 'id' in pname.lower():
+                            bound.append('12345')
+                        elif 'message' in pname.lower() or 'name' in pname.lower():
+                            bound.append('Test')
+                        elif 'currency' in pname.lower():
+                            bound.append('USD')
+                        elif 'type' in pname.lower():
+                            bound.append('basic')
+                        elif 'cost' in pname.lower() or 'balance' in pname.lower() or 'value' in pname.lower() or 'limit' in pname.lower():
+                            bound.append(100.0)
+                        else:
+                            bound.append('x')
+                    elif param.annotation == bool:
+                        bound.append(True)
+
+                out = method(*bound)
+                if isinstance(out, dict):
+                    result[api_name] = sorted(out.keys())
+                else:
+                    result[api_name] = []
+            except Exception:
+                result[api_name] = ['success', 'message', 'id', 'result', 'error']
+
+        return result
+
     # ─────────────────────── Stage 0: Blueprint ───────────────────────
 
     def _stage0_generate_blueprint(
-            self, focus_category: Optional[str] = None
+            self, focus_category: Optional[str] = None, initial_api_state: Optional[Dict[str, Any]] = None
     ) -> Optional[DialogBlueprint]:
         """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
         tools_str = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
 
-        output_fields_map = {
-            'Storage': {
-                # mkdir now returns dir_name explicitly
-                'mkdir': ['success', 'message', 'dir_name', 'path'],
-                # touch output: {"success": true, "file_name": "X", "message": "..."}
-                'touch': ['success', 'file_name', 'message'],
-                'cd': ['success', 'current_path', 'error'],
-                'cat': ['content', 'file_name', 'error'],
-                # echo output: {"success": true, "id": "X", "file_name": "X", "content": "X"}
-                'echo': ['success', 'id', 'file_name', 'content', 'status'],
-                # ls output: {"id": "...", "path": ".", "files": [...], ...}
-                'ls': ['id', 'path', 'files', 'show_hidden', 'total_count', 'contents'],
-                'rm': ['success', 'error'],
-                # mv output: {"success": true, "source": "X", "destination": "Y", ...}
-                'mv': ['success', 'source', 'destination', 'message', 'error'],
-                'cp': ['success', 'source', 'destination', 'message', 'error'],
-                'grep': ['matches', 'count', 'error'],
-                'wc': ['lines', 'words', 'characters', 'file_name', 'mode'],
-                'head': ['first_n_lines', 'file_name'],
-                'tail': ['last_lines', 'file_name'],
-                'find': ['files', 'error'],
-                'du': ['total_size', 'unit', 'error'],
-            },
-            'Travel Booking': {
-                'authenticate_travel': ['success', 'access_token', 'token_type', 'expires_in'],
-                'book_flight': ['success', 'booking_id', 'flight_number', 'total_cost'],
-                'get_flight_cost': ['success', 'price_usd', 'flight_number', 'currency'],
-                'get_nearest_airport_by_city': ['success', 'airport_name', 'iata_code', 'distance'],
-                'cancel_booking': ['success', 'cancel_status', 'booking_id'],
-                'retrieve_invoice': ['success', 'invoice_id', 'amount', 'line_items'],
-                'purchase_insurance': ['success', 'insurance_policy_id', 'amount_charged'],
-            }
-        }
-
+        # Build output fields dynamically from tool definitions for the prompt
+        tools_json = self.tool_manager.get_tools_json_schema()
+        if focus_category:
+            tools_json = [t for t in tools_json if t.get('category') == focus_category]
         output_fields_str = ""
-        for cat, fields in output_fields_map.items():
-            if focus_category is None or cat == focus_category:
-                output_fields_str += f"\n=== {cat} OUTPUT FIELDS ===\n"
-                for tool, flds in fields.items():
-                    output_fields_str += f"- {tool}: {', '.join(flds)}\n"
+        for tool in tools_json:
+            name = tool.get('name', tool.get('api_name', ''))
+            schema = tool.get('output_schema', {})
+            props = schema.get('properties', {}) if schema else {}
+            if props:
+                fields = ', '.join(props.keys())
+                output_fields_str += f"- {name}: {fields}\n"
+            else:
+                output_fields_str += f"- {name}\n"
+
+        # Build output_fields_map dynamically for placeholder validation
+        output_fields_validation_map: Dict[str, List[str]] = {}
+        for tool in tools_json:
+            name = tool.get('name', tool.get('api_name', ''))
+            if name:
+                # Collect all known fields from tool definition's output schema if available,
+                # otherwise use a generic fallback
+                props = tool.get('output_schema', {}).get('properties', {}) if isinstance(tool, dict) else {}
+                if props:
+                    output_fields_validation_map[name] = list(props.keys())
+                else:
+                    output_fields_validation_map[name] = ['success', 'message', 'id', 'result', 'error']
+
+        # Build set of class_keys that belong to the focus_category
+        focus_class_keys = set()
+        if focus_category:
+            for api_name, class_key in self.tool_manager.api_name_to_class_key.items():
+                tool_cat = self.tool_manager.get_tool_category(api_name)
+                if tool_cat == focus_category:
+                    focus_class_keys.add(class_key)
+
+        # Inject actual credentials from initial_api_state into the prompt
+        credential_context = ""
+        if initial_api_state:
+            for class_key, state in initial_api_state.items():
+                # Skip APIs not in the focus category to avoid credential_context pollution
+                if focus_category and class_key not in focus_class_keys:
+                    continue
+                if isinstance(state, dict):
+                    # Credentials
+                    if 'client_id' in state and 'client_secret' in state and 'refresh_token' in state:
+                        cid = state['client_id']
+                        csec = state['client_secret']
+                        rtok = state['refresh_token']
+                        credential_context += f"\nCredential format: {cid}/{csec}/{rtok}"
+                    # Card IDs
+                    if 'credit_card_list' in state and isinstance(state['credit_card_list'], dict):
+                        card_ids = list(state['credit_card_list'].keys())
+                        if card_ids:
+                            credential_context += f"\nAvailable card IDs: {', '.join(card_ids)}"
+                    # User list (messaging)
+                    if 'user_map' in state and isinstance(state['user_map'], dict):
+                        user_ids = list(state['user_map'].keys())
+                        if user_ids:
+                            credential_context += f"\nAvailable user IDs: {', '.join(user_ids[:10])}"
+                    # Trading account
+                    if 'account_type' in state and 'balance' in state:
+                        credential_context += f"\nTrading account balance: {state.get('balance')}"
+                    # Finance username/password credentials
+                    if 'username' in state and 'password' in state:
+                        credential_context += f"\nFinance credentials: {state['username']}/{state['password']}"
 
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
@@ -285,21 +416,14 @@ class MultiTurnGenerator(StepByStepGenerator):
 === OUTPUT SCHEMAS (use these exact field names in placeholders) ===
 {output_fields_str}
 
-=== CRITICAL: PATH HANDLING ===
-- file_name/dir_name must be simple names, NOT paths (e.g., "config.ini" not "folder/config.ini")
-- To work in a subdirectory: first use cd to navigate there, THEN use file operations
-- Example CORRECT sequence:
-  1. mkdir project
-  2. cd project  
-  3. touch file.txt (NOT "project/file.txt")
-
 === REQUIREMENTS ===
 1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
 2. Conversation flows naturally, each turn builds on previous
 3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
 4. expected_tools: EXACTLY {self.num_actions} tools per turn
-5. Credentials: trader_admin/TradeAdmin2024! (trading), tech_user/TechUser2024! (posting), support_agent/SupportAgent2024! (tickets), travel_client_001/s3cretK3y!/refresh_abc123 (travel), USR005-USR014 (messaging)
-6. Cross-turn refs: use EXACT output field names like {{{{TURN1.mkdir.dir_name}}}}, {{{{TURN3.touch.file_name}}}}, etc.
+5. All authentication credentials, card IDs, and entity IDs come from the initial API state provided separately - do NOT invent credentials or IDs.
+6. Cross-turn refs: use EXACT output field names like {{{{TURN1.tool_name.field_name}}}} where field_name matches the tool's output schema.
+7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
 
 === EXAMPLES ===
 - "Log into trading as trader_admin/TradeAdmin2024! and buy 100 MSFT shares." (trading_login, place_order)
@@ -311,9 +435,10 @@ class MultiTurnGenerator(StepByStepGenerator):
 {{"overall_task": "scenario", "turns": [{{"user_query": "request", "expected_tools": ["t1", "t2"]}}, ...]}}"""
 
         if focus_category:
-            prompt += f"\n\nIMPORTANT: Use ONLY tools from '{focus_category}' category. Do NOT use tools from other categories."
-        else:
-            prompt += "\n\nYou may use tools from any category."
+            prompt += f"\n\nAll available tools below are from the '{focus_category}' category."
+
+        if credential_context:
+            prompt += f"\n\n=== Initial API State (use these values, do NOT invent) ==={credential_context}"
 
         accumulated_feedback = ""
         for attempt in range(3):
@@ -362,6 +487,18 @@ class MultiTurnGenerator(StepByStepGenerator):
                         if not all_tools_valid:
                             break
 
+                    # Validate duplicate tools that can't coexist (same tool called twice in one turn)
+                    from collections import Counter
+                    dup_tools = [t for t, c in Counter(expected).items() if c > 1]
+                    if dup_tools:
+                        validation_errors.append(
+                            f"Turn {i+1} has duplicate tools that can't share arguments: {dup_tools}. "
+                            f"A single LLM call can't generate distinct args for the same tool called twice. "
+                            f"Use different tools instead."
+                        )
+                        all_tools_valid = False
+                        break
+
                     # Validate placeholder references in user_query
                     query = t.get("user_query", "")
                     import re
@@ -381,23 +518,11 @@ class MultiTurnGenerator(StepByStepGenerator):
                                 all_tools_valid = False
                                 break
                             # Validate that the placeholder field exists in tool output using known schema
-                            output_fields_map = {
-                                'mkdir': ['success', 'message', 'dir_name'],
-                                'touch': ['success', 'message', 'file_name', 'created'],
-                                'cd': ['success', 'message', 'current_path'],
-                                'cat': ['success', 'content', 'file_name'],
-                                'echo': ['success', 'message', 'file_name', 'id'],
-                                'ls': ['success', 'files', 'path', 'id'],
-                                'rm': ['success', 'message'],
-                                'mv': ['success', 'message', 'source', 'destination'],
-                                'cp': ['success', 'message', 'source', 'destination'],
-                                'grep': ['success', 'lines', 'count'],
-                                'wc': ['success', 'lines', 'words', 'chars', 'file_name'],
-                            }
-                            known_fields = output_fields_map.get(ref_tool, ['success', 'message', 'id', 'result'])
+                            known_fields = output_fields_validation_map.get(ref_tool, ['success', 'message', 'id', 'result'])
                             if ref_field not in known_fields:
                                 validation_errors.append(f"Turn {i+1} placeholder {{TURN{p[0]}.{ref_tool}.{ref_field}}}: '{ref_field}' not in {ref_tool} output. Use: {known_fields}")
-                                # Don't fail - just warn
+                                all_tools_valid = False
+                                break
                     if not all_tools_valid:
                         break
 
@@ -429,6 +554,9 @@ class MultiTurnGenerator(StepByStepGenerator):
                                         all_tools_valid = False
                                         break
                     if not all_tools_valid:
+                        break
+
+                if not all_tools_valid:
                         break
 
                 if not all_tools_valid:
@@ -545,6 +673,147 @@ class MultiTurnGenerator(StepByStepGenerator):
         return resolved
 
     # ─────────────────────── Helpers ───────────────────────
+
+    @staticmethod
+    def _validate_tool_arguments(trajectory: List[TrajectoryStep]) -> List[str]:
+        """Check tool call arguments and outputs for hallucination indicators.
+
+        Returns list of error strings (empty = valid).
+        Hallucinated empty required args cause datapoint rejection + retry.
+        """
+        errors = []
+        for step in trajectory:
+            for tc in step.tool_calls:
+                args = tc.arguments or {}
+                out = tc.output or {}
+                name = tc.tool_name
+
+                if name == 'book_flight':
+                    for field in ['travel_date', 'travel_to', 'travel_from']:
+                        if not args.get(field) or str(args.get(field, '')).strip() == '':
+                            errors.append(
+                                f"book_flight: hallucinated empty '{field}' in arguments"
+                            )
+                    bh = out.get('booking_history', {})
+                    if not bh.get('travel_date') or not bh.get('travel_to'):
+                        errors.append(
+                            f"book_flight: output booking_history missing travel_date/travel_to"
+                        )
+                    if not out.get('booking_id'):
+                        errors.append(f"book_flight: empty booking_id in output")
+
+                elif name == 'purchase_insurance':
+                    if not args.get('booking_id'):
+                        errors.append("purchase_insurance: empty booking_id in arguments")
+                    ins_id = out.get('insurance_id', '')
+                    ins_status = out.get('insurance_status')
+                    if (ins_id == '' or ins_id is None) and ins_status is False:
+                        errors.append(
+                            f"purchase_insurance: failed (ins_id='{ins_id}', status={ins_status}), "
+                            f"likely operating on cancelled booking"
+                        )
+
+                elif name == 'retrieve_invoice':
+                    inv = out.get('invoice', {})
+                    if isinstance(inv, dict) and len(inv) == 0:
+                        errors.append("retrieve_invoice: empty invoice dict in output")
+
+                elif name == 'cancel_booking':
+                    if not out.get('cancel_status') and out.get('cancel_status') is not None:
+                        errors.append(f"cancel_booking: cancel_status=False")
+
+                elif name == 'authenticate_travel':
+                    if not out.get('success') and out.get('success') is not None:
+                        errors.append(
+                            f"authenticate_travel: failed success={out.get('success')} "
+                            f"error={out.get('error', '')[:60]}"
+                        )
+
+                elif name == 'get_flight_cost':
+                    if out.get('error'):
+                        errors.append(f"get_flight_cost: error={out['error'][:80]}")
+
+        return errors
+
+    def _validate_cross_turn_consistency(
+        self,
+        trajectory: List[TrajectoryStep],
+        execution_context: Dict[str, Any],
+    ) -> List[str]:
+        """Validate that tool calls are consistent with prior turn outputs.
+
+        Returns list of error strings (empty = valid).
+        Cross-turn hallucination (e.g., book_flight with wrong route) causes rejection.
+        """
+        errors = []
+        turn_outputs = execution_context.get('turn_outputs', [])
+
+        current_tc_by_name = {}
+        for step in trajectory:
+            for tc in step.tool_calls:
+                current_tc_by_name[tc.tool_name] = tc
+
+        prior_tc_by_name = {}
+        for turn_out in turn_outputs:
+            for tool_name, output in turn_out.items():
+                if tool_name not in prior_tc_by_name:
+                    prior_tc_by_name[tool_name] = []
+                prior_tc_by_name[tool_name].append(output)
+
+        if 'book_flight' in current_tc_by_name:
+            bf_args = current_tc_by_name['book_flight'].arguments or {}
+            bf_out = current_tc_by_name['book_flight'].output or {}
+            bf_from = bf_args.get('travel_from', '').upper()
+            bf_to = bf_args.get('travel_to', '').upper()
+
+            if 'get_flight_cost' in prior_tc_by_name:
+                gfc_output = prior_tc_by_name['get_flight_cost'][-1]
+                gfc_from = gfc_output.get('travel_from', '').upper()
+                gfc_to = gfc_output.get('travel_to', '').upper()
+
+                if gfc_from and gfc_to and (bf_from != gfc_from or bf_to != gfc_to):
+                    errors.append(
+                        f"book_flight: route mismatch. get_flight_cost used {gfc_from}→{gfc_to} "
+                        f"but book_flight called with {bf_from}→{bf_to}"
+                    )
+
+            if 'get_nearest_airport_by_city' in prior_tc_by_name:
+                airport_outputs = prior_tc_by_name['get_nearest_airport_by_city']
+                prior_cities = set()
+                prior_airports = set()
+                for ao in airport_outputs:
+                    nearest = ao.get('nearest_airport', '')
+                    if nearest:
+                        prior_airports.add(nearest.upper())
+
+                if prior_airports and bf_from and bf_from.upper() not in prior_airports:
+                    errors.append(
+                        f"book_flight: travel_from='{bf_from}' not in prior airport lookups {prior_airports}"
+                    )
+
+        if 'purchase_insurance' in current_tc_by_name:
+            pi_args = current_tc_by_name['purchase_insurance'].arguments or {}
+            pi_out = current_tc_by_name['purchase_insurance'].output or {}
+            pi_booking_id = pi_args.get('booking_id', '')
+
+            if 'book_flight' in prior_tc_by_name:
+                prior_booking_ids = set()
+                for bo in prior_tc_by_name['book_flight']:
+                    bid = bo.get('booking_id', '')
+                    if bid:
+                        prior_booking_ids.add(bid)
+
+                if prior_booking_ids and pi_booking_id and pi_booking_id not in prior_booking_ids:
+                    errors.append(
+                        f"purchase_insurance: booking_id='{pi_booking_id}' not in prior bookings {prior_booking_ids}"
+                    )
+
+            if pi_out.get('insurance_status') is False:
+                errors.append(
+                    f"purchase_insurance: failed (booking_id='{pi_booking_id}', status=False)"
+                )
+
+        return errors
 
     def _format_conversation_history(self, conversation: MultiTurnConversation) -> str:
         """Format completed turns as readable history for the LLM."""

@@ -578,8 +578,10 @@ Respond ONLY with valid JSON:
             else:
                 arguments = arguments[0] if arguments else {}
         processed_args = self._process_placeholders(arguments, execution_context)
-        if self._python_tools_available and self.tool_manager.has_python_implementation(tool_name):
-            return self.tool_manager.invoke_python_tool(tool_name, processed_args)
+        if self._python_tools_available:
+            if self.tool_manager.has_python_implementation(tool_name):
+                return self.tool_manager.invoke_python_tool(tool_name, processed_args)
+            raise NotImplementedError(f"No Python implementation for '{tool_name}' (api_name_to_class_key={self.tool_manager.api_name_to_class_key.get(tool_name, 'NOT IN MAP')}, has_impl={self.tool_manager.has_python_implementation(tool_name)}). LLM simulation disabled - implement the Python tool.")
         return self.tool_manager.invoke_tool(tool_name=tool_name, params=processed_args)
 
     @staticmethod
@@ -611,7 +613,8 @@ Respond ONLY with valid JSON:
             'ticket_login': [('success', lambda v: v is False)],
             'message_login': [('login_status', lambda v: v is False)],
             'verify_traveler_information': [('verification_status', lambda v: v is False)],
-            'authenticate_travel': [('access_token', lambda v: v == '')],
+            'authenticate_travel': [('success', lambda v: v is False), ('access_token', lambda v: v == '')],
+            'get_flight_cost': [('error', lambda v: bool(v)), ('travel_cost_list', lambda v: isinstance(v, list) and len(v) == 0)],
             'book_flight': [
                 ('booking_status', lambda v: isinstance(v, str) and ('fail' in v.lower() or 'error' in v.lower())),
                 ('booking_confirmation', lambda v: isinstance(v, str) and ('fail' in v.lower() or 'error' in v.lower())),
@@ -677,6 +680,18 @@ Respond ONLY with valid JSON:
         print(f" Query: {query_result.query}")
         print(f" Expected tools: {query_result.expected_tools}")
         print(f" Tokens so far: {self._accumulated_total_tokens:,}")
+
+        # Stage 1.4: Ensure user identity coherence across APIs
+        if self._python_tools_available:
+            print("\n" + "-" * 70)
+            print("STAGE 1.4: Ensure User Identity Coherence")
+            print("-" * 70)
+            identity_adjusted = self._ensure_user_identity_coherence(query_result.query)
+            if identity_adjusted:
+                initial_api_state = self.tool_manager.get_api_state()
+                print(f" ✓ Identity coherence adjusted, re-captured ({len(initial_api_state)} class keys)")
+            else:
+                print(f" No identity adjustment needed")
 
         # Stage 1.5: Adjust initial API state for expected tools
         if self._python_tools_available and query_result.expected_tools:
@@ -792,6 +807,51 @@ Respond ONLY with valid JSON:
         # All retries exhausted
         print(f"\n✗ Failed to generate valid query after {max_retries} attempts")
         return None
+
+    def _ensure_user_identity_coherence(self, text: str) -> bool:
+        """Ensure user identity is coherent across APIs.
+
+        Finds any user name in 'text' that also exists in any API's user_map.
+        If found, ensures this user is set consistently across ALL API instances
+        that have identity-related attributes (first_name, last_name, current_user, etc.)
+        that were set to a DIFFERENT user. This prevents incoherent scenarios where
+        the query references "user Tom" but auth credentials point to "David Park".
+
+        Returns True if adjustments were made, False otherwise.
+        """
+        current_state = self.tool_manager.get_api_state()
+        text_lower = text.lower()
+
+        user_candidates = set()
+        for class_key, state in current_state.items():
+            if not isinstance(state, dict):
+                continue
+            if 'user_map' in state and isinstance(state['user_map'], dict):
+                for username in state['user_map']:
+                    if username.lower() in text_lower:
+                        user_candidates.add(username)
+
+        if not user_candidates:
+            return False
+
+        primary_user = list(user_candidates)[0]
+
+        adjusted = False
+        identity_attrs = {'first_name', 'last_name', 'current_user', 'username', 'user_id'}
+
+        for class_key, state in current_state.items():
+            inst = self.tool_manager.python_tool_instances.get(class_key)
+            if not inst:
+                continue
+            for attr in identity_attrs:
+                if hasattr(inst, attr):
+                    current_val = getattr(inst, attr)
+                    if current_val and isinstance(current_val, str) and current_val != primary_user:
+                        print(f"  Sync {class_key}.{attr}: {current_val} -> {primary_user}")
+                        setattr(inst, attr, primary_user)
+                        adjusted = True
+
+        return adjusted
 
     def _stage1_5_adjust_initial_state(self, query_result: QueryGenerationResult) -> bool:
         """Stage 1.5: Adjust initial API state so expected tools will succeed.

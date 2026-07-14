@@ -1059,6 +1059,7 @@ class ToolManager:
             # Include output type and description for new format
             "output_type": tool_data.get('output_type', 'unknown'),
             "output_description": tool_data.get('output_description', ''),
+            "output_schema": tool_data.get('output_schema', {}),
             # Include category for grouping
             "category": tool_data.get('category', 'Unknown')
         }

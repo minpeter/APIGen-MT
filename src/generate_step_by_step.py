@@ -321,8 +321,8 @@ def main():
 
     tool_manager = ToolManager(
         llm=llm_client,
-        tool_pool_path=args.tool_pool,
-        invocation_examples_path=args.invocation_examples,
+        tool_pool_path=tool_pool_path,
+        invocation_examples_path=invocation_examples_path,
         use_config_pool=args.config_pool,
     )
 
