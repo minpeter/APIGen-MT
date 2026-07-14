@@ -314,50 +314,32 @@ Respond with JSON:
         """Return few-shot examples of valid queries with correct tool sequences."""
         examples = [
             {
-                "category": "Travel Booking",
                 "num_tools": 3,
-                "query": "I need to book a flight from JFK to London Heathrow on June 15, 2024 for 2 passengers in business class. Please authenticate first, then get the flight cost, and book the flight.",
-                "intent": "User wants to book a business class flight and needs to authenticate, check pricing, and complete the booking",
-                "expected_tools": ["authenticate_travel", "get_flight_cost", "book_flight"]
+                "query": "Authenticate with my credentials, then retrieve a list of available resources, and perform an action on one of them.",
+                "intent": "User wants to authenticate, list resources, and take action",
+                "expected_tools": ["authenticate", "list_items", "perform_action"]
             },
             {
-                "category": "Finance",
-                "num_tools": 3,
-                "query": "Log in to my trading account, then buy 50 shares of Apple stock at market price.",
-                "intent": "User wants to log in and purchase Apple stock",
-                "expected_tools": ["trading_login", "get_symbol_by_name", "place_order"]
-            },
-            {
-                "category": "Events",
-                "num_tools": 3,
-                "query": "Log in to the ticket system, then resolve ticket #123456 with the resolution 'Issue fixed', and close it.",
-                "intent": "User wants to authenticate, then resolve and close a ticket",
-                "expected_tools": ["ticket_login", "resolve_ticket", "close_ticket"]
-            },
-            {
-                "category": "Posting Api",
                 "num_tools": 2,
-                "query": "Authenticate with Twitter, then post a tweet saying 'Hello world!'.",
-                "intent": "User wants to authenticate and post a tweet",
-                "expected_tools": ["authenticate_twitter", "post_tweet"]
+                "query": "Log in to my account, then check the status of a recent request.",
+                "intent": "User wants to authenticate and check request status",
+                "expected_tools": ["login", "get_status"]
             },
             {
-                "category": "Communication",
-                "num_tools": 3,
-                "query": "Log in to the messaging app as USR005, then get the user ID for Sarah, and send her a message saying 'Hi Sarah!'.",
-                "intent": "User wants to log in, look up a user ID, and send a message",
-                "expected_tools": ["message_login", "get_user_id", "send_message"]
-            }
+                "num_tools": 2,
+                "query": "Submit a new request with title 'Project update' and priority 'high', then confirm submission.",
+                "intent": "User wants to submit a request and confirm",
+                "expected_tools": ["submit_request", "confirm_submission"]
+            },
         ]
 
-        # Filter examples by num_actions if possible
         filtered_examples = [ex for ex in examples if ex["num_tools"] <= self.num_actions + 1 and ex["num_tools"] >= self.num_actions - 1]
         if not filtered_examples:
-            filtered_examples = examples[:3]
+            filtered_examples = examples[:2]
 
         result = []
         for i, ex in enumerate(filtered_examples, 1):
-            result.append(f"\n=== EXAMPLE {i} ({ex['category']}, {ex['num_tools']} tools) ===")
+            result.append(f"\n=== EXAMPLE {i} ({ex['num_tools']} tools) ===")
             result.append(f"Query: \"{ex['query']}\"")
             result.append(f"Intent: {ex['intent']}")
             result.append(f"Expected tools: {ex['expected_tools']}")
@@ -392,7 +374,7 @@ Do NOT use "Michael Smith", "John", or generic American names — use {p['name']
 2. EXACTLY {self.num_actions} tool calls needed - not more, not less
 3. expected_tools: EXACTLY {self.num_actions} tool names from AVAILABLE TOOLS
 4. CRITICAL: Use ONLY tools from AVAILABLE TOOLS - no invented names
-5. Auth tools need login FIRST (e.g., place_order needs trading_login)
+5. Auth-dependent tools need authentication FIRST - check which tools require prior authentication
 {persona_section}
 === AVAILABLE TOOLS ===
 {tools_with_descriptions}

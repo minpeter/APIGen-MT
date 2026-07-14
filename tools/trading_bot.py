@@ -166,6 +166,8 @@ class TradingBot:
 
     def get_transaction_history(self, start_date: str = 'None', end_date: str = 'None') -> Dict[str, Any]:
         """Get the transaction history within a specified date range."""
+        if not self.authenticated:
+            return {"transaction_history": [], "status": "User not authenticated"}
         result = []
         for t in self.transaction_history:
             ts_str = t.get("timestamp", "")
@@ -173,27 +175,33 @@ class TradingBot:
                 ts_dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
             except (ValueError, TypeError):
                 continue
-            
+
             include = True
             if start_date and start_date != 'None':
                 try:
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                    if ts_dt < start_dt:
+                    if ts_dt.date() < start_dt.date():
                         include = False
                 except ValueError:
                     pass
             if end_date and end_date != 'None':
                 try:
                     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-                    if ts_dt > end_dt:
+                    if ts_dt.date() > end_dt.date():
                         include = False
                 except ValueError:
                     pass
-            
+
             if include:
+                total_cost = t.get("total_cost")
+                if total_cost is None:
+                    price = t.get("price", 0)
+                    num_shares = t.get("num_shares", 0)
+                    total_cost = price * num_shares
                 result.append({
                     "type": t.get("type", ""),
-                    "amount": t.get("amount", 0.0),
+                    "symbol": t.get("symbol", ""),
+                    "total_cost": total_cost,
                     "timestamp": ts_str
                 })
         return {"transaction_history": result}
@@ -247,6 +255,17 @@ class TradingBot:
             "amount": amount,
             "status": "Open"
         }
+        total_cost = price * amount
+        self.transaction_history.append({
+            "order_id": order_id,
+            "type": order_type,
+            "symbol": symbol,
+            "price": price,
+            "num_shares": amount,
+            "total_cost": total_cost,
+            "status": "Filled",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
         return {
             "order_id": order_id,
             "order_type": order_type,
