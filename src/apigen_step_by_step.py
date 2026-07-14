@@ -314,22 +314,22 @@ Respond with JSON:
         """Return few-shot examples of valid queries with correct tool sequences."""
         examples = [
             {
-                "num_tools": 3,
-                "query": "Authenticate with my credentials, then retrieve a list of available resources, and perform an action on one of them.",
-                "intent": "User wants to authenticate, list resources, and take action",
-                "expected_tools": ["authenticate", "list_items", "perform_action"]
+                "num_tools": 2,
+                "query": "List items in the current directory, then create a new subdirectory.",
+                "intent": "User wants to see files and create a folder",
+                "expected_tools": ["ls", "mkdir"]
             },
             {
                 "num_tools": 2,
-                "query": "Log in to my account, then check the status of a recent request.",
-                "intent": "User wants to authenticate and check request status",
-                "expected_tools": ["login", "get_status"]
+                "query": "Display the contents of report.txt, then search for the word 'error' in it.",
+                "intent": "User wants to read a file and find specific text",
+                "expected_tools": ["cat", "grep"]
             },
             {
                 "num_tools": 2,
-                "query": "Submit a new request with title 'Project update' and priority 'high', then confirm submission.",
-                "intent": "User wants to submit a request and confirm",
-                "expected_tools": ["submit_request", "confirm_submission"]
+                "query": "Create a new file named notes.txt, write 'Hello World' to it, then display its contents.",
+                "intent": "User wants to create and populate a file",
+                "expected_tools": ["touch", "echo", "cat"]
             },
         ]
 
@@ -1378,8 +1378,9 @@ Generate args matching schema and fulfilling query:
 - Use REAL values from API STATE (user IDs, ticket IDs, tokens) - do NOT invent
 - For LOGIN: use stored credentials from API state
 - card_id: 'card_XXXX' (from register_credit_card), access_token: from prior authenticate_travel, booking_id: 'flight_XXX'
+- Storage tools (ls, cat, cd, mkdir, mv, rm, cp, touch, echo, grep, wc, tail, find): use simple direct arguments like file_name, folder, source, destination, pattern. DO NOT use 'calls' batch format.
 
-Respond JSON: {"arg1": "value1", ...}}"""
+Respond JSON: {"arg1": "value1", ...}
 
         try:
             response = self._safe_llm_generate([{"role": "user", "content": prompt}])
