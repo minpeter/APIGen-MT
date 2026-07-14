@@ -964,11 +964,11 @@ Respond ONLY with valid JSON:
 - MINIMAL changes only
 
 === EXAMPLES ===
-Add user to message_api:
-{"modifications": {"message_api": {"user_map.Username": "USR015"}}, "reasoning": "..."}
+Add a new entry to a key-value map:
+{"modifications": {"api_name": {"map_key.NewName": "USR015"}}, "reasoning": "..."}
 
-Append ticket:
-{"modifications": {"ticket_api": {"APPEND:tickets_queue": {"id": 1234}}}, "reasoning": "..."}
+Add new item to a queue:
+{"modifications": {"api_name": {"APPEND:queue_key": {"id": 1234}}}, "reasoning": "..."}
 
 No changes needed:
 {"modifications": {}, "reasoning": "no changes needed"}
