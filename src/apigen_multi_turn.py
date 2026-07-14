@@ -401,12 +401,12 @@ class MultiTurnGenerator(StepByStepGenerator):
                         user_ids = list(state['user_map'].keys())
                         if user_ids:
                             credential_context += f"\nAvailable user IDs: {', '.join(user_ids[:10])}"
-                    # Trading account
+                    # Account balance
                     if 'account_type' in state and 'balance' in state:
-                        credential_context += f"\nTrading account balance: {state.get('balance')}"
-                    # Finance username/password credentials
+                        credential_context += f"\nAccount balance: {state.get('balance')}"
+                    # Username/password credentials
                     if 'username' in state and 'password' in state:
-                        credential_context += f"\nFinance credentials: {state['username']}/{state['password']}"
+                        credential_context += f"\nCredentials: {state['username']}/{state['password']}"
 
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
@@ -426,7 +426,7 @@ class MultiTurnGenerator(StepByStepGenerator):
 7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
 
 === EXAMPLES ===
-- "Log into trading as trader_admin/TradeAdmin2024! and buy 100 MSFT shares." (trading_login, place_order)
+- "Log into my account with username user123 and password SecretPass! then perform an action." (login_action, perform_action)
 - "Create ticket 'Network outage' with critical priority." (ticket_login, create_ticket)
 - "Post tweet 'Great day for AI!'" (authenticate_twitter, post_tweet)
 - "Get the user ID for Sarah and send her a message." (get_user_id, send_message)
