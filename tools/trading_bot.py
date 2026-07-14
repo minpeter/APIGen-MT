@@ -180,28 +180,28 @@ class TradingBot:
             if start_date and start_date != 'None':
                 try:
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                    if ts_dt < start_dt:
+                    if ts_dt.date() < start_dt.date():
                         include = False
                 except ValueError:
                     pass
             if end_date and end_date != 'None':
                 try:
                     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-                    if ts_dt > end_dt:
+                    if ts_dt.date() > end_dt.date():
                         include = False
                 except ValueError:
                     pass
 
             if include:
-                amount = t.get("amount")
-                if amount is None:
+                total_cost = t.get("total_cost")
+                if total_cost is None:
                     price = t.get("price", 0)
                     num_shares = t.get("num_shares", 0)
-                    amount = price * num_shares
+                    total_cost = price * num_shares
                 result.append({
                     "type": t.get("type", ""),
                     "symbol": t.get("symbol", ""),
-                    "amount": amount,
+                    "total_cost": total_cost,
                     "timestamp": ts_str
                 })
         return {"transaction_history": result}
@@ -262,7 +262,7 @@ class TradingBot:
             "symbol": symbol,
             "price": price,
             "num_shares": amount,
-            "amount": total_cost,
+            "total_cost": total_cost,
             "status": "Filled",
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
