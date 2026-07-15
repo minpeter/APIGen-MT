@@ -10,7 +10,8 @@ from pathlib import Path
 from collections import defaultdict
 
 from llm_client import LLMClient
-from config_pool import generate_random_config
+from config_pool import generate_random_config, MESSAGE_CONFIGS
+import random
 
 
 CLASS_KEY_TO_INITIAL_CONFIG_KEY = {
@@ -128,73 +129,7 @@ FULL_INITIAL_CONFIGS = {
     "MathAPI": {
         "numbers": [275.5, 299.75, 250.65, 310.85, 290.1]
     },
-    "MessageAPI": {
-        "workspace_id": "WS123456",
-        "user_count": 10,
-        "user_map": {
-            "Michael": "USR005",
-            "Sarah": "USR006",
-            "David": "USR007",
-            "Emma": "USR008",
-            "Alice": "USR009",
-            "Bob": "USR010",
-            "Charlie": "USR011",
-            "Diana": "USR012",
-            "John": "USR013",
-            "Jane": "USR014"
-        },
-        "messages_sent_map": {
-            "USR005": {
-                "USR006": ["Please review the attached document."],
-                "USR007": ["Meeting at 3 PM."],
-                "USR008": ["Lunch tomorrow?"]
-            },
-            "USR006": {
-                "USR005": ["Got it, thanks!"],
-                "USR007": ["Can we reschedule?"]
-            },
-            "USR007": {
-                "USR005": ["Sure, see you then."],
-                "USR008": ["Let's catch up soon."]
-            },
-            "USR008": {
-                "USR006": ["I'll be there."],
-                "USR007": ["Sounds good."]
-            },
-            "USR009": {},
-            "USR010": {},
-            "USR011": {},
-            "USR012": {},
-            "USR013": {},
-            "USR014": {}
-        },
-        "messages_inbox_map": {
-            "USR005": {
-                "USR006": ["Got it, thanks!"],
-                "USR007": ["Sure, see you then."]
-            },
-            "USR006": {
-                "USR005": ["Please review the attached document."],
-                "USR008": ["I'll be there."]
-            },
-            "USR007": {
-                "USR005": ["Meeting at 3 PM."],
-                "USR006": ["Can we reschedule?"]
-            },
-            "USR008": {
-                "USR005": ["Lunch tomorrow?"],
-                "USR007": ["Let's catch up soon."]
-            },
-            "USR009": {},
-            "USR010": {},
-            "USR011": {},
-            "USR012": {},
-            "USR013": {},
-            "USR014": {}
-        },
-        "message_count": 8,
-        "current_user": ""
-    },
+    "MessageAPI": copy.deepcopy(random.choice(MESSAGE_CONFIGS)),
     "PostingAPI": {
         "authenticated": False,
         "tweet_counter": 17,
