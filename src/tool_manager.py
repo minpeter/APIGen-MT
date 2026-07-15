@@ -11,6 +11,7 @@ from collections import defaultdict
 
 from llm_client import LLMClient
 from config_pool import generate_random_config, MESSAGE_CONFIGS
+import random
 
 
 CLASS_KEY_TO_INITIAL_CONFIG_KEY = {
@@ -128,7 +129,7 @@ FULL_INITIAL_CONFIGS = {
     "MathAPI": {
         "numbers": [275.5, 299.75, 250.65, 310.85, 290.1]
     },
-    "MessageAPI": copy.deepcopy(MESSAGE_CONFIGS[0]),
+    "MessageAPI": copy.deepcopy(random.choice(MESSAGE_CONFIGS)),
     "PostingAPI": {
         "authenticated": False,
         "tweet_counter": 17,
