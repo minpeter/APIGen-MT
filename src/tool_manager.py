@@ -145,21 +145,21 @@ FULL_INITIAL_CONFIGS = {
         },
         "messages_sent_map": {
             "USR005": {
-                "USR006": ["Please review the attached document."],
-                "USR007": ["Meeting at 3 PM."],
-                "USR008": ["Lunch tomorrow?"]
+                "USR006": [{"message_id": 1, "message": "Please review the attached document."}],
+                "USR007": [{"message_id": 2, "message": "Meeting at 3 PM."}],
+                "USR008": [{"message_id": 3, "message": "Lunch tomorrow?"}]
             },
             "USR006": {
-                "USR005": ["Got it, thanks!"],
-                "USR007": ["Can we reschedule?"]
+                "USR005": [{"message_id": 4, "message": "Got it, thanks!"}],
+                "USR007": [{"message_id": 5, "message": "Can we reschedule?"}]
             },
             "USR007": {
-                "USR005": ["Sure, see you then."],
-                "USR008": ["Let's catch up soon."]
+                "USR005": [{"message_id": 6, "message": "Sure, see you then."}],
+                "USR008": [{"message_id": 7, "message": "Let's catch up soon."}]
             },
             "USR008": {
-                "USR006": ["I'll be there."],
-                "USR007": ["Sounds good."]
+                "USR006": [{"message_id": 8, "message": "I'll be there."}],
+                "USR007": [{"message_id": 9, "message": "Sounds good."}]
             },
             "USR009": {},
             "USR010": {},
@@ -170,20 +170,20 @@ FULL_INITIAL_CONFIGS = {
         },
         "messages_inbox_map": {
             "USR005": {
-                "USR006": ["Got it, thanks!"],
-                "USR007": ["Sure, see you then."]
+                "USR006": [{"message_id": 4, "message": "Got it, thanks!"}],
+                "USR007": [{"message_id": 6, "message": "Sure, see you then."}]
             },
             "USR006": {
-                "USR005": ["Please review the attached document."],
-                "USR008": ["I'll be there."]
+                "USR005": [{"message_id": 1, "message": "Please review the attached document."}],
+                "USR008": [{"message_id": 8, "message": "I'll be there."}]
             },
             "USR007": {
-                "USR005": ["Meeting at 3 PM."],
-                "USR006": ["Can we reschedule?"]
+                "USR005": [{"message_id": 2, "message": "Meeting at 3 PM."}],
+                "USR006": [{"message_id": 5, "message": "Can we reschedule?"}]
             },
             "USR008": {
-                "USR005": ["Lunch tomorrow?"],
-                "USR007": ["Let's catch up soon."]
+                "USR005": [{"message_id": 3, "message": "Lunch tomorrow?"}],
+                "USR007": [{"message_id": 7, "message": "Let's catch up soon."}]
             },
             "USR009": {},
             "USR010": {},
@@ -192,7 +192,7 @@ FULL_INITIAL_CONFIGS = {
             "USR013": {},
             "USR014": {}
         },
-        "message_count": 8,
+        "message_count": 9,
         "current_user": ""
     },
     "PostingAPI": {
