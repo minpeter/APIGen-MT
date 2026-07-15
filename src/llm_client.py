@@ -408,18 +408,21 @@ class LocalOpenAILLMClient(LLMClient):
             self.total_calls += 1
             return response, ""
 
-        payload = {
-            "model": self.api_model,
-            "messages": messages,
-            **kwargs,
-        }
-
-        max_retries = kwargs.get("max_retries", 5)
+        max_retries = kwargs.get("max_retries", 3)
         base_delay = 2
         request_timeout = kwargs.get("timeout", 900)
         rate_limit_retry_count = 0
         server_error_retry_count = 0
         attempt = 0
+
+        # Filter out internal parameters before sending to API
+        api_kwargs = {k: v for k, v in kwargs.items() if k not in ("max_retries", "timeout")}
+
+        payload = {
+            "model": self.api_model,
+            "messages": messages,
+            **api_kwargs,
+        }
         import random as _rng
 
         while attempt < max_retries:
@@ -492,6 +495,17 @@ class LocalOpenAILLMClient(LLMClient):
                     jitter = _rng.uniform(0, 1.0) * min(delay, 3)
                     delay += jitter
                     print(f"[LLMClient] Connection error (attempt {attempt + 1}): {e}, retrying in {delay:.1f}s...")
+                    time.sleep(delay)
+                    attempt += 1
+                    continue
+                else:
+                    raise
+            except json.JSONDecodeError as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** min(attempt, 8))
+                    jitter = _rng.uniform(0, 1.0) * min(delay, 3)
+                    delay += jitter
+                    print(f"[LLMClient] Non-JSON response (attempt {attempt + 1}): {e}, retrying in {delay:.1f}s...")
                     time.sleep(delay)
                     attempt += 1
                     continue
