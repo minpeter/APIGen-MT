@@ -10,7 +10,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from llm_client import LLMClient
-from config_pool import generate_random_config
+from config_pool import generate_random_config, MESSAGE_CONFIGS
 
 
 CLASS_KEY_TO_INITIAL_CONFIG_KEY = {
@@ -128,73 +128,7 @@ FULL_INITIAL_CONFIGS = {
     "MathAPI": {
         "numbers": [275.5, 299.75, 250.65, 310.85, 290.1]
     },
-    "MessageAPI": {
-        "workspace_id": "WS123456",
-        "user_count": 10,
-        "user_map": {
-            "Michael": "USR005",
-            "Sarah": "USR006",
-            "David": "USR007",
-            "Emma": "USR008",
-            "Alice": "USR009",
-            "Bob": "USR010",
-            "Charlie": "USR011",
-            "Diana": "USR012",
-            "John": "USR013",
-            "Jane": "USR014"
-        },
-        "messages_sent_map": {
-            "USR005": {
-                "USR006": [{"message_id": 1, "message": "Please review the attached document."}],
-                "USR007": [{"message_id": 2, "message": "Meeting at 3 PM."}],
-                "USR008": [{"message_id": 3, "message": "Lunch tomorrow?"}]
-            },
-            "USR006": {
-                "USR005": [{"message_id": 4, "message": "Got it, thanks!"}],
-                "USR007": [{"message_id": 5, "message": "Can we reschedule?"}]
-            },
-            "USR007": {
-                "USR005": [{"message_id": 6, "message": "Sure, see you then."}],
-                "USR008": [{"message_id": 7, "message": "Let's catch up soon."}]
-            },
-            "USR008": {
-                "USR006": [{"message_id": 8, "message": "I'll be there."}],
-                "USR007": [{"message_id": 9, "message": "Sounds good."}]
-            },
-            "USR009": {},
-            "USR010": {},
-            "USR011": {},
-            "USR012": {},
-            "USR013": {},
-            "USR014": {}
-        },
-        "messages_inbox_map": {
-            "USR005": {
-                "USR006": [{"message_id": 4, "message": "Got it, thanks!"}],
-                "USR007": [{"message_id": 6, "message": "Sure, see you then."}]
-            },
-            "USR006": {
-                "USR005": [{"message_id": 1, "message": "Please review the attached document."}],
-                "USR008": [{"message_id": 8, "message": "I'll be there."}]
-            },
-            "USR007": {
-                "USR005": [{"message_id": 2, "message": "Meeting at 3 PM."}],
-                "USR006": [{"message_id": 5, "message": "Can we reschedule?"}]
-            },
-            "USR008": {
-                "USR005": [{"message_id": 3, "message": "Lunch tomorrow?"}],
-                "USR007": [{"message_id": 7, "message": "Let's catch up soon."}]
-            },
-            "USR009": {},
-            "USR010": {},
-            "USR011": {},
-            "USR012": {},
-            "USR013": {},
-            "USR014": {}
-        },
-        "message_count": 9,
-        "current_user": ""
-    },
+    "MessageAPI": copy.deepcopy(MESSAGE_CONFIGS[0]),
     "PostingAPI": {
         "authenticated": False,
         "tweet_counter": 17,
