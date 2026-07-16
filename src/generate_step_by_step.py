@@ -7,6 +7,11 @@ Supports two modes:
     Use --num-turns to control total turns and --num-actions for tools per turn.
   - step-by-step (legacy): Single user query with multiple action steps.
 
+Checkpoint/Resume:
+  Use --checkpoint to enable checkpointing. Progress is saved after each turn.
+  If interrupted, running with the same --checkpoint file will resume from where
+  you left off.
+
 Usage:
     python generate_step_by_step.py [OPTIONS]
 
@@ -18,6 +23,7 @@ Options:
     --output FILE           Output file path (default: step_by_step_datapoints.jsonl)
     --category CATEGORY     Filter tools to a specific category
     --model MODEL           Model name (default: minimaxai/minimax-m2.7)
+    --checkpoint FILE       Checkpoint file for resume support (default: none)
 """
 
 import json
@@ -25,6 +31,8 @@ import os
 import sys
 import random
 import argparse
+import copy
+import signal
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
@@ -41,6 +49,41 @@ from llm_client import LocalOpenAILLMClient
 from tool_manager import ToolManager
 from apigen_step_by_step import StepByStepGenerator, StepByStepDatapoint
 from apigen_multi_turn import MultiTurnGenerator, MultiTurnDatapoint
+
+
+class CheckpointManager:
+    """Manages checkpoint saving and loading for resumable generation."""
+
+    def __init__(self, checkpoint_path: str):
+        self.checkpoint_path = checkpoint_path
+        self.state: dict = {}
+
+    def load(self) -> dict:
+        """Load checkpoint state if exists."""
+        if self.checkpoint_path and Path(self.checkpoint_path).exists():
+            try:
+                with open(self.checkpoint_path, 'r') as f:
+                    self.state = json.load(f)
+                return self.state
+            except (json.JSONDecodeError, IOError):
+                return {}
+        return {}
+
+    def save(self, state: dict) -> None:
+        """Save checkpoint state to disk."""
+        if not self.checkpoint_path:
+            return
+        self.state = state
+        try:
+            with open(self.checkpoint_path, 'w') as f:
+                json.dump(state, f, default=str)
+        except IOError as e:
+            print(f"Warning: Failed to save checkpoint: {e}")
+
+    def clear(self) -> None:
+        """Remove checkpoint file."""
+        if self.checkpoint_path and Path(self.checkpoint_path).exists():
+            os.remove(self.checkpoint_path)
 
 
 def parse_args():
@@ -109,7 +152,7 @@ def parse_args():
     parser.add_argument(
         '--model', '-m',
         type=str,
-        default='minimaxai/minimax-m2.7',
+        default='minimax/minimax-m2.7',
         help='Model to use for generation (default: minimaxai/minimax-m2.7)'
     )
 
@@ -148,6 +191,20 @@ def parse_args():
         action=argparse.BooleanOptionalAction,
         default=True,
         help='Use diverse config pool for initial API states (default: True). Use --no-config-pool to disable.'
+    )
+
+    parser.add_argument(
+        '--checkpoint',
+        type=str,
+        default=None,
+        help='Checkpoint file for resume support. If provided, progress is saved after each turn.'
+    )
+
+    parser.add_argument(
+        '--resume',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Resume from checkpoint if exists (default: True). Use --no-resume to start fresh.'
     )
 
     return parser.parse_args()
@@ -225,14 +282,21 @@ def run_step_by_step(args, llm_client, tool_manager, categories, output_path, ju
     return datapoints
 
 
-def run_multi_turn(args, llm_client, tool_manager, categories, output_path):
-    """Run multi-turn (multiple user exchanges) generation."""
+def run_multi_turn(args, llm_client, tool_manager, categories, output_path, checkpoint_manager=None):
+    """Run multi-turn (multiple user exchanges) generation with checkpoint support."""
     generator = MultiTurnGenerator(
         llm_client=llm_client,
         tool_manager=tool_manager,
         num_turns=args.num_turns,
         actions_per_turn=args.num_actions,
     )
+
+    # Create checkpoint callback if checkpoint manager is provided
+    checkpoint_callback = None
+    if checkpoint_manager:
+        def save_checkpoint(state):
+            checkpoint_manager.save(state)
+        checkpoint_callback = save_checkpoint
 
     datapoints = []
 
@@ -243,14 +307,54 @@ def run_multi_turn(args, llm_client, tool_manager, categories, output_path):
         print(f"Generated: {len(datapoints)}/{args.num_datapoints} | Remaining: {remaining}")
         print("=" * 70)
 
+        # Check for existing checkpoint to resume
+        if checkpoint_manager and args.resume:
+            checkpoint = checkpoint_manager.load()
+            if checkpoint.get('partial_conversation'):
+                # Try to resume from checkpoint
+                print(f"\nFound checkpoint with {checkpoint.get('completed_turns', 0)} completed turns")
+                dp = generator.continue_from_checkpoint(
+                    checkpoint,
+                    focus_category=checkpoint.get('focus_category'),
+                )
+                if dp:
+                    dp_dict = dp.model_dump()
+                    dp_dict['timestamp'] = datetime.now().isoformat()
+                    dp_dict['resumed'] = True
+                    dp_dict['resumed_from_turn'] = checkpoint.get('completed_turns', 0)
+
+                    with open(output_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(dp_dict, ensure_ascii=False) + '\n')
+
+                    datapoints.append(dp)
+                    checkpoint_manager.clear()
+                    print(f"\n✓ Successfully resumed and completed datapoint {len(datapoints)}")
+                    print(f" Task: {dp.conversation.overall_task[:80]}")
+                    print(f" Turns: {len(dp.conversation.turns)}")
+                    print(f" Tools: {dp.conversation.tools_used}")
+                    continue
+                else:
+                    print(f"\n✗ Failed to resume from checkpoint, starting fresh")
+                    checkpoint_manager.clear()
+
         focus_category = random.choice(categories)
         print(f"Focus category: {focus_category}")
 
-        dp = generator.generate_multi_turn_datapoint(focus_category=focus_category)
+        # Start fresh generation with checkpoint callback
+        dp = generator.generate_multi_turn_datapoint(
+            focus_category=focus_category,
+            checkpoint_callback=checkpoint_callback,
+        )
 
         if dp is None:
             print(f"\n✗ Failed to generate datapoint, retrying...")
+            if checkpoint_manager:
+                checkpoint_manager.clear()
             continue
+
+        # Clear checkpoint on successful completion
+        if checkpoint_manager:
+            checkpoint_manager.clear()
 
         dp_dict = dp.model_dump()
         dp_dict['timestamp'] = datetime.now().isoformat()
@@ -342,10 +446,17 @@ def main():
     output_dir = Path(args.output).parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Create checkpoint manager if --checkpoint is provided
+    checkpoint_manager = None
+    if args.checkpoint:
+        checkpoint_manager = CheckpointManager(args.checkpoint)
+        print(f"Checkpoint file: {args.checkpoint}")
+        print(f"Resume: {'enabled' if args.resume else 'disabled'}")
+
     categories = list(tools_by_category.keys())
 
     if args.mode == "multi-turn":
-        datapoints = run_multi_turn(args, llm_client, tool_manager, categories, args.output)
+        datapoints = run_multi_turn(args, llm_client, tool_manager, categories, args.output, checkpoint_manager=checkpoint_manager)
     else:
         datapoints = run_step_by_step(args, llm_client, tool_manager, categories, args.output, judge_client=judge_client)
 

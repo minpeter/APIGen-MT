@@ -578,6 +578,7 @@ Respond ONLY with valid JSON:
                 return True, str(output[key])
 
         tool_specific_checks = {
+            'si_unit_conversion': [('error', lambda v: bool(v))],
             'comment': [('comment_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
             'retweet': [('retweet_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
             'mention': [('mention_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
