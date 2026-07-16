@@ -346,7 +346,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -354,7 +354,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -461,7 +461,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -932,7 +932,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -940,7 +940,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -1047,7 +1047,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -1637,7 +1637,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -1645,7 +1645,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -1752,7 +1752,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -2223,7 +2223,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -2231,7 +2231,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -2338,7 +2338,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -2933,7 +2933,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -2941,7 +2941,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -3048,7 +3048,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -3519,7 +3519,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -3527,7 +3527,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -3634,7 +3634,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -4244,7 +4244,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -4252,7 +4252,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -4359,7 +4359,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -4830,7 +4830,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -4838,7 +4838,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -4945,7 +4945,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -5573,7 +5573,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -5581,7 +5581,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -5688,7 +5688,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -6159,7 +6159,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -6167,7 +6167,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -6274,7 +6274,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -6920,7 +6920,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -6928,7 +6928,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -7035,7 +7035,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -7506,7 +7506,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -7514,7 +7514,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -7621,7 +7621,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -8285,7 +8285,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -8293,7 +8293,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -8400,7 +8400,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -8871,7 +8871,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -8879,7 +8879,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -8986,7 +8986,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -9656,7 +9656,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -9664,7 +9664,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -9771,7 +9771,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -10242,7 +10242,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -10250,7 +10250,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -10357,7 +10357,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -11031,7 +11031,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -11039,7 +11039,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -11146,7 +11146,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -11617,7 +11617,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -11625,7 +11625,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -11732,7 +11732,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -12410,7 +12410,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -12418,7 +12418,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -12525,7 +12525,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",
@@ -12996,7 +12996,7 @@
                   }
                 },
                 "username": "tech_user",
-                "password": "TechUser2024!"
+                "password": "<redacted>"
               },
               "ticket_api": {
                 "ticket_queue": [],
@@ -13004,7 +13004,7 @@
                 "current_user": "",
                 "authenticated": false,
                 "username": "new_agent",
-                "password": "NewAgent2024!",
+                "password": "<redacted>",
                 "current_ticket_id": null,
                 "priority_levels": {
                   "1": "Low",
@@ -13111,7 +13111,7 @@
                   "ZETA"
                 ],
                 "username": "day_trader_pro",
-                "password": "DayTrader2024!",
+                "password": "<redacted>",
                 "transaction_history": [
                   {
                     "symbol": "NVDA",

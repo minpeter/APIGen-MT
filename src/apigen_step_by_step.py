@@ -388,8 +388,8 @@ Do NOT use "Michael Smith", "John", or generic American names — use {p['name']
 Generate query requiring EXACTLY {self.num_actions} tools. Respond JSON:
 {{"query": "specific with names/IDs", "intent": "what user wants", "expected_tools": ["tool1", ...]}}"""
 
-            try:
-                response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+try:
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}], llm=self.judge)
                 response_text = response.strip()
 
                 if "```json" in response_text:
@@ -1467,7 +1467,9 @@ Respond JSON: {"arg1": "value1", ...}}"""
                         tool_feedback = f"Consistency verification failed: {consistency_feedback}"
                         print(f"  Retrying with feedback...")
                         continue
-                print(f"  ✓ Consistency check passed")
+                    print(f"  Max retries exceeded, proceeding despite consistency failure")
+                else:
+                    print(f"  ✓ Consistency check passed")
 
                 # Simulate tool execution
                 print(f" Simulating {tool_name}...")
@@ -1907,7 +1909,7 @@ Generate a concise, natural response that summarizes what was accomplished."""
                 state_changes_summary="No state changes.",
             )
 
-# Determine which class_key the tool belongs to
+        # Determine which class_key the tool belongs to
         tool_class_key = self.tool_manager.api_name_to_class_key.get(tool_name, "unknown")
 
         # Build a compact diff summary to avoid truncation issues
