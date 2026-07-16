@@ -10,13 +10,10 @@ class MathAPI:
     def __init__(self, initial_config: dict) -> None:
         """
         Initialize the MathAPI with an initial configuration.
-        Normalizes the initial_config into a canonical internal state.
+        Note: All methods are pure - they take parameters directly.
+        The initial_config is kept for API compatibility but no fields are used.
         """
-        self.numbers: List[float] = initial_config.get("numbers", [])
-        self.precision: int = initial_config.get("precision", 0)
-        self.base: float = initial_config.get("base", 0.0)
-        self.value: float = initial_config.get("value", 0.0)
-        self.complex_value: float = initial_config.get("complex_value", 0.0)
+        pass
 
     def absolute_value(self, number: float) -> Dict[str, Any]:
         """
@@ -57,6 +54,17 @@ class MathAPI:
             imperial_aliases = {"f": "fahrenheit", "c": "celsius"}
             unit_in = imperial_aliases.get(unit_in, unit_in)
             unit_out = imperial_aliases.get(unit_out, unit_out)
+            plural_to_singular = {
+                "miles": "mile", "kilometers": "km", "km": "km",
+                "pounds": "pound", "kilograms": "kg", "kg": "kg",
+                "inches": "inch", "centimeters": "cm", "cm": "cm",
+                "gallons": "gallon", "liters": "liter", "liter": "liter",
+                "feet": "foot", "meters": "meter", "meter": "meter",
+                "yards": "yard", "ounce": "ounce", "ounces": "ounce",
+                "gram": "gram", "grams": "gram",
+            }
+            unit_in = plural_to_singular.get(unit_in, unit_in)
+            unit_out = plural_to_singular.get(unit_out, unit_out)
             conversion_factors = {
                 "inch_to_cm": 2.54,
                 "cm_to_inch": 1 / 2.54,
@@ -112,10 +120,10 @@ class MathAPI:
         """
         try:
             if not numbers:
-                return {"result": 0.0}
-            return {"result": float(max(numbers))}
+                return {"result": 0.0, "input_numbers": []}
+            return {"result": float(max(numbers)), "input_numbers": list(numbers)}
         except Exception:
-            return {"result": 0.0}
+            return {"result": 0.0, "input_numbers": []}
 
     def mean(self, numbers: List[float]) -> Dict[str, Any]:
         """
@@ -123,10 +131,10 @@ class MathAPI:
         """
         try:
             if not numbers:
-                return {"result": 0.0}
-            return {"result": float(sum(numbers) / len(numbers))}
+                return {"result": 0.0, "input_numbers": []}
+            return {"result": float(sum(numbers) / len(numbers)), "input_numbers": list(numbers)}
         except Exception:
-            return {"result": 0.0}
+            return {"result": 0.0, "input_numbers": []}
 
     def min_value(self, numbers: List[float]) -> Dict[str, Any]:
         """
@@ -134,10 +142,10 @@ class MathAPI:
         """
         try:
             if not numbers:
-                return {"result": 0.0}
-            return {"result": float(min(numbers))}
+                return {"result": 0.0, "input_numbers": []}
+            return {"result": float(min(numbers)), "input_numbers": list(numbers)}
         except Exception:
-            return {"result": 0.0}
+            return {"result": 0.0, "input_numbers": []}
 
     def multiply(self, a: float, b: float) -> Dict[str, Any]:
         """
@@ -210,6 +218,18 @@ class MathAPI:
 
             def parse_unit(unit_str: str) -> Tuple[float, str]:
                 unit_str = unit_str.lower().strip()
+                plural_to_singular = {
+                    "meters": "meter", "grams": "gram", "liters": "liter", "seconds": "second",
+                    "amperes": "ampere", "kelvins": "kelvin", "moles": "mole", "candelas": "candela",
+                    "bytes": "byte", "bits": "bit",
+                    "meters": "meter", "centimeters": "centimeter", "millimeters": "millimeter",
+                    "kilometers": "kilometer", "kilograms": "kilogram", "milligrams": "milligram",
+                    "milliliters": "milliliter", "centiliters": "centiliter",
+                    "milliseconds": "millisecond", "microseconds": "microsecond", "nanoseconds": "nanosecond",
+                    "kibibytes": "kilobyte", "mebibytes": "megabyte", "gibibytes": "gigabyte",
+                    "kilobytes": "kilobyte", "megabytes": "megabyte", "gigabytes": "gigabyte",
+                }
+                unit_str = plural_to_singular.get(unit_str, unit_str)
                 if unit_str in unit_aliases:
                     val = unit_aliases[unit_str]
                     for prefix, factor in si_prefixes.items():
@@ -229,7 +249,7 @@ class MathAPI:
             factor_out, base_out = parse_unit(unit_out)
 
             if base_in != base_out:
-                return {"result": 0.0}
+                return {"error": f"Cannot convert between incompatible units: {unit_in} (base: {base_in}) and {unit_out} (base: {base_out})", "result": 0.0}
 
             return {"result": float(value * factor_in / factor_out)}
         except Exception:
@@ -254,14 +274,14 @@ class MathAPI:
         """
         try:
             if not numbers:
-                return {"result": 0.0}
+                return {"result": 0.0, "input_numbers": []}
             if len(numbers) == 1:
-                return {"result": 0.0}
+                return {"result": 0.0, "input_numbers": list(numbers)}
             mean_val = sum(numbers) / len(numbers)
             variance = sum((x - mean_val) ** 2 for x in numbers) / len(numbers)
-            return {"result": float(math.sqrt(variance))}
+            return {"result": float(math.sqrt(variance)), "input_numbers": list(numbers)}
         except Exception:
-            return {"result": 0.0}
+            return {"result": 0.0, "input_numbers": []}
 
     def subtract(self, a: float, b: float) -> Dict[str, Any]:
         """
@@ -278,7 +298,7 @@ class MathAPI:
         """
         try:
             if not numbers:
-                return {"result": 0.0}
-            return {"result": float(sum(numbers))}
+                return {"result": 0.0, "input_numbers": []}
+            return {"result": float(sum(numbers)), "input_numbers": list(numbers)}
         except Exception:
-            return {"result": 0.0}
+            return {"result": 0.0, "input_numbers": []}

@@ -795,6 +795,31 @@ class ToolManager:
                 ))
         return state
 
+    def restore_api_state(self, state: Dict[str, Dict[str, Any]]) -> None:
+        """Restore API state from a snapshot.
+
+        This method takes a state dict (as returned by get_api_state) and
+        restores it to the live Python tool instances. This is used for
+        checkpoint/resume functionality to restore state after loading
+        a partial generation.
+
+        Args:
+            state: Dict mapping class_key -> state_dict
+        """
+        if not state:
+            return
+
+        for class_key, instance_state in state.items():
+            if class_key not in self.python_tool_instances:
+                continue
+
+            instance = self.python_tool_instances[class_key]
+            for key, value in instance_state.items():
+                try:
+                    setattr(instance, key, value)
+                except (AttributeError, TypeError) as e:
+                    print(f"  Warning: Could not restore {class_key}.{key}: {e}")
+
     def has_python_implementation(self, tool_name: str) -> bool:
         """Check if a tool has a Python implementation available.
 

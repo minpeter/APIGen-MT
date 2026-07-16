@@ -566,6 +566,73 @@ Respond ONLY with valid JSON:
             raise NotImplementedError(f"No Python implementation for '{tool_name}' (api_name_to_class_key={self.tool_manager.api_name_to_class_key.get(tool_name, 'NOT IN MAP')}, has_impl={self.tool_manager.has_python_implementation(tool_name)}). LLM simulation disabled - implement the Python tool.")
         return self.tool_manager.invoke_tool(tool_name=tool_name, params=processed_args)
 
+    def _verify_tool_query_consistency(self, tool_name: str, arguments: Dict[str, Any],
+                                       query: str, trajectory: List[TrajectoryStep],
+                                       execution_context: Dict[str, Any]) -> Tuple[bool, str]:
+        """Verify that the selected tool and arguments are consistent with the query and trajectory.
+
+        Returns (is_valid: bool, feedback: str).
+        """
+        trajectory_summary = ""
+        for i, step in enumerate(trajectory):
+            for tc in step.tool_calls:
+                output_summary = str(tc.output)[:200] if tc.output else "None"
+                trajectory_summary += f"Step {i+1}: {tc.tool_name}({tc.arguments}) -> {output_summary}\n"
+
+        tool_schema = self.tool_manager.get_tool_schema(tool_name)
+        tool_desc = tool_schema.get('description', '') if tool_schema else ''
+
+        prompt = f"""You are verifying that a tool invocation is consistent with the user query and conversation context.
+
+=== USER QUERY ===
+{query}
+
+=== SELECTED TOOL ===
+{tool_name}
+Tool description: {tool_desc}
+
+=== GENERATED ARGUMENTS ===
+{json.dumps(arguments, indent=2)}
+
+=== PREVIOUS TRAJECTORY ===
+{trajectory_summary if trajectory_summary else "None"}
+
+=== EXECUTION CONTEXT ===
+{json.dumps(execution_context, indent=2, default=str)[:1500]}
+
+=== VERIFICATION TASK ===
+Verify the tool and arguments are consistent with the query by checking:
+1. Does the tool match the query intent?
+2. Are arguments correctly typed and in valid ranges?
+3. Are argument values correctly referencing previous outputs (e.g., user_id, ticket_id from prior steps)?
+4. Are the arguments sufficient to fulfill the query?
+
+Respond ONLY with valid JSON:
+{{"is_valid": true/false, "issues": ["issue1", "issue2", ...]}}"""
+
+        try:
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}], llm=self.judge)
+            response_text = response.strip()
+
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0]
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0]
+            else:
+                start = response_text.find("{")
+                end = response_text.rfind("}") + 1
+                if start >= 0 and end > start:
+                    response_text = response_text[start:end]
+
+            result = json.loads(response_text)
+            is_valid = result.get("is_valid", True)
+            issues = result.get("issues", [])
+            feedback = "; ".join(issues) if issues else ""
+            return is_valid, feedback
+        except Exception as e:
+            print(f"    Warning: Consistency verification failed: {e}")
+            return True, ""
+
     @staticmethod
     def _detect_tool_error(tool_name: str, output: dict) -> tuple:
         """Detect errors in tool output using tool-specific keys and value checks.
@@ -578,6 +645,7 @@ Respond ONLY with valid JSON:
                 return True, str(output[key])
 
         tool_specific_checks = {
+            'si_unit_conversion': [('error', lambda v: bool(v))],
             'comment': [('comment_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
             'retweet': [('retweet_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
             'mention': [('mention_status', lambda v: isinstance(v, str) and 'not authenticated' in v.lower())],
@@ -1384,6 +1452,25 @@ Respond JSON: {"arg1": "value1", ...}}"""
 
                 print(f" Arguments: {json.dumps(arguments)}")
 
+                # ── LLM-as-judge consistency verification ──
+                print(f"  Verifying tool-query consistency...")
+                is_consistent, consistency_feedback = self._verify_tool_query_consistency(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    query=query_result.query,
+                    trajectory=trajectory,
+                    execution_context=execution_context,
+                )
+                if not is_consistent:
+                    print(f"  ✗ Consistency check failed: {consistency_feedback}")
+                    if attempt < max_retries_per_tool - 1:
+                        tool_feedback = f"Consistency verification failed: {consistency_feedback}"
+                        print(f"  Retrying with feedback...")
+                        continue
+                    print(f"  Max retries exceeded, proceeding despite consistency failure")
+                else:
+                    print(f"  ✓ Consistency check passed")
+
                 # Simulate tool execution
                 print(f" Simulating {tool_name}...")
                 output = self._simulate_tool_execution(
@@ -1822,7 +1909,7 @@ Generate a concise, natural response that summarizes what was accomplished."""
                 state_changes_summary="No state changes.",
             )
 
-# Determine which class_key the tool belongs to
+        # Determine which class_key the tool belongs to
         tool_class_key = self.tool_manager.api_name_to_class_key.get(tool_name, "unknown")
 
         # Build a compact diff summary to avoid truncation issues
