@@ -389,7 +389,7 @@ Generate query requiring EXACTLY {self.num_actions} tools. Respond JSON:
 {{"query": "specific with names/IDs", "intent": "what user wants", "expected_tools": ["tool1", ...]}}"""
 
             try:
-                response = response = self._safe_llm_generate([{"role": "user", "content": prompt}], llm=self.judge)
+                response = self._safe_llm_generate([{"role": "user", "content": prompt}])
                 response_text = response.strip()
 
                 if "```json" in response_text:

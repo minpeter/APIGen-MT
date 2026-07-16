@@ -1054,6 +1054,8 @@ class MultiTurnGenerator(StepByStepGenerator):
         aggregate_tools = {'mean', 'min_value', 'max_value', 'standard_deviation', 'sum_values'}
         aggregate_chains = {
             'mean': {'min_value', 'max_value', 'standard_deviation', 'sum_values'},
+            'min_value': {'mean', 'max_value', 'standard_deviation', 'sum_values'},
+            'max_value': {'mean', 'min_value', 'standard_deviation', 'sum_values'},
             'sum_values': {'mean', 'min_value', 'max_value', 'standard_deviation'},
             'standard_deviation': {'mean', 'min_value', 'max_value', 'sum_values'},
         }
