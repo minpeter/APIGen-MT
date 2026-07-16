@@ -158,7 +158,19 @@ class MultiTurnGenerator(StepByStepGenerator):
         if self._python_tools_available and initial_api_state:
             print("\n Restoring API state from checkpoint...")
             self.tool_manager.restore_api_state(initial_api_state)
-            print(f" Replayed {completed_turns} turns to restore state")
+
+            # Replay completed turns to restore side-effects from their tool calls
+            if completed_turns > 0:
+                print(f" Replaying {completed_turns} turns to restore state...")
+                for turn_idx in range(completed_turns):
+                    if turn_idx >= len(conversation.turns):
+                        break
+                    turn = conversation.turns[turn_idx]
+                    for step in turn.steps:
+                        for tc in step.tool_calls:
+                            if self.tool_manager.has_python_implementation(tc.tool_name):
+                                self.tool_manager.invoke_python_tool(tc.tool_name, tc.arguments)
+                print(f" Replayed {completed_turns} turns to restore state")
 
         self._update_token_usage()
 

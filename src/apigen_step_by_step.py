@@ -388,8 +388,8 @@ Do NOT use "Michael Smith", "John", or generic American names — use {p['name']
 Generate query requiring EXACTLY {self.num_actions} tools. Respond JSON:
 {{"query": "specific with names/IDs", "intent": "what user wants", "expected_tools": ["tool1", ...]}}"""
 
-try:
-            response = self._safe_llm_generate([{"role": "user", "content": prompt}], llm=self.judge)
+            try:
+                response = response = self._safe_llm_generate([{"role": "user", "content": prompt}], llm=self.judge)
                 response_text = response.strip()
 
                 if "```json" in response_text:
@@ -611,7 +611,7 @@ Respond ONLY with valid JSON:
 {{"is_valid": true/false, "issues": ["issue1", "issue2", ...]}}"""
 
         try:
-            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}], llm=self.judge)
             response_text = response.strip()
 
             if "```json" in response_text:
