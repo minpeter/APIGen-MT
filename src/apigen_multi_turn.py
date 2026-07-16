@@ -90,6 +90,209 @@ class MultiTurnGenerator(StepByStepGenerator):
         super().__init__(llm_client, tool_manager, actions_per_turn, validate_outputs)
         self.num_turns = num_turns
 
+    def continue_from_checkpoint(
+            self,
+            checkpoint: dict,
+            focus_category: Optional[str] = None,
+            query_retries: int = 3,
+            tool_retries: int = 3,
+    ) -> Optional[MultiTurnDatapoint]:
+        """Continue generating a multi-turn datapoint from a checkpoint.
+
+        Args:
+            checkpoint: Dict containing:
+                - 'blueprint': The dialog blueprint
+                - 'partial_conversation': Partially completed MultiTurnConversation
+                - 'execution_context': Dict of execution context
+                - 'completed_turns': Number of turns completed
+                - 'initial_api_state': API state before this datapoint started
+                - 'token_usage': Accumulated token usage so far
+            focus_category: Category for tool filtering
+            query_retries: Max retries for query generation
+            tool_retries: Max retries for tool generation
+
+        Returns:
+            MultiTurnDatapoint if successful, None otherwise
+        """
+        blueprint_data = checkpoint.get('blueprint')
+        if not blueprint_data:
+            print("✗ Checkpoint missing blueprint")
+            return None
+
+        from apigen_multi_turn import DialogBlueprint, MultiTurnConversation
+
+        try:
+            blueprint = DialogBlueprint(
+                overall_task=blueprint_data.get('overall_task', ''),
+                num_turns=blueprint_data.get('num_turns', self.num_turns),
+                turns=blueprint_data.get('turns', [])
+            )
+        except Exception as e:
+            print(f"✗ Failed to reconstruct blueprint: {e}")
+            return None
+
+        partial_conv_data = checkpoint.get('partial_conversation', {})
+        try:
+            conversation = MultiTurnConversation(
+                overall_task=partial_conv_data.get('overall_task', blueprint.overall_task),
+                turns=partial_conv_data.get('turns', []),
+                tools_used=partial_conv_data.get('tools_used', []),
+                categories_used=partial_conv_data.get('categories_used', []),
+            )
+        except Exception as e:
+            print(f"✗ Failed to reconstruct conversation: {e}")
+            return None
+
+        completed_turns = checkpoint.get('completed_turns', len(conversation.turns))
+        execution_context = checkpoint.get('execution_context', {})
+        initial_api_state = checkpoint.get('initial_api_state')
+
+        print(f"\n{'=' * 70}")
+        print(f"RESUMING FROM CHECKPOINT")
+        print(f"=" * 70)
+        print(f" Overall task: {blueprint.overall_task}")
+        print(f" Completed turns: {completed_turns}/{blueprint.num_turns}")
+        print(f" Remaining turns: {blueprint.num_turns - completed_turns}")
+
+        # Initialize API state and replay completed turns
+        if self._python_tools_available and initial_api_state:
+            print("\n Restoring API state from checkpoint...")
+            self.tool_manager.restore_api_state(initial_api_state)
+
+            # Replay completed turns to restore side-effects from their tool calls
+            if completed_turns > 0:
+                print(f" Replaying {completed_turns} turns to restore state...")
+                for turn_idx in range(completed_turns):
+                    if turn_idx >= len(conversation.turns):
+                        break
+                    turn = conversation.turns[turn_idx]
+                    for step in turn.steps:
+                        for tc in step.tool_calls:
+                            if self.tool_manager.has_python_implementation(tc.tool_name):
+                                self.tool_manager.invoke_python_tool(tc.tool_name, tc.arguments)
+                print(f" Replayed {completed_turns} turns to restore state")
+
+        self._update_token_usage()
+
+        tools_used = set(conversation.tools_used)
+        categories_used = set(conversation.categories_used)
+
+        # Process remaining turns
+        for turn_idx in range(completed_turns, blueprint.num_turns):
+            print(f"\n{'=' * 70}")
+            print(f"TURN {turn_idx + 1}/{blueprint.num_turns} (resumed)")
+            print("=" * 70)
+
+            turn_spec = blueprint.turns[turn_idx] if turn_idx < len(blueprint.turns) else {}
+
+            query_result = self._generate_turn_query(
+                blueprint=blueprint,
+                conversation=conversation,
+                turn_index=turn_idx,
+            )
+            if query_result is None:
+                print(f"✗ Turn {turn_idx + 1} failed: Could not generate query")
+                return None
+            self._update_token_usage()
+
+            trajectory = None
+            for attempt in range(tool_retries):
+                raw_trajectory, ec = self._stage2_generate_tools(
+                    query_result, tool_retries - attempt, initial_execution_context=execution_context
+                )
+                if raw_trajectory is None:
+                    print(f"✗ Turn {turn_idx + 1}: Could not generate tool calls")
+                    return None
+
+                errors = self._validate_tool_arguments(raw_trajectory)
+                cross_errors = self._validate_cross_turn_consistency(raw_trajectory, execution_context)
+                all_errors = errors + cross_errors
+                if not all_errors:
+                    trajectory = raw_trajectory
+                    break
+
+                print(f"  ⚠ Turn {turn_idx + 1} validation failed (attempt {attempt + 1}/{tool_retries}):")
+                for err in errors:
+                    print(f"    arg: {err}")
+                for err in cross_errors:
+                    print(f"    cross: {err}")
+                if attempt < tool_retries - 1:
+                    print(f"  Retrying turn {turn_idx + 1}...")
+
+            if trajectory is None:
+                print(f"✗ Turn {turn_idx + 1}: Too many validation failures, rejecting datapoint")
+                return None
+            self._update_token_usage()
+
+            # Merge turn context into persistent execution_context
+            for k, v in ec.items():
+                execution_context[k] = v
+
+            turn_output_aggregate = {}
+            for step in trajectory:
+                for tc in step.tool_calls:
+                    if tc.output and isinstance(tc.output, dict):
+                        turn_output_aggregate[tc.tool_name] = tc.output
+            if 'turn_outputs' not in execution_context:
+                execution_context['turn_outputs'] = []
+            execution_context['turn_outputs'].append(turn_output_aggregate)
+
+            assistant_response = self._generate_final_response(
+                query_result.query, trajectory, execution_context
+            )
+            self._update_token_usage()
+
+            for step in trajectory:
+                for tc in step.tool_calls:
+                    tools_used.add(tc.tool_name)
+                    cat = self.tool_manager.get_tool_category(tc.tool_name)
+                    if cat:
+                        categories_used.add(cat)
+
+            from apigen_multi_turn import Turn
+            turn = Turn(
+                turn_number=turn_idx + 1,
+                user_query=query_result.query,
+                query_intent=query_result.intent,
+                steps=trajectory,
+                assistant_response=assistant_response,
+                expected_tools=query_result.expected_tools,
+                execution_context=dict(execution_context),
+            )
+            conversation.turns.append(turn)
+
+            print(f"\n✓ Turn {turn_idx + 1} complete (resumed)")
+            print(f"   Query: {query_result.query[:80]}...")
+
+        # Finalize
+        conversation.tools_used = sorted(tools_used)
+        conversation.categories_used = sorted(categories_used)
+        conversation.initial_api_state = initial_api_state
+
+        datapoint = MultiTurnDatapoint(
+            conversation=conversation,
+            generation_metadata={
+                "num_turns": self.num_turns,
+                "actions_per_turn": self.num_actions,
+                "focus_category": focus_category,
+                "overall_task": blueprint.overall_task,
+                "resumed_from_turn": completed_turns,
+                "blueprint_queries": [t.get("user_query", "") for t in blueprint.turns],
+                "turn_expected_tools": [t.get("expected_tools", []) for t in blueprint.turns],
+            },
+            token_usage=self._get_token_stats(),
+            initial_api_state=conversation.initial_api_state,
+        )
+
+        print("\n" + "=" * 70)
+        print("✓ RESUMED MULTI-TURN DATAPOINT GENERATION COMPLETE")
+        print("=" * 70)
+        print(f" Turns: {len(conversation.turns)}")
+        print(f" Tools used: {conversation.tools_used}")
+        print(f" Total tool calls: {sum(len(t.steps) for t in conversation.turns)}")
+
+        return datapoint
+
     # ─────────────────────── Public entry point ───────────────────────
 
     def generate_multi_turn_datapoint(
@@ -97,8 +300,23 @@ class MultiTurnGenerator(StepByStepGenerator):
             focus_category: Optional[str] = None,
             query_retries: int = 3,
             tool_retries: int = 3,
+            checkpoint_callback: Optional[callable] = None,
     ) -> Optional[MultiTurnDatapoint]:
-        """Generate a multi-turn datapoint."""
+        """Generate a multi-turn datapoint.
+
+        Args:
+            focus_category: Category for tool filtering
+            query_retries: Max retries for query generation
+            tool_retries: Max retries for tool generation
+            checkpoint_callback: Optional callback(state_dict) called after each
+                turn completes. The state_dict contains:
+                - 'blueprint': The dialog blueprint
+                - 'partial_conversation': Partially completed MultiTurnConversation
+                - 'execution_context': Current execution context
+                - 'completed_turns': Number of turns completed
+                - 'initial_api_state': API state before this datapoint started
+                - 'focus_category': The category being used
+        """
 
         self._reset_token_tracking()
         self._capture_initial_usage()
@@ -235,6 +453,23 @@ class MultiTurnGenerator(StepByStepGenerator):
             print(f"\n✓ Turn {turn_idx + 1} complete")
             print(f"   Query: {query_result.query[:80]}...")
             print(f"   Steps: {len(trajectory)}")
+
+            # Save checkpoint after each turn
+            if checkpoint_callback:
+                checkpoint_state = {
+                    'blueprint': {
+                        'overall_task': blueprint.overall_task,
+                        'num_turns': blueprint.num_turns,
+                        'turns': blueprint.turns,
+                    },
+                    'partial_conversation': conversation.model_dump(),
+                    'execution_context': dict(execution_context),
+                    'completed_turns': turn_idx + 1,
+                    'initial_api_state': initial_api_state,
+                    'focus_category': focus_category,
+                }
+                checkpoint_callback(checkpoint_state)
+                print(f"   Checkpoint saved after turn {turn_idx + 1}")
 
         # Stage 3: Assemble final datapoint
         conversation.tools_used = sorted(tools_used)
@@ -812,6 +1047,46 @@ class MultiTurnGenerator(StepByStepGenerator):
                 errors.append(
                     f"purchase_insurance: failed (booking_id='{pi_booking_id}', status=False)"
                 )
+
+        # General aggregate function validation: check aggregate chains use same inputs
+        # This catches cases like "mean([...]) followed by min_value([DIFFERENT...])" where
+        # the query says "same" values but arguments don't match
+        aggregate_tools = {'mean', 'min_value', 'max_value', 'standard_deviation', 'sum_values'}
+        aggregate_chains = {
+            'mean': {'min_value', 'max_value', 'standard_deviation', 'sum_values'},
+            'sum_values': {'mean', 'min_value', 'max_value', 'standard_deviation'},
+            'standard_deviation': {'mean', 'min_value', 'max_value', 'sum_values'},
+        }
+
+        for current_tool_name, current_tc in current_tc_by_name.items():
+            if current_tool_name not in aggregate_tools:
+                continue
+            current_args = current_tc.arguments or {}
+            current_numbers = current_args.get('numbers', [])
+
+            # Look for compatible prior aggregate tools
+            compatible_prior = aggregate_chains.get(current_tool_name, set())
+            for prior_tool_name, prior_outputs in prior_tc_by_name.items():
+                if prior_tool_name not in compatible_prior:
+                    continue
+                if not prior_outputs:
+                    continue
+
+                prior_output = prior_outputs[-1]
+                prior_numbers = prior_output.get('input_numbers', [])
+                if not prior_numbers:
+                    continue
+
+                # Check if input numbers match (sets since order may differ)
+                current_set = set(current_numbers) if current_numbers else set()
+                prior_set = set(prior_numbers)
+
+                if current_set and prior_set and current_set != prior_set:
+                    errors.append(
+                        f"{current_tool_name}: input numbers {current_numbers} do not match "
+                        f"prior {prior_tool_name} inputs {prior_numbers} - query says 'same' values but "
+                        f"arguments use different numbers"
+                    )
 
         return errors
 
