@@ -298,6 +298,48 @@ class GorillaFileSystem:
         else:
             return {"lines": len(content.splitlines())}
 
+    def diff(self, file_name1: str, file_name2: str) -> Dict[str, Any]:
+        """Compare two files and show differences."""
+        path1 = self._get_relative_path(file_name1)
+        path2 = self._get_relative_path(file_name2)
+        
+        if not path1.exists():
+            return {"error": f"File '{file_name1}' not found"}
+        if not path2.exists():
+            return {"error": f"File '{file_name2}' not found"}
+        
+        if path1.is_dir() or path2.is_dir():
+            return {"error": "diff is for files only"}
+        
+        lines1 = path1.read_text().splitlines()
+        lines2 = path2.read_text().splitlines()
+        
+        diff_lines = []
+        max_len = max(len(lines1), len(lines2))
+        for i in range(max_len):
+            l1 = lines1[i] if i < len(lines1) else ""
+            l2 = lines2[i] if i < len(lines2) else ""
+            if l1 != l2:
+                prefix = "CHG"
+            else:
+                prefix = "SAME"
+            diff_lines.append(f"{prefix} {i+1}: {l1} | {l2}")
+        
+        return {"diff": diff_lines, "identical": len(diff_lines) == 0}
+
+    def sort(self, file_name: str, reverse: bool = False) -> Dict[str, Any]:
+        """Sort and return file contents."""
+        path = self._get_relative_path(file_name)
+        
+        if not path.exists():
+            return {"error": f"File '{file_name}' not found"}
+        if path.is_dir():
+            return {"error": f"'{file_name}' is a directory"}
+        
+        lines = path.read_text().splitlines()
+        sorted_lines = sorted(lines, reverse=reverse)
+        return {"lines": sorted_lines, "count": len(sorted_lines)}
+
     def get_state(self) -> Dict[str, Any]:
         """Export current filesystem state."""
         def dict_from_path(p: Path) -> Dict:
