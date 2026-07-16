@@ -1,5 +1,6 @@
 """Virtual in-memory filesystem for tool simulation."""
 
+import fnmatch
 import os
 import shutil
 import tempfile
@@ -154,7 +155,7 @@ class GorillaFileSystem:
         pattern = name if name and name != "None" else ""
         
         for p in search_root.rglob("*"):
-            if pattern and pattern not in p.name:
+            if pattern and not fnmatch.fnmatch(p.name, pattern):
                 continue
             rel = p.relative_to(search_root)
             matches.append(str(rel))
@@ -214,8 +215,10 @@ class GorillaFileSystem:
             return {"error": f"Source '{source}' not found"}
         
         dst_path = self._get_relative_path(destination)
-        if dst_path.exists():
-            return {"error": f"Destination '{destination}' already exists"}
+        
+        # If destination is a directory, move source into it (preserving filename)
+        if dst_path.is_dir():
+            dst_path = dst_path / src_path.name
         
         try:
             shutil.move(str(src_path), str(dst_path))
