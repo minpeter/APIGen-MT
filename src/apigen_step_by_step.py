@@ -363,7 +363,7 @@ The user's name is {p['name']}, they are based in {p['city']}, {p.get('country',
 You MUST use this person's name and city in the query when mentioning people or locations.
 For example, if the query involves booking a flight, use {c['city']} as origin/destination.
 If the query involves a credit card, use the name {p['name']} as cardholder.
-Do NOT use "Michael Smith", "John", or generic American names — use {p['name']} exclusively.
+Do NOT use "Michael Smith", "John", or generic American names - use {p['name']} exclusively.
 """
 
         for attempt in range(max_retries):
@@ -1338,7 +1338,7 @@ When generating arguments that need a person's name, use {p['name']}.
 When generating arguments that need a city or location, prefer {c['city']}.
 """
 
-        # Build API state section — prefer the class relevant to this tool
+        # Build API state section - prefer the class relevant to this tool
         api_state_section = ""
         if current_api_state:
             class_key = self.tool_manager.api_name_to_class_key.get(tool_name)
@@ -1348,7 +1348,7 @@ When generating arguments that need a city or location, prefer {c['city']}.
                 state_for_tool = current_api_state
             api_state_section = f"""
 === CURRENT API STATE ===
-The following is the REAL current state of the API. You MUST use values from this state when providing arguments (e.g., user IDs, ticket IDs, usernames, access tokens). Do NOT invent or guess values — use the ones shown below.
+The following is the REAL current state of the API. You MUST use values from this state when providing arguments (e.g., user IDs, ticket IDs, usernames, access tokens). Do NOT invent or guess values - use the ones shown below.
 
 {json.dumps(state_for_tool, indent=2, default=str)[:4000]}
             """
@@ -1381,6 +1381,7 @@ Generate args matching schema and fulfilling query:
 - Storage tools (ls, cat, cd, mkdir, mv, rm, cp, touch, echo, grep, wc, tail, find): use simple direct arguments like file_name, folder, source, destination, pattern. DO NOT use 'calls' batch format.
 
 Respond JSON: {"arg1": "value1", ...}
+"""
 
         try:
             response = self._safe_llm_generate([{"role": "user", "content": prompt}])
@@ -1778,7 +1779,7 @@ Generate a concise, natural response that summarizes what was accomplished."""
         - {'result': 42.0} when BFCL declares output_type=float
         - {'matching_tweets': []} when BFCL declares output_type=list
         - {'comments': [...]} when BFCL declares output_type=list
-        This is a valid wrapper pattern — the semantic content *is* the
+        This is a valid wrapper pattern - the semantic content *is* the
         expected type.
         """
         if not isinstance(output, dict) or not output:
@@ -1886,7 +1887,7 @@ Generate a concise, natural response that summarizes what was accomplished."""
         It judges whether the state changes are consistent with the tool's
         declared semantics and the returned output.
         """
-        # Compute diff — only include class keys that changed
+        # Compute diff - only include class keys that changed
         changed_classes: Dict[str, Dict[str, Any]] = {}
         for class_key in set(pre_state) | set(post_state):
             pre = pre_state.get(class_key, {})
