@@ -624,9 +624,8 @@ class MultiTurnGenerator(StepByStepGenerator):
                     continue
                     
                 # Include full state structure for reference (filtered to focus category)
-                # This is especially important for storage/filesystem where we need file paths
-                state_summary = json.dumps(state, indent=2, default=str)[:2000]
-                initial_state_context += f"\n{class_key}: {state_summary}"
+                state_summary = json.dumps(state, indent=2, default=str)
+                initial_state_context += f"\n{class_key}:\n{state_summary}"
                 
                 # Credentials
                 if 'client_id' in state and 'client_secret' in state and 'refresh_token' in state:
@@ -660,13 +659,13 @@ class MultiTurnGenerator(StepByStepGenerator):
 {output_fields_str}
 
 === REQUIREMENTS ===
-1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
-2. Conversation flows naturally, each turn builds on previous
-3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
-4. expected_tools: EXACTLY {self.num_actions} tools per turn
-5. All authentication credentials, card IDs, and entity IDs come from the initial API state provided separately - do NOT invent credentials or IDs.
-6. Cross-turn refs: use EXACT output field names like {{{{TURN1.tool_name.field_name}}}} where field_name matches the tool's output schema.
-7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
+ 1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
+ 2. Conversation flows naturally, each turn builds on previous
+ 3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
+ 4. expected_tools: EXACTLY {self.num_actions} tools per turn
+ 5. CRITICAL: ALL entity references (file names, directory paths, IDs, card numbers, user names, ticket IDs, etc.) MUST come from the Initial API State below. Do NOT reference any entity that does not exist in that state.
+ 6. Cross-turn refs: use EXACT output field names like {{{{TURN1.tool_name.field_name}}}} where field_name matches the tool's output schema.
+ 7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
 
 === EXAMPLES ===
 - "Log into my account with username user123 and password SecretPass! then perform an action." (login_action, perform_action)
