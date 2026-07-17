@@ -230,10 +230,20 @@ class GorillaFileSystem:
         all_lines = path.read_text().splitlines()
         return {"first_n_lines": "\n".join(all_lines[:lines])}
 
-    def ls(self, a: bool = False) -> Dict[str, Any]:
-        """List directory contents."""
+    def ls(self, path: str = ".", a: bool = False) -> Dict[str, Any]:
+        """List directory contents.
+        
+        Args:
+            path: Directory to list. Defaults to current directory.
+            a: If True, show hidden files (starting with .).
+        """
         try:
-            entries = os.listdir(self.current_dir)
+            target_path = self._get_relative_path(path)
+            if not target_path.exists():
+                return {"error": f"Path '{path}' does not exist"}
+            if not target_path.is_dir():
+                return {"error": f"'{path}' is not a directory"}
+            entries = os.listdir(target_path)
             if not a:
                 entries = [e for e in entries if not e.startswith(".")]
             return {"files": sorted(entries)}
