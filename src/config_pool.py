@@ -587,170 +587,122 @@ MESSAGE_CONFIGS: List[Dict[str, Any]] = [
 FILESYSTEM_CONFIGS: List[Dict[str, Any]] = [
     {
         "root": {
-            "home": {
+            "documents": {
                 "type": "directory",
                 "contents": {
-                    "user": {
-                        "type": "directory",
-                        "contents": {
-                            "documents": {
-                                "type": "directory",
-                                "contents": {
-                                    "readme.txt": {"type": "file", "content": "Welcome to the workspace.\nThis is a shared document area.\nPlease follow the naming conventions."},
-                                    "report.csv": {"type": "file", "content": "name,score,grade\nAlice,92,A\nBob,78,B\nCharlie,85,B"},
-                                }
-                            },
-                            "projects": {
-                                "type": "directory",
-                                "contents": {
-                                    "alpha": {
-                                        "type": "directory",
-                                        "contents": {"config.json": {"type": "file", "content": '{"version": "1.0", "debug": false, "port": 8080}'}},
-                                    }
-                                },
-                            },
-                            "notes.txt": {"type": "file", "content": "Meeting notes from 2024-01-15\nAction items: review PR, update docs"},
-                        },
-                    }
-                },
+                    "readme.txt": {"type": "file", "content": "Welcome to the workspace.\nThis is a shared document area.\nPlease follow the naming conventions."},
+                    "report.csv": {"type": "file", "content": "name,score,grade\nAlice,92,A\nBob,78,B\nCharlie,85,B"},
+                }
             },
-            "tmp": {"type": "directory", "contents": {"temp_log.txt": {"type": "file", "content": "Process started at 09:00\nProcess completed at 17:30\nNo errors detected."}}},
+            "projects": {
+                "type": "directory",
+                "contents": {
+                    "config.json": {"type": "file", "content": '{"version": "1.0", "debug": false, "port": 8080}'},
+                }
+            },
+            "notes.txt": {"type": "file", "content": "Meeting notes from 2024-01-15\nAction items: review PR, update docs"},
+            "temp_log.txt": {"type": "file", "content": "Process started at 09:00\nProcess completed at 17:30\nNo errors detected."},
         }
     },
     {
         "root": {
-            "home": {
+            "code": {
                 "type": "directory",
                 "contents": {
-                    "user": {
-                        "type": "directory",
-                        "contents": {
-                            "code": {
-                                "type": "directory",
-                                "contents": {
-                                    "main.py": {"type": "file", "content": "def hello():\n    print('Hello, World!')\n\nif __name__ == '__main__':\n    hello()"},
-                                    "utils.py": {"type": "file", "content": "import json\n\ndef load_config(path):\n    with open(path) as f:\n        return json.load(f)"},
-                                    "tests": {
-                                        "type": "directory",
-                                        "contents": {"test_main.py": {"type": "file", "content": "from main import hello\n\ndef test_hello():\n    hello()"}},
-                                    },
-                                },
-                            },
-                            "data": {
-                                "type": "directory",
-                                "contents": {
-                                    "users.json": {"type": "file", "content": '[{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]'},
-                                    "config.yaml": {"type": "file", "content": "database:\n  host: localhost\n  port: 5432\n  name: myapp"},
-                                },
-                            },
-                        },
-                    }
-                },
+                    "main.py": {"type": "file", "content": "def hello():\n    print('Hello, World!')\n\nif __name__ == '__main__':\n    hello()"},
+                    "utils.py": {"type": "file", "content": "import json\n\ndef load_config(path):\n    with open(path) as f:\n        return json.load(f)"},
+                }
+            },
+            "tests": {
+                "type": "directory",
+                "contents": {
+                    "test_main.py": {"type": "file", "content": "from main import hello\n\ndef test_hello():\n    hello()"},
+                }
+            },
+            "data": {
+                "type": "directory",
+                "contents": {
+                    "users.json": {"type": "file", "content": '[{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]'},
+                    "config.yaml": {"type": "file", "content": "database:\n  host: localhost\n  port: 5432\n  name: myapp"},
+                }
             },
         }
     },
     {
         "root": {
-            "home": {
+            "photos": {
                 "type": "directory",
                 "contents": {
-                    "user": {
+                    "vacation": {
                         "type": "directory",
                         "contents": {
-                            "photos": {
-                                "type": "directory",
-                                "contents": {
-                                    "vacation": {
-                                        "type": "directory",
-                                        "contents": {
-                                            "beach.jpg": {"type": "file", "content": "[binary: beach photo 2.4MB]"},
-                                            "sunset.jpg": {"type": "file", "content": "[binary: sunset photo 1.8MB]"},
-                                        },
-                                    },
-                                    "family": {
-                                        "type": "directory",
-                                        "contents": {"holiday.jpg": {"type": "file", "content": "[binary: holiday photo 3.1MB]"}},
-                                    },
-                                },
-                            },
-                            "documents": {
-                                "type": "directory",
-                                "contents": {
-                                    "budget.xlsx": {"type": "file", "content": "Month,Income,Expenses,Savings\nJan,5000,3200,1800\nFeb,5000,2900,2100\nMar,5200,3100,2100"},
-                                    "todo.txt": {"type": "file", "content": "1. Renew passport\n2. Schedule dentist\n3. Call insurance"},
-                                },
-                            },
-                        },
-                    }
-                },
+                            "beach.jpg": {"type": "file", "content": "[binary: beach photo 2.4MB]"},
+                            "sunset.jpg": {"type": "file", "content": "[binary: sunset photo 1.8MB]"},
+                        }
+                    },
+                    "family": {
+                        "type": "directory",
+                        "contents": {
+                            "holiday.jpg": {"type": "file", "content": "[binary: holiday photo 3.1MB]"},
+                        }
+                    },
+                }
+            },
+            "documents": {
+                "type": "directory",
+                "contents": {
+                    "budget.xlsx": {"type": "file", "content": "Month,Income,Expenses,Savings\nJan,5000,3200,1800\nFeb,5000,2900,2100\nMar,5200,3100,2100"},
+                    "todo.txt": {"type": "file", "content": "1. Renew passport\n2. Schedule dentist\n3. Call insurance"},
+                }
             },
         }
     },
     {
         "root": {
-            "home": {
+            "server": {
                 "type": "directory",
                 "contents": {
-                    "user": {
+                    "logs": {
                         "type": "directory",
                         "contents": {
-                            "server": {
-                                "type": "directory",
-                                "contents": {
-                                    "logs": {
-                                        "type": "directory",
-                                        "contents": {
-                                            "access.log": {"type": "file", "content": '192.168.1.1 - - [01/Jan/2024:10:00:00] "GET / HTTP/1.1" 200\n192.168.1.2 - - [01/Jan/2024:10:01:00] "POST /api HTTP/1.1" 201'},
-                                            "error.log": {"type": "file", "content": "[ERROR] 2024-01-01 10:05:00 - Connection timeout\n[ERROR] 2024-01-01 10:10:00 - Disk space low"},
-                                        },
-                                    },
-                                    "config": {
-                                        "type": "directory",
-                                        "contents": {
-                                            "nginx.conf": {"type": "file", "content": "server {\n    listen 80;\n    server_name localhost;\n    root /var/www;\n}"},
-                                        },
-                                    },
-                                },
-                            },
-                            "scripts": {
-                                "type": "directory",
-                                "contents": {
-                                    "backup.sh": {"type": "file", "content": "#!/bin/bash\ntar -czf /backup/data.tar.gz /data\necho 'Backup complete'"},
-                                    "monitor.py": {"type": "file", "content": "import psutil\n\ndef check_disk():\n    return psutil.disk_usage('/')"},
-                                },
-                            },
-                        },
-                    }
-                },
+                            "access.log": {"type": "file", "content": '192.168.1.1 - - [01/Jan/2024:10:00:00] "GET / HTTP/1.1" 200\n192.168.1.2 - - [01/Jan/2024:10:01:00] "POST /api HTTP/1.1" 201'},
+                            "error.log": {"type": "file", "content": "[ERROR] 2024-01-01 10:05:00 - Connection timeout\n[ERROR] 2024-01-01 10:10:00 - Disk space low"},
+                        }
+                    },
+                    "config": {
+                        "type": "directory",
+                        "contents": {
+                            "nginx.conf": {"type": "file", "content": "server {\n    listen 80;\n    server_name localhost;\n    root /var/www;\n}"},
+                        }
+                    },
+                }
+            },
+            "scripts": {
+                "type": "directory",
+                "contents": {
+                    "backup.sh": {"type": "file", "content": "#!/bin/bash\ntar -czf /backup/data.tar.gz /data\necho 'Backup complete'"},
+                    "monitor.py": {"type": "file", "content": "import psutil\n\ndef check_disk():\n    return psutil.disk_usage('/')"},
+                }
             },
         }
     },
     {
         "root": {
-            "home": {
+            "research": {
                 "type": "directory",
                 "contents": {
-                    "user": {
-                        "type": "directory",
-                        "contents": {
-                            "research": {
-                                "type": "directory",
-                                "contents": {
-                                    "paper_draft.txt": {"type": "file", "content": "Abstract: This paper explores novel approaches to...\n\n1. Introduction\n2. Methods\n3. Results\n4. Conclusion"},
-                                    "references.bib": {"type": "file", "content": '@article{smith2024,\n  title={Deep Learning Advances},\n  author={Smith, J.},\n  year={2024}\n}'},
-                                    "data.csv": {"type": "file", "content": "experiment,value,timestamp\nA,0.95,2024-01-15T10:00\nB,0.87,2024-01-15T10:05\nC,0.92,2024-01-15T10:10"},
-                                },
-                            },
-                            "notes": {
-                                "type": "directory",
-                                "contents": {
-                                    "meeting_notes.txt": {"type": "file", "content": "Meeting with advisor\n- Review draft by Friday\n- Add more experiments\n- Submit to conference"},
-                                },
-                            },
-                        },
-                    }
-                },
+                    "paper_draft.txt": {"type": "file", "content": "Abstract: This paper explores novel approaches to...\n\n1. Introduction\n2. Methods\n3. Results\n4. Conclusion"},
+                    "references.bib": {"type": "file", "content": '@article{smith2024,\n  title={Deep Learning Advances},\n  author={Smith, J.},\n  year={2024}\n}'},
+                    "data.csv": {"type": "file", "content": "experiment,value,timestamp\nA,0.95,2024-01-15T10:00\nB,0.87,2024-01-15T10:05\nC,0.92,2024-01-15T10:10"},
+                }
             },
+            "notes": {
+                "type": "directory",
+                "contents": {
+                    "meeting_notes.txt": {"type": "file", "content": "Meeting with advisor\n- Review draft by Friday\n- Add more experiments\n- Submit to conference"},
+                }
+            },
+            "abstract.txt": {"type": "file", "content": "Research methodology and initial findings"},
         }
     },
 ]
