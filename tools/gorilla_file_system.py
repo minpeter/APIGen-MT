@@ -88,7 +88,8 @@ class GorillaFileSystem:
                 result[item.name] = {
                     "type": "file",
                     "path": item_rel,
-                    "size": item.stat().st_size
+                    "size": item.stat().st_size,
+                    "content": item.read_text()
                 }
         return result
 
@@ -117,6 +118,7 @@ class GorillaFileSystem:
             return {"error": f"File '{file_name}' not found"}
         if path.is_dir():
             return {"error": f"'{file_name}' is a directory"}
+        self._rebuild_fs_state()
         return {"content": path.read_text()}
 
     def cd(self, folder: str) -> Dict[str, Any]:
@@ -213,7 +215,7 @@ class GorillaFileSystem:
             return {"lines": [], "error": f"File '{file_name}' not found"}
         if path.is_dir():
             return {"lines": [], "error": f"'{file_name}' is a directory"}
-        
+        self._rebuild_fs_state()
         content = path.read_text()
         lines = content.splitlines()
         matching = [line for line in lines if pattern in line]
@@ -224,7 +226,7 @@ class GorillaFileSystem:
         path = self._get_relative_path(file_name)
         if not path.exists():
             return {"first_n_lines": "", "error": f"File '{file_name}' not found"}
-        
+        self._rebuild_fs_state()
         all_lines = path.read_text().splitlines()
         return {"first_n_lines": "\n".join(all_lines[:lines])}
 
@@ -312,7 +314,7 @@ class GorillaFileSystem:
         path = self._get_relative_path(file_name)
         if not path.exists():
             return {"last_lines": "", "error": f"File '{file_name}' not found"}
-        
+        self._rebuild_fs_state()
         all_lines = path.read_text().splitlines()
         return {"last_lines": "\n".join(all_lines[-lines:])}
 
@@ -335,7 +337,7 @@ class GorillaFileSystem:
         path = self._get_relative_path(file_name)
         if not path.exists():
             return {"error": f"File '{file_name}' not found"}
-        
+        self._rebuild_fs_state()
         content = path.read_text()
         
         if mode == "l":
