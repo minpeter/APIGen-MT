@@ -614,34 +614,42 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         # Inject actual credentials from initial_api_state into the prompt
         credential_context = ""
+        initial_state_context = ""
         if initial_api_state:
             for class_key, state in initial_api_state.items():
                 # Skip APIs not in the focus category to avoid credential_context pollution
                 if focus_category and class_key not in focus_class_keys:
                     continue
-                if isinstance(state, dict):
-                    # Credentials
-                    if 'client_id' in state and 'client_secret' in state and 'refresh_token' in state:
-                        cid = state['client_id']
-                        csec = state['client_secret']
-                        rtok = state['refresh_token']
-                        credential_context += f"\nCredential format: {cid}/{csec}/{rtok}"
-                    # Card IDs
-                    if 'credit_card_list' in state and isinstance(state['credit_card_list'], dict):
-                        card_ids = list(state['credit_card_list'].keys())
-                        if card_ids:
-                            credential_context += f"\nAvailable card IDs: {', '.join(card_ids)}"
-                    # User list (messaging)
-                    if 'user_map' in state and isinstance(state['user_map'], dict):
-                        user_ids = list(state['user_map'].keys())
-                        if user_ids:
-                            credential_context += f"\nAvailable user IDs: {', '.join(user_ids[:10])}"
-                    # Account balance
-                    if 'account_type' in state and 'balance' in state:
-                        credential_context += f"\nAccount balance: {state.get('balance')}"
-                    # Username/password credentials
-                    if 'username' in state and 'password' in state:
-                        credential_context += f"\nCredentials: {state['username']}/{state['password']}"
+                if not isinstance(state, dict):
+                    continue
+                    
+                # Include full state structure for reference (filtered to focus category)
+                # This is especially important for storage/filesystem where we need file paths
+                state_summary = json.dumps(state, indent=2, default=str)[:2000]
+                initial_state_context += f"\n{class_key}: {state_summary}"
+                
+                # Credentials
+                if 'client_id' in state and 'client_secret' in state and 'refresh_token' in state:
+                    cid = state['client_id']
+                    csec = state['client_secret']
+                    rtok = state['refresh_token']
+                    credential_context += f"\nCredential format: {cid}/{csec}/{rtok}"
+                # Card IDs
+                if 'credit_card_list' in state and isinstance(state['credit_card_list'], dict):
+                    card_ids = list(state['credit_card_list'].keys())
+                    if card_ids:
+                        credential_context += f"\nAvailable card IDs: {', '.join(card_ids)}"
+                # User list (messaging)
+                if 'user_map' in state and isinstance(state['user_map'], dict):
+                    user_ids = list(state['user_map'].keys())
+                    if user_ids:
+                        credential_context += f"\nAvailable user IDs: {', '.join(user_ids[:10])}"
+                # Account balance
+                if 'account_type' in state and 'balance' in state:
+                    credential_context += f"\nAccount balance: {state.get('balance')}"
+                # Username/password credentials
+                if 'username' in state and 'password' in state:
+                    credential_context += f"\nCredentials: {state['username']}/{state['password']}"
 
         prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
 
@@ -672,8 +680,11 @@ class MultiTurnGenerator(StepByStepGenerator):
         if focus_category:
             prompt += f"\n\nAll available tools below are from the '{focus_category}' category."
 
+        if initial_state_context:
+            prompt += f"\n\n=== Initial API State (for reference - use these actual values) ==={initial_state_context}"
+        
         if credential_context:
-            prompt += f"\n\n=== Initial API State (use these values, do NOT invent) ==={credential_context}"
+            prompt += f"\n\n=== Credentials (use these exact values) ==={credential_context}"
 
         accumulated_feedback = ""
         for attempt in range(3):
