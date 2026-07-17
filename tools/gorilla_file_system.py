@@ -11,16 +11,18 @@ from typing import Any, Dict, List, Optional, Union
 class GorillaFileSystem:
     """
     A virtual in-memory filesystem that persists state between tool calls.
-    
-    State is maintained as actual files/directories on disk in a temp directory,
-    allowing realistic operations while maintaining state between calls.
+
+    State is maintained as both actual files on disk AND as a JSON-serializable
+    dict attribute (_fs_state) that mirrors the filesystem structure. This dict
+    is updated with every operation to maintain accurate state representation.
     """
 
     def __init__(self, initial_config: Optional[Dict] = None):
         """Initialize with optional initial state."""
         self._temp_dir = tempfile.mkdtemp(prefix="vfs_")
         self.current_dir = self._temp_dir
-        
+        self._fs_state: Dict[str, Any] = {}  # Filesystem state as dict
+
         if initial_config:
             self._load_from_config(initial_config)
         else:
@@ -28,7 +30,11 @@ class GorillaFileSystem:
 
     def _setup_default_structure(self):
         """Set up a default directory structure."""
-        Path(self._temp_dir).joinpath("workspace").mkdir(exist_ok=True)
+        workspace = Path(self._temp_dir) / "workspace"
+        workspace.mkdir(exist_ok=True)
+        self._fs_state = {
+            "workspace": {"type": "directory", "contents": {}}
+        }
 
     def _load_from_config(self, config: Dict):
         """Load filesystem structure from config dict."""
@@ -44,11 +50,47 @@ class GorillaFileSystem:
             if isinstance(entry, dict):
                 if entry.get("type") == "directory":
                     entry_path.mkdir(exist_ok=True)
-                    if "contents" in entry:
-                        self._build_from_dict(entry["contents"], entry_path)
+                    contents = entry.get("contents", {})
+                    self._fs_state[name] = {"type": "directory", "contents": {}}
+                    self._build_from_dict(contents, entry_path)
                 elif entry.get("type") == "file":
                     entry_path.parent.mkdir(parents=True, exist_ok=True)
-                    entry_path.write_text(entry.get("content", ""))
+                    content = entry.get("content", "")
+                    entry_path.write_text(content)
+                    self._fs_state[name] = {"type": "file", "content": content}
+
+    def _get_relative_path(self, name: str) -> Path:
+        """Get absolute path from current directory."""
+        if name.startswith("/"):
+            return Path(name.lstrip("/"))
+        return Path(self.current_dir) / name
+
+    def _rebuild_fs_state(self):
+        """Rebuild _fs_state from the actual filesystem on disk."""
+        self._fs_state = self._dict_from_path(Path(self._temp_dir), "")
+
+    def _dict_from_path(self, p: Path, rel_prefix: str) -> Dict:
+        """Recursively build dict from a path."""
+        result = {}
+        if not p.exists():
+            return result
+        for item in p.iterdir():
+            item_rel = f"{rel_prefix}/{item.name}" if rel_prefix else item.name
+            if item.is_dir():
+                result[item.name] = {
+                    "type": "directory",
+                    "path": item_rel
+                }
+                sub = self._dict_from_path(item, item_rel)
+                if sub:
+                    result[item.name]["contents"] = sub
+            else:
+                result[item.name] = {
+                    "type": "file",
+                    "path": item_rel,
+                    "size": item.stat().st_size
+                }
+        return result
 
     def _get_relative_path(self, name: str) -> Path:
         """Get absolute path from current directory."""
@@ -112,6 +154,7 @@ class GorillaFileSystem:
                 shutil.copytree(src_path, dst_path)
             else:
                 shutil.copy2(src_path, dst_path)
+            self._rebuild_fs_state()
             return {"success": True, "message": f"Copied '{source}' to '{destination}'"}
         except Exception as e:
             return {"error": str(e)}
@@ -140,6 +183,7 @@ class GorillaFileSystem:
         path = self._get_relative_path(file_name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
+        self._rebuild_fs_state()
         return {"success": True, "message": f"File '{file_name}' written successfully"}
 
     def find(self, path: str = ".", name: Optional[str] = None) -> Dict[str, Any]:
@@ -204,6 +248,7 @@ class GorillaFileSystem:
         
         try:
             path.mkdir(parents=True, exist_ok=True)
+            self._rebuild_fs_state()
             return {"success": True, "message": f"Directory {dir_name} created successfully.", "dir_name": dir_name}
         except Exception as e:
             return {"error": str(e), "success": False}
@@ -222,6 +267,7 @@ class GorillaFileSystem:
         
         try:
             shutil.move(str(src_path), str(dst_path))
+            self._rebuild_fs_state()
             return {"success": True, "message": f"Moved '{source}' to '{destination}'", "source": source, "destination": destination}
         except Exception as e:
             return {"error": str(e)}
@@ -241,6 +287,7 @@ class GorillaFileSystem:
                 shutil.rmtree(path)
             else:
                 path.unlink()
+            self._rebuild_fs_state()
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -255,6 +302,7 @@ class GorillaFileSystem:
         
         try:
             path.rmdir()
+            self._rebuild_fs_state()
             return {"success": True}
         except OSError:
             return {"success": False, "error": f"Directory '{dir_name}' is not empty"}
@@ -277,6 +325,7 @@ class GorillaFileSystem:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()
+            self._rebuild_fs_state()
             return {"success": True, "message": "File created successfully.", "file_name": file_name}
         except Exception as e:
             return {"error": str(e), "success": False}
