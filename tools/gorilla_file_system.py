@@ -99,6 +99,17 @@ class GorillaFileSystem:
             return Path(name.lstrip("/"))
         return Path(self.current_dir) / name
 
+    def _validate_local_name(self, name: str, param_name: str = "name") -> Optional[Dict[str, Any]]:
+        """Validate that a name is local to current directory (no path separators, except .. for parent).
+        
+        Returns error dict if name contains path separators (except .. prefix), None if valid.
+        """
+        if name.startswith(".."):
+            return None
+        if "/" in name:
+            return {"error": f"Invalid {param_name} '{name}': must be local to current directory, not a path. Use cd to navigate first."}
+        return None
+
     def _get_node_from_cwd(self, name: str) -> Optional[Dict]:
         """Get file/dir info relative to current working directory."""
         p = self._get_relative_path(name)
@@ -118,7 +129,6 @@ class GorillaFileSystem:
             return {"error": f"File '{file_name}' not found"}
         if path.is_dir():
             return {"error": f"'{file_name}' is a directory"}
-        self._rebuild_fs_state()
         return {"content": path.read_text()}
 
     def cd(self, folder: str) -> Dict[str, Any]:
@@ -141,11 +151,19 @@ class GorillaFileSystem:
 
     def cp(self, source: str, destination: str) -> Dict[str, Any]:
         """Copy file or directory."""
+        if err := self._validate_local_name(source, "source"):
+            return err
+        if err := self._validate_local_name(destination, "destination"):
+            return err
         src_path = self._get_relative_path(source)
         if not src_path.exists():
             return {"error": f"Source '{source}' not found"}
         
         dst_path = self._get_relative_path(destination)
+        
+        if dst_path.is_dir():
+            dst_path = dst_path / src_path.name
+        
         if dst_path.exists():
             return {"error": f"Destination '{destination}' already exists"}
         
@@ -161,13 +179,21 @@ class GorillaFileSystem:
         except Exception as e:
             return {"error": str(e)}
 
-    def du(self, human_readable: bool = False) -> Dict[str, Any]:
+    def du(self, path: str = ".", human_readable: bool = False) -> Dict[str, Any]:
         """Calculate disk usage."""
-        total = sum(
-            f.stat().st_size 
-            for f in Path(self.current_dir).rglob("*") 
-            if f.is_file()
-        )
+        target_path = self._get_relative_path(path)
+        if not target_path.exists():
+            return {"error": f"Path '{path}' not found"}
+        
+        if target_path.is_file():
+            total = target_path.stat().st_size
+        else:
+            total = sum(
+                f.stat().st_size 
+                for f in target_path.rglob("*") 
+                if f.is_file()
+            )
+        
         if human_readable:
             if total < 1024:
                 return {"disk_usage": f"{total}B"}
@@ -181,7 +207,8 @@ class GorillaFileSystem:
         """Write content to file or display in terminal."""
         if not file_name or file_name == "None":
             return {"content": content}
-        
+        if err := self._validate_local_name(file_name, "file_name"):
+            return err
         path = self._get_relative_path(file_name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
@@ -215,7 +242,6 @@ class GorillaFileSystem:
             return {"lines": [], "error": f"File '{file_name}' not found"}
         if path.is_dir():
             return {"lines": [], "error": f"'{file_name}' is a directory"}
-        self._rebuild_fs_state()
         content = path.read_text()
         lines = content.splitlines()
         matching = [line for line in lines if pattern in line]
@@ -226,23 +252,21 @@ class GorillaFileSystem:
         path = self._get_relative_path(file_name)
         if not path.exists():
             return {"first_n_lines": "", "error": f"File '{file_name}' not found"}
-        self._rebuild_fs_state()
         all_lines = path.read_text().splitlines()
         return {"first_n_lines": "\n".join(all_lines[:lines])}
 
-    def ls(self, path: str = ".", a: bool = False) -> Dict[str, Any]:
+    def ls(self, a: bool = False) -> Dict[str, Any]:
         """List directory contents.
         
         Args:
-            path: Directory to list. Defaults to current directory.
             a: If True, show hidden files (starting with .).
         """
         try:
-            target_path = self._get_relative_path(path)
+            target_path = self._get_relative_path(".")
             if not target_path.exists():
-                return {"error": f"Path '{path}' does not exist"}
+                return {"error": "Current directory does not exist"}
             if not target_path.is_dir():
-                return {"error": f"'{path}' is not a directory"}
+                return {"error": "Current path is not a directory"}
             entries = os.listdir(target_path)
             if not a:
                 entries = [e for e in entries if not e.startswith(".")]
@@ -324,7 +348,6 @@ class GorillaFileSystem:
         path = self._get_relative_path(file_name)
         if not path.exists():
             return {"last_lines": "", "error": f"File '{file_name}' not found"}
-        self._rebuild_fs_state()
         all_lines = path.read_text().splitlines()
         return {"last_lines": "\n".join(all_lines[-lines:])}
 
@@ -347,7 +370,6 @@ class GorillaFileSystem:
         path = self._get_relative_path(file_name)
         if not path.exists():
             return {"error": f"File '{file_name}' not found"}
-        self._rebuild_fs_state()
         content = path.read_text()
         
         if mode == "l":
