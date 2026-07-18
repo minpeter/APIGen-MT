@@ -263,9 +263,9 @@ class StepByStepGenerator:
         return processed_args
 
     def validate_expected_tools(self, query: str, expected_tools: List[str], intent: str) -> tuple[bool, str]:
-        """Validate expected_tools: count must match num_actions and sequence must make sense."""
-        if len(expected_tools) != self.num_actions:
-            return False, f"Expected tools count {len(expected_tools)} != required {self.num_actions}"
+        """Validate expected_tools: count must be 1-3 and sequence must make sense."""
+        if not (1 <= len(expected_tools) <= 3):
+            return False, f"Expected tools count {len(expected_tools)} not in range 1-3"
 
         tool_schemas = self._get_tool_schemas_str(expected_tools)
 
@@ -835,9 +835,9 @@ Respond ONLY with valid JSON:
                 accumulated_feedback += f"\n{generated_summary}\nFAILURE: expected_tools is empty.\n--- END ATTEMPT {attempt + 1} ---"
                 continue
 
-            if len(query_result.expected_tools) != self.num_actions:
-                print(f"  ✗ ERROR: expected_tools count {len(query_result.expected_tools)} != {self.num_actions}")
-                accumulated_feedback += f"\n{generated_summary}\nFAILURE: expected_tools count mismatch - got {len(query_result.expected_tools)}, need {self.num_actions}.\n--- END ATTEMPT {attempt + 1} ---"
+            if not (1 <= len(query_result.expected_tools) <= 3):
+                print(f"  ✗ ERROR: expected_tools count {len(query_result.expected_tools)} not in range 1-3")
+                accumulated_feedback += f"\n{generated_summary}\nFAILURE: expected_tools count mismatch - got {len(query_result.expected_tools)}, need 1-3.\n--- END ATTEMPT {attempt + 1} ---"
                 continue
 
             # Check if all tools exist

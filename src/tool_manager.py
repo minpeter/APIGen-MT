@@ -748,14 +748,20 @@ class ToolManager:
         If self.use_config_pool is True, picks a random config from the pool
         for each domain, giving diverse starting states across datapoints.
         Otherwise falls back to the original single FULL_INITIAL_CONFIGS.
+        
+        If _cached_initial_config is set, reuses that config instead of
+        generating a new random one. This ensures consistency across retries
+        within a single datapoint generation.
         """
-        if self.use_config_pool:
+        if hasattr(self, '_cached_initial_config') and self._cached_initial_config is not None:
+            config = self._cached_initial_config
+        elif self.use_config_pool:
             config = generate_random_config()
         else:
             config = FULL_INITIAL_CONFIGS
         self.python_tool_instances = create_python_tool_instances(config)
 
-    def initialize_api_state(self) -> None:
+    def initialize_api_state(self, force_new: bool = False) -> None:
         """Initialize all Python tool instances with full, realistic API state.
 
         This is the primary method to call at the beginning of each datapoint
@@ -766,8 +772,29 @@ class ToolManager:
         For example, MessageAPI gets pre-existing users in user_map so that
         message_login with a valid user ID succeeds, and PostingAPI gets
         username/password credentials so authenticate_twitter works.
+        
+        Args:
+            force_new: If True, forces selection of a new random config even
+                if a config is cached. Use this when starting a fresh datapoint.
+                If False (default), reuses cached config for consistency.
         """
+        if force_new or not hasattr(self, '_cached_initial_config') or self._cached_initial_config is None:
+            # Pick and cache a new random config
+            if self.use_config_pool:
+                self._cached_initial_config = generate_random_config()
+            else:
+                self._cached_initial_config = FULL_INITIAL_CONFIGS
         self.reset_python_tool_instances()
+
+    def clear_cached_config(self) -> None:
+        """Clear the cached initial config to force a new random config on next initialize_api_state.
+        
+        Call this at the start of each new datapoint generation to ensure
+        diversity across datapoints while maintaining consistency within
+        a single datapoint (including retries).
+        """
+        if hasattr(self, '_cached_initial_config'):
+            self._cached_initial_config = None
 
     def get_api_state(self) -> Dict[str, Dict[str, Any]]:
         """Snapshot the current state of all Python tool instances.
