@@ -297,7 +297,10 @@ class GorillaFileSystem:
         # If destination is a directory, move source into it (preserving filename)
         if dst_path.is_dir():
             dst_path = dst_path / src_path.name
-        
+
+        if dst_path.exists():
+            return {"error": f"Destination '{destination}' already exists"}
+
         try:
             shutil.move(str(src_path), str(dst_path))
             self._rebuild_fs_state()
