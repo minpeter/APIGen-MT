@@ -568,6 +568,107 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         return result
 
+    def _validate_posting_api_entities(
+        self,
+        turns: List[Dict[str, Any]],
+        initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> List[str]:
+        """Deterministically validate that entity references in PostingApi queries exist in state.
+
+        This catches cases where the blueprint references usernames (like 'techguru')
+        that don't exist in the API state, which the LLM judge might miss.
+
+        Returns list of error messages (empty if all entities are valid).
+        """
+        import re
+
+        issues = []
+        if not initial_api_state:
+            return issues
+
+        # Find PostingAPI state
+        posting_state = initial_api_state.get("posting_api") or initial_api_state.get("PostingAPI")
+        if not posting_state:
+            return issues
+
+        # Collect valid usernames from state
+        valid_usernames = set()
+
+        # From 'users' dict keys
+        if isinstance(posting_state.get("users"), dict):
+            valid_usernames.update(posting_state["users"].keys())
+
+        # From 'following_list'
+        if isinstance(posting_state.get("following_list"), list):
+            valid_usernames.update(posting_state["following_list"])
+
+        # From tweets - usernames who have posted
+        if isinstance(posting_state.get("tweets"), dict):
+            for tweet in posting_state["tweets"].values():
+                if isinstance(tweet, dict) and tweet.get("username"):
+                    valid_usernames.add(tweet["username"])
+
+        # The logged-in user's own username
+        if posting_state.get("username"):
+            valid_usernames.add(posting_state["username"])
+
+        # Also add from comments
+        if isinstance(posting_state.get("comments"), dict):
+            for comment_list in posting_state["comments"].values():
+                if isinstance(comment_list, list):
+                    for comment in comment_list:
+                        if isinstance(comment, dict) and comment.get("username"):
+                            valid_usernames.add(comment["username"])
+
+        # From retweets
+        if isinstance(posting_state.get("retweets"), list):
+            for retweet in posting_state["retweets"]:
+                if isinstance(retweet, dict) and retweet.get("username"):
+                    valid_usernames.add(retweet["username"])
+
+        # Username extraction patterns from query text
+        # More specific patterns to avoid false positives like "user stats" or "user and"
+        username_patterns = [
+            r'from\s+user\s+(\w+)',    # "from user techguru"
+            r'follow\s+(\w+)',         # "follow techguru"
+            r'following\s+(\w+)',      # "following techguru"
+            r'tweets?\s+from\s+(\w+)', # "tweets from techguru"
+            r'by\s+user\s+(\w+)',      # "by user techguru"
+            r'username\s+(\w+)',       # "username techguru"
+            r'@(\w+)',                 # "@techguru" mention
+        ]
+
+        # Check each turn's query for entity references
+        for turn_idx, turn in enumerate(turns, 1):
+            query = turn.get("user_query", "")
+            expected_tools = turn.get("expected_tools", [])
+
+            # Only validate for PostingApi tools
+            posting_tools = {
+                'get_user_tweets', 'get_user_stats', 'follow_user', 'unfollow_user',
+                'authenticate_twitter', 'mention', 'comment', 'retweet',
+                'search_tweets', 'get_tweet', 'get_tweet_comments'
+            }
+            if not any(t for t in expected_tools if t in posting_tools):
+                continue
+
+            # Extract potential usernames from query
+            found_usernames = set()
+            for pattern in username_patterns:
+                matches = re.findall(pattern, query, re.IGNORECASE)
+                found_usernames.update(matches)
+
+            # Check each found username against valid usernames
+            for username in found_usernames:
+                if username.lower() not in {u.lower() for u in valid_usernames}:
+                    issues.append(
+                        f"Turn {turn_idx}: query references username '{username}' but "
+                        f"'{username}' does not exist in state. "
+                        f"Valid users: {', '.join(sorted(valid_usernames))[:100]}"
+                    )
+
+        return issues
+
     def _verify_blueprint_capabilities(
         self,
         turns: List[Dict[str, Any]],
@@ -598,13 +699,15 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         tool_cap_str = "\n".join([f"- {name}: {desc}" for name, desc in tool_caps])
 
-        # Build state summary for context
+        # Build state summary with actual entity values for verification
         state_summary = ""
         if initial_api_state:
             for class_key, state in initial_api_state.items():
                 if isinstance(state, dict):
-                    keys = list(state.keys())[:20]
-                    state_summary += f"\n{class_key}: {keys}"
+                    # Show full state with actual values, not just keys
+                    # This allows the judge to verify entity references exist
+                    state_json = json.dumps(state, indent=2, default=str)
+                    state_summary += f"\n{class_key}:\n{state_json[:5000]}"
 
         prompt = f"""You are verifying that a dialog blueprint's user queries can be fulfilled by the selected tools.
 
@@ -624,8 +727,15 @@ This shows what entities (files, IDs, etc.) exist. Queries should reference only
 For each turn, verify:
 1. Does the user_query ask for something the selected tool can actually do?
 2. Does the query phrasing match tool capabilities? (e.g., "search all files" can't be done by a single-file grep)
-3. Are entity names (files, IDs, etc.) consistent with the API state?
-4. If multiple tools are listed, is that realistic for one turn?
+3. CRITICAL: For PostingApi queries - any username mentioned (e.g., "from user X", "follow X", "search tweets by X") MUST exist in the state as a key in the 'users' dict OR have posted tweets OR be in the 'following_list'. If 'users' is empty and no tweets from that user exist, this is an error.
+4. Are entity names (files, IDs, etc.) consistent with the API state?
+5. If multiple tools are listed, is that realistic for one turn?
+
+IMPORTANT: When checking PostingApi state, look for:
+- 'users' dict keys (these are valid usernames)
+- Usernames who have posted tweets (check 'tweets' dict values for username field)
+- Usernames in 'following_list'
+Reject queries that reference non-existent users like "techguru" when techguru doesn't appear anywhere in the state.
 
 Respond ONLY with valid JSON:
 {{"is_valid": true/false, "issues": ["Turn N: issue description", ...]}}
@@ -917,6 +1027,14 @@ If ALL turns are achievable with their selected tools, set is_valid to true with
                     cap_feedback = "\n".join(cap_issues) if cap_issues else "Tool capabilities don't match query intents"
                     accumulated_feedback = f"Capability mismatch:\n{cap_feedback}\n\nPlease regenerate with queries that match tool capabilities."
                     print(f"  ✗ {cap_feedback[:200]}...")
+                    continue
+
+                # Deterministic entity validation for PostingApi
+                entity_issues = self._validate_posting_api_entities(turns, initial_api_state)
+                if entity_issues:
+                    entity_feedback = "\n".join(entity_issues)
+                    accumulated_feedback = f"Entity reference errors:\n{entity_feedback}\n\nPlease regenerate with valid entity references from the API state."
+                    print(f"  ✗ {accumulated_feedback[:200]}...")
                     continue
 
                 print(f" ✓ Blueprint generated: {result.get('overall_task', '')[:100]}")

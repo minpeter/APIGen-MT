@@ -434,12 +434,28 @@ POSTING_CONFIGS: List[Dict[str, Any]] = [
         "username": "travel_diaries", "password": "Travel2024!",
     },
     {
-        "authenticated": False, "tweet_counter": 0,
-        "tweets": {},
-        "comments": {},
+        "authenticated": False, "tweet_counter": 25,
+        "tweets": {
+            "0": {"id": 0, "username": "techguru", "content": "Just launched my new coding tutorial series!", "tags": ["#coding", "#tutorial", "#programming"], "mentions": []},
+            "1": {"id": 1, "username": "techguru", "content": "Debugging tips: always check your types first.", "tags": ["#debugging", "#coding"], "mentions": []},
+            "2": {"id": 2, "username": "foodie_chef", "content": "Made homemade pasta from scratch today!", "tags": ["#cooking", "#pasta", "#homemade"], "mentions": []},
+            "3": {"id": 3, "username": "foodie_chef", "content": "The secret to good soup is patience.", "tags": ["#cooking", "#tips", "#soup"], "mentions": []},
+            "4": {"id": 4, "username": "travel_lover", "content": "Bangkok street food tour was amazing!", "tags": ["#travel", "#food", "#bangkok"], "mentions": []},
+            "5": {"id": 5, "username": "travel_lover", "content": "Sunrise at Angkor Wat - unforgettable!", "tags": ["#travel", "#sunrise", "#cambodia"], "mentions": []},
+            "6": {"id": 6, "username": "fitness_junkie", "content": "Morning run complete - 5K in 25 minutes!", "tags": ["#fitness", "#running", "#morning"], "mentions": []},
+            "7": {"id": 7, "username": "fitness_junkie", "content": "Protein shake recipe that actually tastes good.", "tags": ["#fitness", "#nutrition", "#recipe"], "mentions": []},
+        },
+        "comments": {
+            "2": [{"username": "foodie_chef", "content": "Enjoy the pasta journey!"}],
+        },
         "retweets": [],
         "following_list": [],
-        "users": {},
+        "users": {
+            "techguru": {"tweet_count": 45, "following_count": 30, "retweet_count": 12},
+            "foodie_chef": {"tweet_count": 38, "following_count": 25, "retweet_count": 8},
+            "travel_lover": {"tweet_count": 52, "following_count": 40, "retweet_count": 15},
+            "fitness_junkie": {"tweet_count": 30, "following_count": 20, "retweet_count": 5},
+        },
         "username": "newcomer", "password": "NewUser2024!",
     },
     {
