@@ -101,7 +101,7 @@ class GorillaFileSystem:
         
         Returns error dict if name contains path separators (except .. prefix), None if valid.
         """
-        if name.startswith(".."):
+        if name == "..":
             return None
         if "/" in name:
             return {"error": f"Invalid {param_name} '{name}': must be local to current directory, not a path. Use cd to navigate first."}
