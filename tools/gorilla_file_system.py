@@ -172,7 +172,7 @@ class GorillaFileSystem:
             else:
                 shutil.copy2(src_path, dst_path)
             self._rebuild_fs_state()
-            return {"success": True, "message": f"Copied '{source}' to '{destination}'"}
+            return {"success": True, "message": f"Copied '{source}' to '{str(dst_path)}'"}
         except Exception as e:
             return {"error": str(e)}
 
@@ -301,7 +301,7 @@ class GorillaFileSystem:
         try:
             shutil.move(str(src_path), str(dst_path))
             self._rebuild_fs_state()
-            return {"success": True, "message": f"Moved '{source}' to '{destination}'", "source": source, "destination": destination}
+            return {"success": True, "message": f"Moved '{source}' to '{str(dst_path)}'", "source": source, "destination": str(dst_path)}
         except Exception as e:
             return {"error": str(e)}
 
