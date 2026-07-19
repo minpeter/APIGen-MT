@@ -324,7 +324,7 @@ class MultiTurnGenerator(StepByStepGenerator):
         # Initialize API state for the whole conversation
         initial_api_state = None
         if self._python_tools_available:
-            self.tool_manager.initialize_api_state()
+            self.tool_manager.initialize_api_state(force_new=True)
             initial_api_state = self.tool_manager.get_api_state()
             print(f" Captured initial API state ({len(initial_api_state)} class keys)")
 
@@ -568,6 +568,95 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         return result
 
+    def _verify_blueprint_capabilities(
+        self,
+        turns: List[Dict[str, Any]],
+        focus_category: Optional[str] = None,
+        initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> Tuple[bool, List[str]]:
+        """Verify that each turn's query intent matches tool capabilities.
+
+        Uses LLM-as-judge to check if the user query can actually be fulfilled
+        by the selected tool given its description and the current API state.
+
+        Returns (is_valid, error_list).
+        """
+        if not turns:
+            return False, ["No turns provided"]
+
+        # Build tool capability context
+        tool_caps = []
+        for turn in turns:
+            for tool_name in turn.get("expected_tools", []):
+                if tool_name not in [t[0] for t in tool_caps]:
+                    try:
+                        schema = self.tool_manager.get_tool_schema(tool_name)
+                        desc = schema.get('description', 'No description')[:300]
+                        tool_caps.append((tool_name, desc))
+                    except ValueError:
+                        tool_caps.append((tool_name, "Tool description unavailable"))
+
+        tool_cap_str = "\n".join([f"- {name}: {desc}" for name, desc in tool_caps])
+
+        # Build state summary for context
+        state_summary = ""
+        if initial_api_state:
+            for class_key, state in initial_api_state.items():
+                if isinstance(state, dict):
+                    keys = list(state.keys())[:20]
+                    state_summary += f"\n{class_key}: {keys}"
+
+        prompt = f"""You are verifying that a dialog blueprint's user queries can be fulfilled by the selected tools.
+
+Check each turn: does the user_query intent match what the selected tool can actually do?
+
+=== TOOL CAPABILITIES ===
+{tool_cap_str}
+
+=== CURRENT API STATE ===
+This shows what entities (files, IDs, etc.) exist. Queries should reference only these entities.
+{state_summary if state_summary else "No specific state provided."}
+
+=== BLUEPRINT TURNS ===
+{json.dumps(turns, indent=2, default=str)}
+
+=== VERIFICATION TASK ===
+For each turn, verify:
+1. Does the user_query ask for something the selected tool can actually do?
+2. Does the query phrasing match tool capabilities? (e.g., "search all files" can't be done by a single-file grep)
+3. Are entity names (files, IDs, etc.) consistent with the API state?
+4. If multiple tools are listed, is that realistic for one turn?
+
+Respond ONLY with valid JSON:
+{{"is_valid": true/false, "issues": ["Turn N: issue description", ...]}}
+
+If ALL turns are achievable with their selected tools, set is_valid to true with empty issues."""
+
+
+        try:
+            response = self._safe_llm_generate([{"role": "user", "content": prompt}])
+            response_text = response.strip()
+
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0]
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0]
+
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            if start >= 0 and end > start:
+                response_text = response_text[start:end]
+
+            result = json.loads(response_text)
+            is_valid = result.get("is_valid", False)
+            issues = result.get("issues", [])
+
+            return is_valid, issues
+
+        except Exception as e:
+            # On error, be permissive and let execution handle it
+            return True, [f"Capability check error (allowing): {str(e)[:100]}"]
+
     # ─────────────────────── Stage 0: Blueprint ───────────────────────
 
     def _stage0_generate_blueprint(
@@ -614,36 +703,43 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         # Inject actual credentials from initial_api_state into the prompt
         credential_context = ""
+        initial_state_context = ""
         if initial_api_state:
             for class_key, state in initial_api_state.items():
                 # Skip APIs not in the focus category to avoid credential_context pollution
                 if focus_category and class_key not in focus_class_keys:
                     continue
-                if isinstance(state, dict):
-                    # Credentials
-                    if 'client_id' in state and 'client_secret' in state and 'refresh_token' in state:
-                        cid = state['client_id']
-                        csec = state['client_secret']
-                        rtok = state['refresh_token']
-                        credential_context += f"\nCredential format: {cid}/{csec}/{rtok}"
-                    # Card IDs
-                    if 'credit_card_list' in state and isinstance(state['credit_card_list'], dict):
-                        card_ids = list(state['credit_card_list'].keys())
-                        if card_ids:
-                            credential_context += f"\nAvailable card IDs: {', '.join(card_ids)}"
-                    # User list (messaging)
-                    if 'user_map' in state and isinstance(state['user_map'], dict):
-                        user_ids = list(state['user_map'].keys())
-                        if user_ids:
-                            credential_context += f"\nAvailable user IDs: {', '.join(user_ids[:10])}"
-                    # Account balance
-                    if 'account_type' in state and 'balance' in state:
-                        credential_context += f"\nAccount balance: {state.get('balance')}"
-                    # Username/password credentials
-                    if 'username' in state and 'password' in state:
-                        credential_context += f"\nCredentials: {state['username']}/{state['password']}"
+                if not isinstance(state, dict):
+                    continue
+                    
+                # Include full state structure for reference (filtered to focus category)
+                state_summary = json.dumps(state, indent=2, default=str)
+                initial_state_context += f"\n{class_key}:\n{state_summary}"
+                
+                # Credentials
+                if 'client_id' in state and 'client_secret' in state and 'refresh_token' in state:
+                    cid = state['client_id']
+                    csec = state['client_secret']
+                    rtok = state['refresh_token']
+                    credential_context += f"\nCredential format: {cid}/{csec}/{rtok}"
+                # Card IDs
+                if 'credit_card_list' in state and isinstance(state['credit_card_list'], dict):
+                    card_ids = list(state['credit_card_list'].keys())
+                    if card_ids:
+                        credential_context += f"\nAvailable card IDs: {', '.join(card_ids)}"
+                # User list (messaging)
+                if 'user_map' in state and isinstance(state['user_map'], dict):
+                    user_ids = list(state['user_map'].keys())
+                    if user_ids:
+                        credential_context += f"\nAvailable user IDs: {', '.join(user_ids[:10])}"
+                # Account balance
+                if 'account_type' in state and 'balance' in state:
+                    credential_context += f"\nAccount balance: {state.get('balance')}"
+                # Username/password credentials
+                if 'username' in state and 'password' in state:
+                    credential_context += f"\nCredentials: {state['username']}/{state['password']}"
 
-        prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls EXACTLY {self.num_actions} tools → AGENT responds.
+        prompt = f"""Design a {self.num_turns}-turn user-agent conversation. Each turn: USER request → AGENT calls 1-3 tools → AGENT responds.
 
 === AVAILABLE TOOLS ===
 {tools_str}
@@ -652,13 +748,13 @@ class MultiTurnGenerator(StepByStepGenerator):
 {output_fields_str}
 
 === REQUIREMENTS ===
-1. Each turn: specific entities (IDs, names, dates, prices) + EXACTLY {self.num_actions} tools
-2. Conversation flows naturally, each turn builds on previous
-3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
-4. expected_tools: EXACTLY {self.num_actions} tools per turn
-5. All authentication credentials, card IDs, and entity IDs come from the initial API state provided separately - do NOT invent credentials or IDs.
-6. Cross-turn refs: use EXACT output field names like {{{{TURN1.tool_name.field_name}}}} where field_name matches the tool's output schema.
-7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
+ 1. Each turn: specific entities (IDs, names, dates, prices) + 1-3 tools (vary naturally based on query complexity)
+ 2. Conversation flows naturally, each turn builds on previous
+ 3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
+ 4. expected_tools: 1-3 tools per turn (allow natural variation)
+ 5. CRITICAL: ALL entity references (file names, directory paths, IDs, card numbers, user names, ticket IDs, etc.) MUST come from the Initial API State below. Do NOT reference any entity that does not exist in that state.
+ 6. Cross-turn refs: use EXACT output field names like {{{{TURN1.tool_name.field_name}}}} where field_name matches the tool's output schema.
+ 7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
 
 === EXAMPLES ===
 - "Log into my account with username user123 and password SecretPass! then perform an action." (login_action, perform_action)
@@ -672,8 +768,11 @@ class MultiTurnGenerator(StepByStepGenerator):
         if focus_category:
             prompt += f"\n\nAll available tools below are from the '{focus_category}' category."
 
+        if initial_state_context:
+            prompt += f"\n\n=== Initial API State (for reference - use these actual values) ==={initial_state_context}"
+        
         if credential_context:
-            prompt += f"\n\n=== Initial API State (use these values, do NOT invent) ==={credential_context}"
+            prompt += f"\n\n=== Credentials (use these exact values) ==={credential_context}"
 
         accumulated_feedback = ""
         for attempt in range(3):
@@ -706,8 +805,8 @@ class MultiTurnGenerator(StepByStepGenerator):
                 all_tools_valid = True
                 for i, t in enumerate(turns):
                     expected = t.get("expected_tools", [])
-                    if len(expected) != self.num_actions:
-                        validation_errors.append(f"Turn {i+1} has {len(expected)} tools, need exactly {self.num_actions}: {expected}")
+                    if not (1 <= len(expected) <= 3):
+                        validation_errors.append(f"Turn {i+1} has {len(expected)} tools, need 1-3: {expected}")
                         all_tools_valid = False
                         break
 
@@ -809,6 +908,17 @@ class MultiTurnGenerator(StepByStepGenerator):
                     print(f"  ✗ {accumulated_feedback}")
                     continue
 
+                # Verify tool capabilities match query intents
+                print(f"  Verifying tool-query capability match...")
+                cap_valid, cap_issues = self._verify_blueprint_capabilities(
+                    turns, focus_category, initial_api_state
+                )
+                if not cap_valid:
+                    cap_feedback = "\n".join(cap_issues) if cap_issues else "Tool capabilities don't match query intents"
+                    accumulated_feedback = f"Capability mismatch:\n{cap_feedback}\n\nPlease regenerate with queries that match tool capabilities."
+                    print(f"  ✗ {cap_feedback[:200]}...")
+                    continue
+
                 print(f" ✓ Blueprint generated: {result.get('overall_task', '')[:100]}")
                 return DialogBlueprint(
                     overall_task=result.get("overall_task", ""),
@@ -847,8 +957,8 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         expected_tools = turn_spec.get("expected_tools", [])
 
-        if not user_query or len(expected_tools) != self.num_actions:
-            print(f"  ✗ Turn {turn_index + 1}: Blueprint has invalid query ({len(expected_tools)} tools, need {self.num_actions})")
+        if not user_query or not (1 <= len(expected_tools) <= 3):
+            print(f"  ✗ Turn {turn_index + 1}: Blueprint has invalid query ({len(expected_tools)} tools, need 1-3)")
             return None
 
         invalid = [t for t in expected_tools if not self.tool_manager.tool_exists(t)]
@@ -967,6 +1077,10 @@ class MultiTurnGenerator(StepByStepGenerator):
                 elif name == 'get_flight_cost':
                     if out.get('error'):
                         errors.append(f"get_flight_cost: error={out['error'][:80]}")
+
+                elif name in ('ls', 'cat', 'cd', 'mkdir', 'mv', 'rm', 'rmdir', 'touch', 'cp', 'grep', 'find', 'wc', 'tail', 'echo', 'du', 'sort'):
+                    if 'calls' in args:
+                        errors.append(f"{name}: LLM generated 'calls' batch format - use single tool call with direct arguments")
 
         return errors
 
