@@ -43,21 +43,24 @@ class GorillaFileSystem:
         elif isinstance(config, dict):
             self._build_from_dict(config, Path(self._temp_dir))
 
-    def _build_from_dict(self, node: Dict, path: Path):
+    def _build_from_dict(self, node: Dict, path: Path, fs_state_parent: Optional[Dict] = None):
         """Recursively build filesystem from nested dict."""
+        if fs_state_parent is None:
+            fs_state_parent = self._fs_state
         for name, entry in node.items():
             entry_path = path / name
             if isinstance(entry, dict):
                 if entry.get("type") == "directory":
                     entry_path.mkdir(exist_ok=True)
                     contents = entry.get("contents", {})
-                    self._fs_state[name] = {"type": "directory", "contents": {}}
-                    self._build_from_dict(contents, entry_path)
+                    dir_state = {"type": "directory", "contents": {}}
+                    fs_state_parent[name] = dir_state
+                    self._build_from_dict(contents, entry_path, dir_state["contents"])
                 elif entry.get("type") == "file":
                     entry_path.parent.mkdir(parents=True, exist_ok=True)
                     content = entry.get("content", "")
                     entry_path.write_text(content)
-                    self._fs_state[name] = {"type": "file", "content": content}
+                    fs_state_parent[name] = {"type": "file", "content": content}
 
     def _get_relative_path(self, name: str) -> Path:
         """Get absolute path from current directory."""
@@ -92,12 +95,6 @@ class GorillaFileSystem:
                     "content": item.read_text()
                 }
         return result
-
-    def _get_relative_path(self, name: str) -> Path:
-        """Get absolute path from current directory."""
-        if name.startswith("/"):
-            return Path(name.lstrip("/"))
-        return Path(self.current_dir) / name
 
     def _validate_local_name(self, name: str, param_name: str = "name") -> Optional[Dict[str, Any]]:
         """Validate that a name is local to current directory (no path separators, except .. for parent).
