@@ -288,6 +288,11 @@ class GorillaFileSystem:
 
     def mv(self, source: str, destination: str) -> Dict[str, Any]:
         """Move file or directory."""
+        if err := self._validate_local_name(source, "source"):
+            return err
+        if err := self._validate_local_name(destination, "destination"):
+            return err
+
         src_path = self._get_relative_path(source)
         if not src_path.exists():
             return {"error": f"Source '{source}' not found"}
