@@ -323,7 +323,7 @@ Respond with JSON:
                 "expected_tools": ["cat", "grep"]
             },
             {
-                "num_tools": 2,
+                "num_tools": 3,
                 "query": "Create a new file named notes.txt, write 'Hello World' to it, then display its contents.",
                 "intent": "User wants to create and populate a file",
                 "expected_tools": ["touch", "echo", "cat"]
