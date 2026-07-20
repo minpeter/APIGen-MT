@@ -38,9 +38,9 @@ def simulate_tool_return(function_name: str, arguments: Dict[str, Any], tool_def
     elif function_name in ['get_stock_info', 'buy_stock', 'sell_stock', 'get_stock_price', 'get_account_info']:
         return simulate_trading_return(function_name, arguments)
     
-    # Twitter/Social media operations
+    # Social media/Posting API operations
     elif function_name in ['post_tweet', 'get_tweet', 'like_tweet', 'retweet', 'get_timeline']:
-        return simulate_twitter_return(function_name, arguments)
+        return simulate_posting_api_return(function_name, arguments)
     
     # Vehicle operations
     elif function_name in ['start_engine', 'stop_engine', 'lock_doors', 'check_tire_pressure', 'get_fuel_level']:
@@ -168,9 +168,9 @@ def simulate_trading_return(function_name: str, arguments: Dict) -> Dict:
     return {'status': 'unknown_function', 'function': function_name}
 
 
-def simulate_twitter_return(function_name: str, arguments: Dict) -> Dict:
-    """Simulate Twitter API returns."""
-    
+def simulate_posting_api_return(function_name: str, arguments: Dict) -> Dict:
+    """Simulate Posting API returns."""
+
     if function_name == 'get_tweet':
         return {
             'status': 'success',
@@ -178,8 +178,8 @@ def simulate_twitter_return(function_name: str, arguments: Dict) -> Dict:
                 'type': 'dict',
                 'tweet': {
                     'id': arguments.get('tweet_id', '0'),
-                    'username': 'analyst_pro',
-                    'content': 'Just finished analyzing the quarterly reports! Great insights ahead. 📊',
+                    'username': 'user_sample',
+                    'content': 'Sample post content for demonstration purposes.',
                     'likes': 42,
                     'retweets': 12,
                     'timestamp': '2025-01-15T10:30:00Z'
@@ -187,20 +187,20 @@ def simulate_twitter_return(function_name: str, arguments: Dict) -> Dict:
             },
             'simulated': True
         }
-    
+
     elif function_name == 'post_tweet':
         return {
             'status': 'success',
             'result': {
                 'type': 'dict',
                 'tweet_id': f'{abs(hash(arguments.get("text_content", ""))) % 1000000:06d}',
-                'message': 'Tweet posted successfully',
+                'message': 'Post published successfully',
                 'content': arguments.get('text_content', '')[:50],
                 'timestamp': '2025-01-15T10:35:00Z'
             },
             'simulated': True
         }
-    
+
     return {'status': 'unknown_function', 'function': function_name}
 
 
