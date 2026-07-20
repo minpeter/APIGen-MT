@@ -669,6 +669,66 @@ class MultiTurnGenerator(StepByStepGenerator):
 
         return issues
 
+    def _validate_vehicle_control_queries(
+        self,
+        turns: List[Dict[str, Any]],
+        initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> List[str]:
+        """Validate that fuel-related queries are consistent with initial vehicle state.
+
+        Checks queries like 'fill up the tank' or 'add fuel' against initial fuelLevel
+        to ensure the scenario is coherent (e.g., not asking to fill when already full).
+
+        Returns list of error messages (empty if all queries are valid).
+        """
+        import re
+
+        issues = []
+        if not initial_api_state:
+            return issues
+
+        # Find VehicleControlAPI state
+        vehicle_state = initial_api_state.get("vehicle_control") or initial_api_state.get("VehicleControlAPI")
+        if not vehicle_state:
+            return issues
+
+        initial_fuel = vehicle_state.get("fuelLevel")
+        if initial_fuel is None:
+            return issues
+
+        # Fuel fill patterns that indicate user wants to add fuel
+        fuel_fill_patterns = [
+            r'fill.*tank',
+            r'add.*fuel',
+            r'top.*up',
+            r'refuel',
+            r'fuel.*fill',
+        ]
+
+        for turn_idx, turn in enumerate(turns, 1):
+            query = turn.get("user_query", "")
+            expected_tools = turn.get("expected_tools", [])
+
+            # Only validate for vehicle control tools that add fuel
+            fuel_tools = {'fillFuelTank', 'addFuel'}
+            if not any(t for t in expected_tools if t in fuel_tools):
+                continue
+
+            # Check if query indicates intent to add fuel
+            for pattern in fuel_fill_patterns:
+                if re.search(pattern, query, re.IGNORECASE):
+                    # Found a fuel fill request - check if tank is already full
+                    if initial_fuel >= 50.0:
+                        issues.append(
+                            f"Turn {turn_idx}: query asks to 'fill/add fuel' but initial fuelLevel "
+                            f"is {initial_fuel} (tank is at or above max capacity of 50.0). "
+                            f"This scenario is incoherent - tank cannot be filled when full. "
+                            f"Use a config with fuelLevel < 50 or change the query to match state."
+                        )
+                    break
+
+        return issues
+
     def _verify_blueprint_capabilities(
         self,
         turns: List[Dict[str, Any]],
@@ -1034,6 +1094,14 @@ If ALL turns are achievable with their selected tools, set is_valid to true with
                 if entity_issues:
                     entity_feedback = "\n".join(entity_issues)
                     accumulated_feedback = f"Entity reference errors:\n{entity_feedback}\n\nPlease regenerate with valid entity references from the API state."
+                    print(f"  ✗ {accumulated_feedback[:200]}...")
+                    continue
+
+                # Deterministic entity validation for VehicleControl
+                vehicle_issues = self._validate_vehicle_control_queries(turns, initial_api_state)
+                if vehicle_issues:
+                    vehicle_feedback = "\n".join(vehicle_issues)
+                    accumulated_feedback = f"Vehicle state errors:\n{vehicle_feedback}\n\nPlease regenerate with coherent vehicle state."
                     print(f"  ✗ {accumulated_feedback[:200]}...")
                     continue
 
