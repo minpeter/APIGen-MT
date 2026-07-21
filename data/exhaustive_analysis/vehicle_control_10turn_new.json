@@ -2808,7 +2808,7 @@
             }
           }
         ],
-        "assistant_response": "Done! Your engine is now running (fuel at 15%, battery at 12.8V) and navigation is set to the Grand Canyon. You're ready to go.",
+        "assistant_response": "Done! Your engine is now running and navigation is set to the Grand Canyon. You're ready to go.",
         "expected_tools": [
           "startEngine",
           "set_navigation"
@@ -14912,7 +14912,7 @@
             }
           }
         ],
-        "assistant_response": "Based on your current fuel level, **you can make the 100-mile trip**. The system has checked your fuel status and confirmed the journey is feasible. You're good to go!",
+        "assistant_response": "Based on your current fuel level, you can make the trip. The system has checked your fuel status and confirmed the journey is feasible. You're good to go!",
         "expected_tools": [
           "estimate_drive_feasibility_by_mileage"
         ],
