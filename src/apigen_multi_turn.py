@@ -84,10 +84,9 @@ class MultiTurnGenerator(StepByStepGenerator):
         llm_client: LLMClient,
         tool_manager: ToolManager,
         num_turns: int = 2,
-        actions_per_turn: int = 2,
         validate_outputs: bool = True,
     ):
-        super().__init__(llm_client, tool_manager, actions_per_turn, validate_outputs)
+        super().__init__(llm_client, tool_manager, validate_outputs)
         self.num_turns = num_turns
 
     def continue_from_checkpoint(
@@ -273,7 +272,6 @@ class MultiTurnGenerator(StepByStepGenerator):
             conversation=conversation,
             generation_metadata={
                 "num_turns": self.num_turns,
-                "actions_per_turn": self.num_actions,
                 "focus_category": focus_category,
                 "overall_task": blueprint.overall_task,
                 "resumed_from_turn": completed_turns,
@@ -480,7 +478,6 @@ class MultiTurnGenerator(StepByStepGenerator):
             conversation=conversation,
             generation_metadata={
                 "num_turns": self.num_turns,
-                "actions_per_turn": self.num_actions,
                 "focus_category": focus_category,
                 "overall_task": blueprint.overall_task,
                 "blueprint_queries": [t.get("user_query", "") for t in blueprint.turns],
@@ -753,7 +750,18 @@ class MultiTurnGenerator(StepByStepGenerator):
                     try:
                         schema = self.tool_manager.get_tool_schema(tool_name)
                         desc = schema.get('description', 'No description')[:300]
-                        tool_caps.append((tool_name, desc))
+                        params = schema.get('parameters', {})
+                        props = params.get('properties', {}) if isinstance(params, dict) else {}
+                        param_info = ""
+                        for pname, pinfo in props.items():
+                            if isinstance(pinfo, dict):
+                                param_type = pinfo.get('type', 'unknown')
+                                enum_vals = pinfo.get('enum', [])
+                                if enum_vals:
+                                    param_info += f" (enum: {enum_vals})"
+                                else:
+                                    param_info += f" ({param_type})"
+                        tool_caps.append((tool_name, f"{desc}{param_info}"))
                     except ValueError:
                         tool_caps.append((tool_name, "Tool description unavailable"))
 
@@ -787,15 +795,11 @@ This shows what entities (files, IDs, etc.) exist. Queries should reference only
 For each turn, verify:
 1. Does the user_query ask for something the selected tool can actually do?
 2. Does the query phrasing match tool capabilities? (e.g., "search all files" can't be done by a single-file grep)
-3. CRITICAL: For PostingApi queries - any username mentioned (e.g., "from user X", "follow X", "search tweets by X") MUST exist in the state as a key in the 'users' dict OR have posted tweets OR be in the 'following_list'. If 'users' is empty and no tweets from that user exist, this is an error.
+3. CRITICAL: Check if query asks for something NOT in the tool's parameter enums. For example, if displayCarStatus only has options [fuel, battery, doors, climate, headlights, parkingBrake, brakePadle, engine], then asking for "cruise control speed" is INVALID.
 4. Are entity names (files, IDs, etc.) consistent with the API state?
 5. If multiple tools are listed, is that realistic for one turn?
 
-IMPORTANT: When checking PostingApi state, look for:
-- 'users' dict keys (these are valid usernames)
-- Usernames who have posted tweets (check 'tweets' dict values for username field)
-- Usernames in 'following_list'
-Reject queries that reference non-existent users like "techguru" when techguru doesn't appear anywhere in the state.
+IMPORTANT: Reject queries that ask for things outside the tool's enum values or capabilities, even if the tool description mentions a general category that might seem related.
 
 Respond ONLY with valid JSON:
 {{"is_valid": true/false, "issues": ["Turn N: issue description", ...]}}
@@ -833,12 +837,39 @@ If ALL turns are achievable with their selected tools, set is_valid to true with
             self, focus_category: Optional[str] = None, initial_api_state: Optional[Dict[str, Any]] = None
     ) -> Optional[DialogBlueprint]:
         """Generate a highly specific dialog blueprint with concrete entities and full user queries."""
-        tools_str = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
-
-        # Build output fields dynamically from tool definitions for the prompt
         tools_json = self.tool_manager.get_tools_json_schema()
         if focus_category:
             tools_json = [t for t in tools_json if t.get('category') == focus_category]
+
+        # Build tools_str with parameter enums for blueprint generation
+        import re
+        tools_str_parts = []
+        for tool in tools_json:
+            name = tool.get('name', tool.get('api_name', ''))
+            desc = tool.get('description', 'No description')[:100]
+            params = tool.get('parameters', {})
+            props = params.get('properties', {}) if isinstance(params, dict) else {}
+            param_str = ""
+            for pname, pinfo in props.items():
+                if isinstance(pinfo, dict):
+                    # Try to get enum from pinfo directly first
+                    enum_vals = pinfo.get('enum', [])
+                    if not enum_vals:
+                        # Parse enum from description string
+                        desc_text = pinfo.get('description', '')
+                        enum_match = re.search(r'\[Enum\]:\s*\[(.*?)\]', desc_text)
+                        if enum_match:
+                            enum_str = enum_match.group(1)
+                            enum_vals = [v.strip().strip('"').strip("'") for v in enum_str.split(',')]
+                    ptype = pinfo.get('type', 'string')
+                    if enum_vals:
+                        param_str += f", {pname}=({', '.join(str(v) for v in enum_vals)})"
+                    else:
+                        param_str += f", {pname}=({ptype})"
+            tools_str_parts.append(f"{name}: {desc}{param_str}")
+        tools_str = "\n".join(tools_str_parts)
+
+        # Build output fields dynamically from tool definitions for the prompt
         output_fields_str = ""
         for tool in tools_json:
             name = tool.get('name', tool.get('api_name', ''))
@@ -922,9 +953,11 @@ If ALL turns are achievable with their selected tools, set is_valid to true with
  2. Conversation flows naturally, each turn builds on previous
  3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
  4. expected_tools: 1-3 tools per turn (allow natural variation)
- 5. CRITICAL: ALL entity references (file names, directory paths, IDs, card numbers, user names, ticket IDs, etc.) MUST come from the Initial API State below. Do NOT reference any entity that does not exist in that state.
- 6. Cross-turn refs: use EXACT output field names like {{{{TURN1.tool_name.field_name}}}} where field_name matches the tool's output schema.
- 7. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
+ 5. CRITICAL: expected_tools should ONLY contain tools that the user EXPLICITLY asks about or requests in their query. Do NOT add prerequisite tools (like pressing brake before starting engine) unless the user explicitly mentions them.
+ 6. CRITICAL: Query must ask for what the tools can provide. If a tool only accepts ONE parameter value at a time (like displayCarStatus with option=fuel OR battery, not both), the query should ask for only ONE thing per tool call. Do NOT ask for multiple items that require the same tool with different arguments.
+ 7. CRITICAL: ALL entity references (file names, directory paths, IDs, card numbers, user names, ticket IDs, etc.) MUST come from the Initial API State below. Do NOT reference any entity that does not exist in that state.
+ 8. Cross-turn refs: use EXACT output field names like {{{{TURN1.tool_name.field_name}}}} where field_name matches the tool's output schema.
+ 9. Verify that user_query phrasing, tool call and its arguments are consistent with the original dialog blueprint and prior turns.
 
 === EXAMPLES ===
 - "Log into my account with username user123 and password SecretPass! then perform an action." (login_action, perform_action)
