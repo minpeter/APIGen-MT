@@ -8,7 +8,6 @@ class StepByStepPrompts:
 
     @staticmethod
     def get_query_generation_prompt(
-        num_actions: int,
         tools_with_descriptions: str,
         example_queries: str,
         focus_category: Optional[str],
@@ -19,13 +18,13 @@ class StepByStepPrompts:
         prompt_parts = [
             "You are generating a realistic user query for testing a tool-calling system.",
             "",
-            f"Generate a natural, realistic user query that would require using EXACTLY {num_actions} tools to fulfill.",
+            "Generate a natural, realistic user query that would require using one or more tool calls to fulfill.",
             "",
             "=== REQUIREMENTS ===",
             "1. The query should be specific and actionable",
             "2. It should mention concrete entities (names, IDs, dates, locations, etc.)",
-            f"3. It should require EXACTLY {num_actions} tool calls to complete - not more, not less",
-            f"4. The expected_tools list must contain EXACTLY {num_actions} tool names",
+            "3. It should require one or more tool calls to complete the task",
+            "4. The expected_tools list should contain all tools needed from AVAILABLE TOOLS",
             "5. CRITICAL: Use ONLY the exact tool names from the AVAILABLE TOOLS section below",
             "6. CRITICAL: Do NOT invent tool names - only use tools that exist in the list",
             "7. The tools should logically fit together to accomplish the query",
@@ -53,7 +52,7 @@ class StepByStepPrompts:
         prompt_parts.extend([
             "",
             "=== YOUR TASK ===",
-            f"Generate a query for category: {focus_category or 'any'} that requires EXACTLY {num_actions} tools from the AVAILABLE TOOLS list above.",
+            f"Generate a query for category: {focus_category or 'any'} that requires multiple tools from the AVAILABLE TOOLS list above.",
             "",
             "The query should be realistic and the expected_tools must be EXACT names from the available tools list.",
             "",
@@ -61,7 +60,7 @@ class StepByStepPrompts:
             "{",
             '    "query": "the generated user query - be specific with names, dates, IDs",',
             '    "intent": "brief description of what the user wants to accomplish",',
-            f'    "expected_tools": ["tool_name_1", "tool_name_2", ...] // EXACTLY {num_actions} tools from AVAILABLE TOOLS',
+            '    "expected_tools": ["tool_name_1", "tool_name_2", ...] // tools from AVAILABLE TOOLS',
             "}",
         ])
         

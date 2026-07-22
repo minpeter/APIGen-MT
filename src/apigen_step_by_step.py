@@ -97,11 +97,10 @@ class QueryGenerationResult(BaseModel):
 class StepByStepGenerator:
     """Generator that creates datapoints step-by-step with immediate tool simulation."""
 
-    def __init__(self, llm_client: LLMClient, tool_manager: ToolManager, num_actions: int = 2, validate_outputs: bool = True, judge_client: LLMClient = None):
+    def __init__(self, llm_client: LLMClient, tool_manager: ToolManager, validate_outputs: bool = True, judge_client: LLMClient = None):
         self.llm = llm_client
         self.judge = judge_client or llm_client
         self.tool_manager = tool_manager
-        self.num_actions = num_actions
         self.validate_outputs = validate_outputs
         self._python_tools_available = bool(tool_manager.python_tool_instances)
         self._accumulated_prompt_tokens: int = 0
@@ -330,12 +329,8 @@ Respond with JSON:
             },
         ]
 
-        filtered_examples = [ex for ex in examples if ex["num_tools"] <= self.num_actions + 1 and ex["num_tools"] >= self.num_actions - 1]
-        if not filtered_examples:
-            filtered_examples = examples[:2]
-
         result = []
-        for i, ex in enumerate(filtered_examples, 1):
+        for i, ex in enumerate(examples, 1):
             result.append(f"\n=== EXAMPLE {i} ({ex['num_tools']} tools) ===")
             result.append(f"Query: \"{ex['query']}\"")
             result.append(f"Intent: {ex['intent']}")
@@ -364,14 +359,15 @@ Do NOT use "Michael Smith", "John", or generic American names - use {p['name']} 
 """
 
         for attempt in range(max_retries):
-            prompt = f"""Generate a realistic user query requiring EXACTLY {self.num_actions} tools.
+            prompt = f"""Generate a realistic user query requiring one or more tool calls to fulfill.
 
 === REQUIREMENTS ===
 1. Specific with concrete entities (names, IDs, dates, locations)
-2. EXACTLY {self.num_actions} tool calls needed - not more, not less
-3. expected_tools: EXACTLY {self.num_actions} tool names from AVAILABLE TOOLS
-4. CRITICAL: Use ONLY tools from AVAILABLE TOOLS - no invented names
-5. Auth-dependent tools need authentication FIRST - check which tools require prior authentication
+2. Use one or more tool calls as needed to complete the task
+3. expected_tools: List all tools from AVAILABLE TOOLS that would be needed
+4. CRITICAL: Match query to tool capabilities - if a tool (like displayCarStatus) only accepts ONE parameter value, ask for ONE thing per query, not multiple
+5. CRITICAL: Use ONLY tools from AVAILABLE TOOLS - no invented names
+6. Auth-dependent tools need authentication FIRST - check which tools require prior authentication
 {persona_section}
 === AVAILABLE TOOLS ===
 {tools_with_descriptions}
@@ -382,7 +378,7 @@ Do NOT use "Michael Smith", "John", or generic American names - use {p['name']} 
                 prompt += f"\n=== FEEDBACK ===\n{accumulated_feedback}\n"
             prompt += f"""
 === TASK ===
-Generate query requiring EXACTLY {self.num_actions} tools. Respond JSON:
+Generate query that realistically requires multiple tools. Respond JSON:
 {{"query": "specific with names/IDs", "intent": "what user wants", "expected_tools": ["tool1", ...]}}"""
 
             try:
@@ -413,11 +409,6 @@ Query: {query}
 Intent: {intent}
 Expected tools: {expected_tools}"""
 
-                if len(expected_tools) != self.num_actions:
-                    print(f" ✗ Wrong tool count: {len(expected_tools)} != {self.num_actions}")
-                    accumulated_feedback += f"\n{generated_summary}\nFAILURE: Expected {self.num_actions} tools, but got {len(expected_tools)}.\n--- END ATTEMPT {attempt + 1} ---"
-                    continue
-
                 all_tools_valid = True
                 invalid_tools = []
                 for tool in expected_tools:
@@ -443,13 +434,12 @@ Available tools (sample): {available_tools[:15]}
 --- END ATTEMPT {attempt + 1} ---"""
                     continue
 
-                if self.num_actions <= 5:
-                    is_valid, validation_msg = self.validate_expected_tools(query, expected_tools, intent)
+                is_valid, validation_msg = self.validate_expected_tools(query, expected_tools, intent)
 
-                    if not is_valid:
-                        print(f" ✗ Tool sequence validation failed: {validation_msg}")
-                        accumulated_feedback += f"\n{generated_summary}\nFAILURE: Tool sequence validation - {validation_msg}\n--- END ATTEMPT {attempt + 1} ---"
-                        continue
+                if not is_valid:
+                    print(f" ✗ Tool sequence validation failed: {validation_msg}")
+                    accumulated_feedback += f"\n{generated_summary}\nFAILURE: Tool sequence validation - {validation_msg}\n--- END ATTEMPT {attempt + 1} ---"
+                    continue
 
                 print(f" ✓ Query generation successful")
                 return QueryGenerationResult(query=query, intent=intent, expected_tools=expected_tools)
@@ -830,11 +820,6 @@ Respond ONLY with valid JSON:
             if not query_result.expected_tools:
                 print("  ✗ ERROR: expected_tools is empty")
                 accumulated_feedback += f"\n{generated_summary}\nFAILURE: expected_tools is empty.\n--- END ATTEMPT {attempt + 1} ---"
-                continue
-
-            if len(query_result.expected_tools) != self.num_actions:
-                print(f"  ✗ ERROR: expected_tools count {len(query_result.expected_tools)} != {self.num_actions}")
-                accumulated_feedback += f"\n{generated_summary}\nFAILURE: expected_tools count mismatch - got {len(query_result.expected_tools)}, need {self.num_actions}.\n--- END ATTEMPT {attempt + 1} ---"
                 continue
 
             # Check if all tools exist
@@ -1420,7 +1405,8 @@ Respond JSON: {"arg1": "value1", ...}
         execution_context: Dict[str, Any] = initial_execution_context.copy() if initial_execution_context else {}
 
         for step_num, tool_name in enumerate(query_result.expected_tools, 1):
-            print(f"\n[Step {step_num}/{self.num_actions}] Processing tool: {tool_name}")
+            total_steps = len(query_result.expected_tools)
+            print(f"\n[Step {step_num}/{total_steps}] Processing tool: {tool_name}")
 
             tool_feedback = ""
             step_success = False
@@ -1466,7 +1452,9 @@ Respond JSON: {"arg1": "value1", ...}
                         tool_feedback = f"Consistency verification failed: {consistency_feedback}"
                         print(f"  Retrying with feedback...")
                         continue
-                    print(f"  Max retries exceeded, proceeding despite consistency failure")
+                    # Last attempt failed - this is a HARD ERROR, do not proceed
+                    print(f"  ✗ Max retries exceeded for consistency check - aborting tool")
+                    break
                 else:
                     print(f"  ✓ Consistency check passed")
 
@@ -1692,7 +1680,7 @@ Respond JSON: {"arg1": "value1", ...}
 
         # Create metadata
         metadata = {
-            "num_actions": len(trajectory),
+            "tool_count": len(trajectory),
             "focus_category": focus_category,
             "query_intent": query_result.intent,
             "expected_tools": query_result.expected_tools
@@ -2087,8 +2075,7 @@ if __name__ == "__main__":
 
     generator = StepByStepGenerator(
         llm_client=llm_client,
-        tool_manager=tool_manager,
-        num_actions=2
+        tool_manager=tool_manager
     )
 
     print("Generating test datapoint...")

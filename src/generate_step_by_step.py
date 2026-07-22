@@ -115,13 +115,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--num-actions', '-a',
-        type=int,
-        default=1,
-        help='Number of actions per turn (default: 1)'
-    )
-
-    parser.add_argument(
         '--output', '-o',
         type=str,
         default='step_by_step_datapoints.jsonl',
@@ -178,15 +171,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--num-actions-range',
-        type=int,
-        nargs=2,
-        default=None,
-        metavar=('MIN', 'MAX'),
-        help='Randomize num_actions per datapoint between MIN and MAX (inclusive). Overrides -a.'
-    )
-
-    parser.add_argument(
         '--config-pool',
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -234,7 +218,6 @@ def run_step_by_step(args, llm_client, tool_manager, categories, output_path, ju
     generator = StepByStepGenerator(
         llm_client=llm_client,
         tool_manager=tool_manager,
-        num_actions=args.num_actions,
         judge_client=judge_client
     )
 
@@ -251,12 +234,6 @@ def run_step_by_step(args, llm_client, tool_manager, categories, output_path, ju
         focus_category = random.choice(categories)
         print(f"Focus category: {focus_category}")
 
-        # Randomize num_actions if range is specified
-        if args.num_actions_range:
-            num_actions = random.randint(args.num_actions_range[0], args.num_actions_range[1])
-            generator.num_actions = num_actions
-            print(f"Actions for this datapoint: {num_actions}")
-        
         # Generate datapoint
         datapoint = generator.generate_datapoint(
             focus_category=focus_category
@@ -288,7 +265,6 @@ def run_multi_turn(args, llm_client, tool_manager, categories, output_path, chec
         llm_client=llm_client,
         tool_manager=tool_manager,
         num_turns=args.num_turns,
-        actions_per_turn=args.num_actions,
     )
 
     # Create checkpoint callback if checkpoint manager is provided
@@ -384,9 +360,6 @@ def main():
     print(f"Target: {args.num_datapoints} datapoints")
     if args.mode == "multi-turn":
         print(f"Turns per conversation: {args.num_turns}")
-        print(f"Actions per turn: {args.num_actions}")
-    else:
-        print(f"Actions per datapoint: {args.num_actions}")
     print(f"Output: {args.output}")
     print(f"Model: {args.model}")
     print("=" * 70)
