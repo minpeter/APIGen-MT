@@ -23,6 +23,7 @@ from apigen_step_by_step import (
 )
 from llm_client import LLMClient
 from tool_manager import ToolManager
+from domain_hints import get_domain_hints
 
 
 class Turn(BaseModel):
@@ -971,12 +972,9 @@ If ALL turns are achievable with their selected tools, set is_valid to true with
         if focus_category:
             prompt += f"\n\nAll available tools below are from the '{focus_category}' category."
 
-            # Load domain-specific hints if available
-            try:
-                from domain_hints import VEHICLE_CONTROL_HINTS
-                prompt += f"\n\n{VEHICLE_CONTROL_HINTS}"
-            except ImportError:
-                pass
+            domain_hints = get_domain_hints(focus_category)
+            if domain_hints:
+                prompt += f"\n\n{domain_hints}"
 
         if initial_state_context:
             prompt += f"\n\n=== Initial API State (for reference - use these actual values) ==={initial_state_context}"

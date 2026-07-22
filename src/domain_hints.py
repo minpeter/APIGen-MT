@@ -1,10 +1,11 @@
-"""Domain-specific hints for Vehicle Control tool usage.
+"""Domain-specific hints for API generation by category.
 
-These hints are loaded dynamically when generating blueprints for Vehicle Control.
-They capture domain-specific patterns from the original BFCL data.
+Keys are focus_category names matching BFCL categories.
+Empty strings for domains that don't need special rules yet.
 """
 
-VEHICLE_CONTROL_HINTS = """
+DOMAIN_HINTS = {
+    "Vehicle Control": """
 === VEHICLE CONTROL DOMAIN RULES ===
 When generating queries for Vehicle Control:
 
@@ -34,4 +35,17 @@ When generating queries for Vehicle Control:
 5. PREREQUISITE TOOLS:
    - Do NOT add prerequisite tools unless user explicitly mentions them
    - Example: "Start the engine" -> startEngine only, NOT pressBrakePedal + startEngine
-"""
+""",
+    "Travel Booking": "",
+    "Finance": "",
+    "Communication": "",
+    "Science": "",
+    "Storage": "",
+    "Events": "",
+    "Posting API": "",
+}
+
+
+def get_domain_hints(focus_category: str) -> str:
+    """Get hints for a specific domain, or empty string if none defined."""
+    return DOMAIN_HINTS.get(focus_category, "")
