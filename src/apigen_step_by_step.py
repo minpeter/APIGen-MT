@@ -338,9 +338,49 @@ Respond with JSON:
 
         return "\n".join(result)
 
-    def generate_user_query(self, focus_category: Optional[str] = None, validation_feedback: Optional[str] = None, max_retries: int = 3, query_seed: Optional[dict] = None) -> QueryGenerationResult:
-        # Get tools with full descriptions
-        tools_with_descriptions = self._get_tools_with_descriptions_str(category=focus_category, compact=True)
+    def generate_user_query(
+        self,
+        focus_category: Optional[str] = None,
+        validation_feedback: Optional[str] = None,
+        max_retries: int = 3,
+        query_seed: Optional[dict] = None,
+        initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> QueryGenerationResult:
+        # Query generation needs complete parameter and output schemas. Compact
+        # descriptions omit the information needed to plan argument dependencies.
+        tools_for_prompt = self.tool_manager.get_tools_json_schema()
+        if focus_category:
+            tools_for_prompt = [
+                tool for tool in tools_for_prompt
+                if tool.get("category") == focus_category
+            ]
+        tools_with_descriptions = json.dumps(
+            tools_for_prompt,
+            indent=2,
+            ensure_ascii=False,
+            default=str,
+        )
+
+        # The initial state is generator-only. The policy will not see it, so any
+        # state value needed by a target call must be surfaced in the user query
+        # unless an earlier tool call returns it.
+        state_for_prompt = initial_api_state
+        if initial_api_state and tools_for_prompt:
+            state_for_prompt = filter_api_state(
+                initial_api_state,
+                [tool.get("name", "") for tool in tools_for_prompt],
+            )
+        generator_state_section = ""
+        if state_for_prompt:
+            generator_state_section = f"""
+=== GENERATOR-ONLY API STATE ===
+This state is visible only while constructing the synthetic task. It will NOT be
+shown to the assistant that solves the task. Use it to choose valid values, but
+copy every required value into the generated user query unless that value is
+returned by an earlier expected tool call.
+
+{json.dumps(state_for_prompt, indent=2, ensure_ascii=False, default=str)}
+"""
 
         accumulated_feedback = validation_feedback or ""
         example_queries = self._get_example_queries()
@@ -368,9 +408,24 @@ Do NOT use "Michael Smith", "John", or generic American names - use {p['name']} 
 4. CRITICAL: Match query to tool capabilities - if a tool (like displayCarStatus) only accepts ONE parameter value, ask for ONE thing per query, not multiple
 5. CRITICAL: Use ONLY tools from AVAILABLE TOOLS - no invented names
 6. Auth-dependent tools need authentication FIRST - check which tools require prior authentication
+7. POLICY-CONTEXT CLOSURE: Every required argument for every expected tool must
+   be available from the generated user query, an earlier expected tool output,
+   or a default declared in that tool's schema.
+8. The solving assistant receives only the user query, the complete tool schemas,
+   and prior tool outputs. It does NOT receive the API state below.
+9. If a required value exists only in API state, write that exact value naturally
+   into the user query. If an earlier tool produces it, place that tool before the
+   dependent tool. Never require the assistant to guess a value.
+10. Match the exact semantic representation required by the tool definition. A
+    human-readable label is not interchangeable with an opaque identifier, code,
+    token, symbol, handle, coordinate, path, or credential.
+11. General/model knowledge is not an argument source. If an opaque value is not
+    written in the user query and is not returned by an earlier expected tool,
+    choose a different task or include the required lookup within the call budget.
 {persona_section}
 === AVAILABLE TOOLS ===
 {tools_with_descriptions}
+{generator_state_section}
 {example_queries}"""
             if focus_category:
                 prompt += f"\n=== FOCUS CATEGORY ===\nPrimary: {focus_category}\n"
@@ -567,7 +622,6 @@ Respond ONLY with valid JSON:
                 trajectory_summary += f"Step {i+1}: {tc.tool_name}({tc.arguments}) -> {output_summary}\n"
 
         tool_schema = self.tool_manager.get_tool_schema(tool_name)
-        tool_desc = tool_schema.get('description', '') if tool_schema else ''
 
         prompt = f"""You are verifying that a tool invocation is consistent with the user query and conversation context.
 
@@ -576,7 +630,9 @@ Respond ONLY with valid JSON:
 
 === SELECTED TOOL ===
 {tool_name}
-Tool description: {tool_desc}
+
+=== FULL TOOL DEFINITION ===
+{json.dumps(tool_schema, indent=2, ensure_ascii=False, default=str)}
 
 === GENERATED ARGUMENTS ===
 {json.dumps(arguments, indent=2)}
@@ -593,6 +649,12 @@ Verify the tool and arguments are consistent with the query by checking:
 2. Are arguments correctly typed and in valid ranges?
 3. Are argument values correctly referencing previous outputs (e.g., user_id, ticket_id from prior steps)?
 4. Are the arguments sufficient to fulfill the query?
+5. For every opaque identifier, code, token, symbol, handle, coordinate, path,
+   or credential, does the exact value come from the user query, a prior saved
+   tool output, or a schema default? General/model knowledge is not a source.
+
+Do not suggest, reveal, or exemplify replacement argument values. Report only
+the affected argument names and the violated query/schema constraint.
 
 Respond ONLY with valid JSON:
 {{"is_valid": true/false, "issues": ["issue1", "issue2", ...]}}"""
@@ -618,7 +680,7 @@ Respond ONLY with valid JSON:
             return is_valid, feedback
         except Exception as e:
             print(f"    Warning: Consistency verification failed: {e}")
-            return True, ""
+            return False, "Consistency verifier unavailable"
 
     @staticmethod
     def _detect_tool_error(tool_name: str, output: dict) -> tuple:
@@ -705,7 +767,13 @@ Respond ONLY with valid JSON:
         print("STAGE 1: Generate and Verify Query")
         print("-" * 70)
         
-        query_result = self._stage1_generate_query(focus_category, context_hint, query_retries, query_seed)
+        query_result = self._stage1_generate_query(
+            focus_category,
+            context_hint,
+            query_retries,
+            query_seed,
+            initial_api_state,
+        )
         
         if query_result is None:
             print("\n✗ Stage 1 failed: Could not generate valid query")
@@ -751,7 +819,7 @@ Respond ONLY with valid JSON:
         print("STAGE 2: Generate Tool Invocations")
         print("-" * 70)
         
-        trajectory, execution_context = self._stage2_generate_tools(query_result, tool_retries, query_seed)
+        trajectory, execution_context = self._stage2_generate_tools(query_result, tool_retries)
         
         if trajectory is None:
             print("\n✗ Stage 2 failed: Could not generate all tool invocations")
@@ -783,8 +851,14 @@ Respond ONLY with valid JSON:
 
         return datapoint
 
-    def _stage1_generate_query(self, focus_category: Optional[str], context_hint: Optional[str], 
-                               max_retries: int, query_seed: Optional[dict] = None) -> Optional[QueryGenerationResult]:
+    def _stage1_generate_query(
+        self,
+        focus_category: Optional[str],
+        context_hint: Optional[str],
+        max_retries: int,
+        query_seed: Optional[dict] = None,
+        initial_api_state: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> Optional[QueryGenerationResult]:
         """
         Stage 1: Generate and verify user query.
         - Separate retry count for query generation
@@ -797,7 +871,12 @@ Respond ONLY with valid JSON:
             print(f"\n[Query Attempt {attempt + 1}/{max_retries}]")
             
             # Generate query
-            query_result = self.generate_user_query(focus_category, accumulated_feedback if accumulated_feedback else None, query_seed=query_seed)
+            query_result = self.generate_user_query(
+                focus_category,
+                accumulated_feedback if accumulated_feedback else None,
+                query_seed=query_seed,
+                initial_api_state=initial_api_state,
+            )
 
             if query_result is None or not query_result.query:
                 print("  ✗ Failed to generate query")
@@ -1287,79 +1366,72 @@ Respond only with valid JSON in one of these formats"""
 
     def _generate_tool_arguments(self, tool_name: str, query: str, trajectory: List[TrajectoryStep],
                                  execution_context: Dict[str, Any],
-                                 feedback: Optional[str] = None,
-                                 current_api_state: Optional[Dict[str, Dict[str, Any]]] = None,
-                                 query_seed: Optional[dict] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+                                 feedback: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """Generate arguments for a specific tool based on query and context."""
         # Get tool schema
         tool_schema = self.tool_manager.get_tool_schema(tool_name)
         if not tool_schema:
             return None, f"Tool '{tool_name}' not found"
 
-        # Build context from trajectory
-        trajectory_str = ""
-        for i, step in enumerate(trajectory):
-            trajectory_str += f"\nStep {i+1}: {step.tool_calls[0].tool_name}"
-            if step.tool_calls[0].output:
-                output_summary = str(step.tool_calls[0].output)[:100]
-                trajectory_str += f" -> {output_summary}"
+        # Build the complete policy-visible history. Do not truncate prior tool
+        # outputs: a required downstream argument may appear anywhere in them.
+        visible_history = []
+        for step in trajectory:
+            for tool_call in step.tool_calls:
+                visible_history.append({
+                    "step_number": step.step_number,
+                    "tool_name": tool_call.tool_name,
+                    "arguments": tool_call.arguments,
+                    "output": tool_call.output,
+                })
 
         # Get output type info for better argument generation
         output_type = tool_schema.get('output_type', 'unknown')
         output_description = tool_schema.get('output_description', '')
-
-        persona_arg_section = ""
-        if query_seed:
-            p = query_seed["persona"]
-            c = query_seed["city"]
-            persona_arg_section = f"""
-=== USER CONTEXT ===
-User name: {p['name']}
-User city: {c['city']} ({c.get('code', '')})
-When generating arguments that need a person's name, use {p['name']}.
-When generating arguments that need a city or location, prefer {c['city']}.
-"""
-
-        # Build API state section - prefer the class relevant to this tool
-        api_state_section = ""
-        if current_api_state:
-            class_key = self.tool_manager.api_name_to_class_key.get(tool_name)
-            if class_key and class_key in current_api_state:
-                state_for_tool = {class_key: current_api_state[class_key]}
-            else:
-                state_for_tool = current_api_state
-            api_state_section = f"""
-=== CURRENT API STATE ===
-The following is the REAL current state of the API. You MUST use values from this state when providing arguments (e.g., user IDs, ticket IDs, usernames, access tokens). Do NOT invent or guess values - use the ones shown below.
-
-{json.dumps(state_for_tool, indent=2, default=str)[:4000]}
-            """
 
         prompt = f"""Generate arguments for '{tool_name}' based on user query and previous steps.
 
 === USER QUERY ===
 {query}
 
-=== PREVIOUS STEPS ===
-{trajectory_str if trajectory_str else "None"}
+=== PREVIOUS POLICY-VISIBLE TOOL CALLS AND OUTPUTS ===
+{json.dumps(visible_history, indent=2, ensure_ascii=False, default=str) if visible_history else "None"}
 
 === EXECUTION CONTEXT ===
-{json.dumps(execution_context, indent=2, default=str)[:2000]}
-{persona_arg_section}{api_state_section}=== TOOL SCHEMA ===
-{json.dumps(tool_schema.get('parameters', {}), indent=2)}
+{json.dumps(execution_context, indent=2, ensure_ascii=False, default=str)}
+=== FULL TOOL DEFINITION ===
+{json.dumps(tool_schema, indent=2, ensure_ascii=False, default=str)}
 
 === EXPECTED OUTPUT ===
 Type: {output_type}
 Description: {output_description}
 """
         if feedback:
-            prompt += f"\n=== FEEDBACK ===\n{feedback}\n"
+            # Internal retries are not part of the saved policy context. Never
+            # expose raw judge/tool-error text here: it may contain identifiers
+            # or suggested values that the trained policy will never receive.
+            prompt += """
+=== RETRY NOTICE ===
+A previous candidate was rejected. Recompute the arguments only from the user
+query, prior saved tool outputs, and the full tool definition above. No value
+from a judge message, failed internal attempt, or tool error is available.
+"""
         prompt += """
 === TASK ===
 Generate args matching schema and fulfilling query:
-- Use REAL values from API STATE (user IDs, ticket IDs, tokens) - do NOT invent
-- For LOGIN: use stored credentials from API state
-- card_id: 'card_XXXX' (from register_credit_card), access_token: from prior authenticate_travel, booking_id: 'flight_XXX'
+- Use only values explicitly present in the USER QUERY, previous tool outputs,
+  EXECUTION CONTEXT, or defaults declared in the TOOL SCHEMA.
+- Deterministic calculations and format normalization from visible values are
+  allowed only when they do not require an external lookup.
+- General/model knowledge is not an argument source. Do not convert a visible
+  human-readable label into an opaque ID, code, token, symbol, handle,
+  coordinate, path, or credential unless that exact value is visible.
+- The simulator's private API state is not available to the solving assistant.
+  Never invent, guess, or copy a value from hidden state.
+- Values mentioned only by an internal judge, rejected attempt, or failed tool
+  call are unavailable because those diagnostics are not saved in the trace.
+- If any required argument is unavailable from the visible sources above, return
+  {"__missing_required_argument__": ["argument_name"]} instead of guessing.
 - Storage tools (ls, cat, cd, mkdir, mv, rm, cp, touch, echo, grep, wc, tail, find): use simple direct arguments like file_name, folder, source, destination, pattern. DO NOT use 'calls' batch format.
 
 Respond JSON: {"arg1": "value1", ...}
@@ -1383,13 +1455,16 @@ Respond JSON: {"arg1": "value1", ...}
             arguments = json.loads(response_text)
             if not isinstance(arguments, dict):
                 return None, f"Expected JSON object dict, got {type(arguments).__name__}"
+            if "__missing_required_argument__" in arguments:
+                missing = arguments.get("__missing_required_argument__")
+                return None, f"Required argument is not policy-visible: {missing}"
             return arguments, None
         
         except json.JSONDecodeError as e:
             return None, f"JSON parsing error: {e}"
 
     def _stage2_generate_tools(self, query_result: QueryGenerationResult,
-                               max_retries_per_tool: int, query_seed: Optional[dict] = None,
+                               max_retries_per_tool: int,
                                initial_execution_context: Optional[Dict[str, Any]] = None) -> Optional[Tuple[List[TrajectoryStep], Dict[str, Any]]]:
         """
         Stage 2: Generate tool invocations tool-by-tool.
@@ -1420,17 +1495,18 @@ Respond JSON: {"arg1": "value1", ...}
                 # Generate arguments for this tool (with feedback from previous failures)
                 print(f"  Generating arguments for {tool_name}...")
                 arguments, error = self._generate_tool_arguments(
-            tool_name=tool_name,
-            query=query_result.query,
-            trajectory=trajectory,
-            execution_context=execution_context,
-            feedback=tool_feedback if tool_feedback else None,
-            current_api_state=pre_state,
-            query_seed=query_seed,
-        )
+                    tool_name=tool_name,
+                    query=query_result.query,
+                    trajectory=trajectory,
+                    execution_context=execution_context,
+                    feedback=tool_feedback if tool_feedback else None,
+                )
 
                 if error:
                     print(f" ✗ {error}")
+                    if error.startswith("Required argument is not policy-visible"):
+                        print(" ✗ Rejecting datapoint: the generated query does not expose all required arguments")
+                        return None, None
                     if attempt < max_retries_per_tool - 1:
                         continue
                     break
@@ -1449,7 +1525,7 @@ Respond JSON: {"arg1": "value1", ...}
                 if not is_consistent:
                     print(f"  ✗ Consistency check failed: {consistency_feedback}")
                     if attempt < max_retries_per_tool - 1:
-                        tool_feedback = f"Consistency verification failed: {consistency_feedback}"
+                        tool_feedback = "Previous arguments failed consistency verification."
                         print(f"  Retrying with feedback...")
                         continue
                     # Last attempt failed - this is a HARD ERROR, do not proceed
@@ -1475,11 +1551,14 @@ Respond JSON: {"arg1": "value1", ...}
                         error_type = output.get('error_type', 'execution_error')
                         print(f" ✗ Tool returned error: {error_detail}")
                         if error_type == 'validation_failure' and attempt < max_retries_per_tool - 1:
-                            tool_feedback = f"Previous output validation failed: {error_detail}. Generate new arguments."
+                            tool_feedback = "The previous internal call failed validation."
                             print(f" Retrying due to validation failure...")
                             continue
                         elif attempt < max_retries_per_tool - 1:
-                            tool_feedback = f"Previous call failed: {error_detail}. Try different arguments or check prerequisites (e.g., login first, use correct IDs from API state)."
+                            tool_feedback = (
+                                "The previous internal call failed. Re-read only the "
+                                "saved policy-visible context and tool definition."
+                            )
                             print(f" Retrying with feedback...")
                             continue
                         break
@@ -1496,7 +1575,7 @@ Respond JSON: {"arg1": "value1", ...}
                         issues_str = '; '.join(validation.get('issues', ['Type mismatch']))
                         print(f" ✗ Output validation failed: {issues_str}")
                         if attempt < max_retries_per_tool - 1:
-                            tool_feedback = f"Previous output failed validation: {issues_str}. Expected type: {expected_type}."
+                            tool_feedback = "The previous internal output failed schema validation."
                             print(f" Retrying with new arguments...")
                             continue
                         print(f" Max retries exceeded, proceeding with potentially invalid output")
@@ -1522,9 +1601,8 @@ Respond JSON: {"arg1": "value1", ...}
                         print(f" ✗ State verification FAILED: {issues_joined}")
                         if attempt < max_retries_per_tool - 1:
                             tool_feedback = (
-                                f"State verification failed: {issues_joined}. "
-                                f"Judge reasoning: {state_verification.reasoning}. "
-                                f"Generate different arguments."
+                                "The previous internal attempt failed state verification. "
+                                "Recompute only from saved policy-visible sources."
                             )
                             print(f" Retrying due to state verification failure...")
                             # Roll back state by re-initializing + replaying completed steps
