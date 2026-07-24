@@ -4,29 +4,51 @@ These tests verify end-to-end workflows with mocked dependencies
 to ensure all components work together correctly.
 """
 
+import json
+from typing import Protocol
+
 import pytest
-from apigen_step_by_step import (
-    StepByStepGenerator,
-    StepByStepDatapoint,
-    TrajectoryStep,
-    ToolCallWithOutput,
+
+from apigen_step_by_step import StepByStepDatapoint, StepByStepGenerator
+from step_by_step_models import ObjectMap, StateSnapshot
+from step_by_step_protocols import (
+    LLM,
+    StepByStepToolManager,
+    is_object_map,
+    parse_object_map,
 )
 from tests.mocks.mock_llm_responses import (
+    VALID_FINAL_RESPONSE,
     VALID_QUERY_RESPONSE_2_TOOLS,
     VALID_QUERY_RESPONSE_3_TOOLS,
     VALID_SEQUENCE_RESPONSE,
     VALID_STEP_RESPONSE,
-    STEP_RESPONSE_WITH_PLACEHOLDER,
-    VALID_FINAL_RESPONSE,
 )
-from tests.mocks.mock_tool_manager import MockToolManager
+
+
+class ConfigurableMockLLM(LLM, Protocol):
+    """LLM test double with observable response state."""
+
+    call_count: int
+    captured_prompts: list[object]
+
+    def set_responses(self, responses: list[str]) -> None: ...
+
+
+class IntegrationToolManager(StepByStepToolManager, Protocol):
+    """Tool-manager test double with observable invocation state."""
+
+    tool_outputs: dict[str, object]
+    captured_invocations: list[ObjectMap]
 
 
 class TestEndToEndDatapointGeneration:
     """End-to-end tests for datapoint generation."""
 
     @pytest.fixture
-    def mock_llm_for_2_steps(self, mock_llm):
+    def mock_llm_for_2_steps(
+        self, mock_llm: ConfigurableMockLLM
+    ) -> ConfigurableMockLLM:
         """Configure mock LLM for 2-step datapoint."""
         mock_llm.set_responses([
             VALID_QUERY_RESPONSE_2_TOOLS,  # generate_user_query
@@ -38,7 +60,9 @@ class TestEndToEndDatapointGeneration:
         return mock_llm
 
     @pytest.fixture
-    def mock_llm_for_3_steps(self, mock_llm):
+    def mock_llm_for_3_steps(
+        self, mock_llm: ConfigurableMockLLM
+    ) -> ConfigurableMockLLM:
         """Configure mock LLM for 3-step datapoint."""
         mock_llm.set_responses([
             VALID_QUERY_RESPONSE_3_TOOLS,  # generate_user_query
@@ -51,7 +75,11 @@ class TestEndToEndDatapointGeneration:
         return mock_llm
 
     @pytest.mark.slow
-    def test_end_to_end_2_step_datapoint(self, mock_llm_for_2_steps, mock_tools):
+    def test_end_to_end_2_step_datapoint(
+        self,
+        mock_llm_for_2_steps: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test complete 2-step datapoint generation.
 
         Note: This test may require additional setup or retries in practice.
@@ -71,7 +99,11 @@ class TestEndToEndDatapointGeneration:
             assert result.verification_result is not None
 
     @pytest.mark.skip(reason="Requires complex mock setup")
-    def test_end_to_end_3_step_datapoint(self, mock_llm_for_3_steps, mock_tools):
+    def test_end_to_end_3_step_datapoint(
+        self,
+        mock_llm_for_3_steps: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test complete 3-step datapoint generation."""
         generator = StepByStepGenerator(
             llm_client=mock_llm_for_3_steps,
@@ -88,7 +120,11 @@ class TestEndToEndDatapointGeneration:
                 assert step.step_number == i
 
     @pytest.mark.skip(reason="Requires proper mock setup for focus category")
-    def test_end_to_end_with_focus_category(self, mock_llm_for_2_steps, mock_tools):
+    def test_end_to_end_with_focus_category(
+        self,
+        mock_llm_for_2_steps: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test datapoint generation with category focus."""
         generator = StepByStepGenerator(
             llm_client=mock_llm_for_2_steps,
@@ -109,19 +145,97 @@ class TestEndToEndDatapointGeneration:
 class TestPlaceholderChain:
     """Tests for placeholder chaining across steps."""
 
-    def test_placeholder_chain_across_steps(self, mock_llm, mock_tools):
+    def test_placeholder_chain_across_steps(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test that placeholders can reference previous step outputs."""
-        # Step 1: Get flight info
-        # Step 2: Send confirmation with flight ID from step 1
-        step1_response = VALID_STEP_RESPONSE
-        step2_response = STEP_RESPONSE_WITH_PLACEHOLDER
+        def get_api_state() -> StateSnapshot:
+            return {}
 
+        def restore_api_state(_state: StateSnapshot) -> None:
+            return None
+
+        def initialize_api_state(*, force_new: bool = False) -> None:
+            del force_new
+
+        def has_python_implementation(_tool_name: str) -> bool:
+            return True
+
+        def is_replay_safe(_tool_name: str) -> bool:
+            return True
+
+        def invoke_python_tool(
+            tool_name: str,
+            params: ObjectMap,
+        ) -> object:
+            return mock_tools.invoke_tool(tool_name, params)
+
+        monkeypatch.setattr(
+            mock_tools,
+            "get_api_state",
+            get_api_state,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            mock_tools,
+            "restore_api_state",
+            restore_api_state,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            mock_tools,
+            "initialize_api_state",
+            initialize_api_state,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            mock_tools,
+            "has_python_implementation",
+            has_python_implementation,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            mock_tools,
+            "is_replay_safe",
+            is_replay_safe,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            mock_tools,
+            "invoke_python_tool",
+            invoke_python_tool,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            mock_tools,
+            "api_name_to_class_key",
+            {
+                "search_flights": "mock",
+                "book_hotel": "mock",
+            },
+            raising=False,
+        )
+        mock_tools.python_tool_instances["mock"] = mock_tools
+        flights = [{"flight_id": "FL001"}]
+        mock_tools.tool_outputs["search_flights"] = flights
         mock_llm.set_responses([
-            VALID_QUERY_RESPONSE_2_TOOLS,  # generate_user_query
-            VALID_SEQUENCE_RESPONSE,          # validate_expected_tools
-            step1_response,                   # step 1
-            step2_response,                   # step 2 (with placeholder)
-            VALID_FINAL_RESPONSE,             # final response
+            VALID_QUERY_RESPONSE_2_TOOLS,
+            VALID_SEQUENCE_RESPONSE,
+            json.dumps({
+                "modifications": {},
+                "reasoning": "no changes needed",
+            }),
+            json.dumps({"origin": "NYC", "destination": "LA"}),
+            VALID_SEQUENCE_RESPONSE,
+            json.dumps({
+                "location": "{{search_flights_output}}",
+                "check_in": "2026-08-01",
+            }),
+            VALID_SEQUENCE_RESPONSE,
+            VALID_FINAL_RESPONSE,
         ])
 
         generator = StepByStepGenerator(
@@ -132,20 +246,26 @@ class TestPlaceholderChain:
 
         result = generator.generate_datapoint(query_retries=1)
 
-        if result and len(result.trajectory.steps) >= 2:
-            # Verify that execution context accumulated
-            step2 = result.trajectory.steps[1]
-            # Placeholder should be in arguments
-            if step2.tool_calls:
-                args_str = str(step2.tool_calls[0].arguments)
-                assert "{{search_flights_output.flight_id}}" in args_str
+        assert result is not None
+        assert len(result.trajectory.steps) == 2
+        step2 = result.trajectory.steps[1]
+        assert step2.tool_calls[0].arguments["location"] == (
+            "{{search_flights_output}}"
+        )
+        captured_params = mock_tools.captured_invocations[1].get("params")
+        assert is_object_map(captured_params)
+        assert captured_params["location"] == flights
 
 
 class TestRetryWithFeedback:
     """Tests for retry logic with feedback."""
 
     @pytest.mark.skip(reason="Complex retry test - requires extensive mock setup")
-    def test_retry_with_feedback_integration(self, mock_llm, mock_tools):
+    def test_retry_with_feedback_integration(
+        self,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test that feedback is properly accumulated and used in retries."""
         from tests.mocks.mock_llm_responses import (
             QUERY_RESPONSE_WRONG_TOOL_COUNT,
@@ -176,11 +296,15 @@ class TestRetryWithFeedback:
             assert len(mock_llm.captured_prompts) > 1
 
     @pytest.mark.skip(reason="Complex retry test - requires extensive mock setup")
-    def test_multiple_retries_before_success(self, mock_llm, mock_tools):
+    def test_multiple_retries_before_success(
+        self,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test multiple retries before successful generation."""
         from tests.mocks.mock_llm_responses import (
-            QUERY_RESPONSE_WRONG_TOOL_COUNT,
             QUERY_RESPONSE_INVALID_TOOL,
+            QUERY_RESPONSE_WRONG_TOOL_COUNT,
             VALID_QUERY_RESPONSE_2_TOOLS,
         )
 
@@ -212,7 +336,11 @@ class TestRetryWithFeedback:
 class TestVerificationFailureRecovery:
     """Tests for recovery from verification failures."""
 
-    def test_verification_failure_then_success(self, mock_llm, mock_tools):
+    def test_verification_failure_then_success(
+        self,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test that verification failures trigger retries."""
         # Generate a datapoint that might fail verification then succeed
         mock_llm.set_responses([
@@ -240,7 +368,11 @@ class TestVerificationFailureRecovery:
 class TestToolCategoryFiltering:
     """Tests for category-based tool filtering."""
 
-    def test_category_focus_limits_tool_pool(self, mock_llm, mock_tools_travel_only):
+    def test_category_focus_limits_tool_pool(
+        self,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools_travel_only: IntegrationToolManager,
+    ) -> None:
         """Test that focus category limits available tools."""
         mock_llm.set_responses([
             VALID_QUERY_RESPONSE_2_TOOLS,
@@ -271,7 +403,11 @@ class TestToolCategoryFiltering:
 class TestDatapointCompleteness:
     """Tests for datapoint completeness."""
 
-    def test_datapoint_has_all_required_fields(self, mock_llm, mock_tools):
+    def test_datapoint_has_all_required_fields(
+        self,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test that generated datapoint has all required fields."""
         mock_llm.set_responses([
             VALID_QUERY_RESPONSE_2_TOOLS,
@@ -311,10 +447,12 @@ class TestDatapointCompleteness:
                     assert tc.arguments is not None
                     assert tc.output is not None
 
-    def test_datapoint_serialization_roundtrip(self, mock_llm, mock_tools):
+    def test_datapoint_serialization_roundtrip(
+        self,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test that datapoint can be serialized and deserialized."""
-        import json
-
         mock_llm.set_responses([
             VALID_QUERY_RESPONSE_2_TOOLS,
             VALID_SEQUENCE_RESPONSE,
@@ -336,7 +474,7 @@ class TestDatapointCompleteness:
             json_str = result.model_dump_json()
 
             # Deserialize
-            data = json.loads(json_str)
+            data = parse_object_map(json_str)
 
             # Verify structure
             assert "trajectory" in data
@@ -347,7 +485,11 @@ class TestDatapointCompleteness:
 class TestMultiStepWorkflows:
     """Tests for multi-step workflows."""
 
-    def test_query_generation_to_step_generation(self, mock_llm, mock_tools):
+    def test_query_generation_to_step_generation(
+        self,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test workflow from query generation through step generation."""
         mock_llm.set_responses([
             VALID_QUERY_RESPONSE_2_TOOLS,
@@ -377,7 +519,11 @@ class TestMultiStepWorkflows:
             # Query should match
             assert datapoint.trajectory.query == query_result.query
 
-    def test_step_execution_accumulates_context(self, mock_llm, mock_tools):
+    def test_step_execution_accumulates_context(
+        self,
+        mock_llm: ConfigurableMockLLM,
+        mock_tools: IntegrationToolManager,
+    ) -> None:
         """Test that step execution properly accumulates context."""
         mock_llm.set_responses([
             VALID_QUERY_RESPONSE_2_TOOLS,

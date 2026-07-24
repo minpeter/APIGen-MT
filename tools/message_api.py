@@ -1,261 +1,267 @@
-"""Auto-generated MessageAPI implementation."""
+"""Stateful workspace messaging API."""
 
-import json
-import math
-import re
-import copy
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import TypeIs
+
+from .message_api_types import (
+    AddContactResult,
+    DeleteMessageResult,
+    MessageLoginResult,
+    MessageSearchMatch,
+    MessageSearchResult,
+    SendMessageResult,
+    UserIdResult,
+)
+from .type_utils import (
+    Config,
+    Record,
+    get_int,
+    get_str,
+    get_string_map,
+    is_object_list,
+    is_record,
+)
+
+type MessageEntry = str | Record
+type ConversationMap = dict[str, list[MessageEntry]]
+type MessageMap = dict[str, ConversationMap]
+
+
+def _is_message_list(value: object) -> TypeIs[list[MessageEntry]]:
+    return is_object_list(value) and all(
+        isinstance(item, str) or is_record(item) for item in value
+    )
+
+
+def _is_conversation_map(value: object) -> TypeIs[ConversationMap]:
+    return is_record(value) and all(
+        _is_message_list(messages) for messages in value.values()
+    )
+
+
+def _is_message_map(value: object) -> TypeIs[MessageMap]:
+    return is_record(value) and all(
+        _is_conversation_map(conversations) for conversations in value.values()
+    )
+
+
+def _get_message_map(config: Config, key: str) -> MessageMap:
+    value = config.get(key)
+    return value if _is_message_map(value) else {}
+
+
+def _message_text(entry: MessageEntry) -> str:
+    if isinstance(entry, str):
+        return entry
+    return get_str(entry, "message")
 
 
 class MessageAPI:
-    """API to manage user interactions and messaging in a workspace."""
+    """Manage user interactions and messages in a workspace."""
 
-    def __init__(self, initial_config: dict) -> None:
-        """Initialize the MessageAPI with the given configuration."""
-        self.workspace_id: str = initial_config.get("workspace_id", "")
-        self.user_count: int = initial_config.get("user_count", 0)
-        self.user_map: Dict[str, str] = initial_config.get("user_map", {})
-        self.messages_sent_map: Dict[str, Dict[str, List[Dict[str, Any]]]] = initial_config.get("messages_sent_map", {})
-        self.messages_inbox_map: Dict[str, Dict[str, List[Dict[str, Any]]]] = initial_config.get("messages_inbox_map", {})
-        self.message_count: int = initial_config.get("message_count", 0)
-        self.current_user: str = initial_config.get("current_user", "")
+    def __init__(self, initial_config: Config) -> None:
+        """Initialize the API with the given configuration."""
+        self.workspace_id: str = get_str(initial_config, "workspace_id")
+        self.user_count: int = get_int(initial_config, "user_count")
+        self.user_map: dict[str, str] = get_string_map(
+            initial_config, "user_map"
+        )
+        self.messages_sent_map: MessageMap = _get_message_map(
+            initial_config, "messages_sent_map"
+        )
+        self.messages_inbox_map: MessageMap = _get_message_map(
+            initial_config, "messages_inbox_map"
+        )
+        self.message_count: int = get_int(initial_config, "message_count")
+        self.current_user: str = get_str(initial_config, "current_user")
 
-    def add_contact(self, user_name: str) -> dict:
+    def add_contact(self, user_name: str) -> AddContactResult:
         """Add a contact to the workspace."""
         if not user_name:
             return {
                 "added_status": False,
                 "user_id": "",
-                "message": "User name cannot be empty."
+                "message": "User name cannot be empty.",
             }
-
-        # Case-insensitive check
-        existing_name = None
-        for name in self.user_map:
-            if name.lower() == user_name.lower():
-                existing_name = name
-                break
-
+        existing_name = next(
+            (
+                name
+                for name in self.user_map
+                if name.lower() == user_name.lower()
+            ),
+            None,
+        )
         if existing_name:
             return {
                 "added_status": False,
                 "user_id": self.user_map[existing_name],
-                "message": f"User '{user_name}' already exists in the workspace."
+                "message": f"User '{user_name}' already exists in the workspace.",
             }
 
-        existing_ids = {
-            uid for uid in self.user_map.values()
-        } | set(self.messages_sent_map.keys()) | set(self.messages_inbox_map.keys())
-        max_num = 0
-        for uid in existing_ids:
+        existing_ids = (
+            set(self.user_map.values())
+            | self.messages_sent_map.keys()
+            | self.messages_inbox_map.keys()
+        )
+        max_number = 0
+        for user_id in existing_ids:
             try:
-                num = int(uid.replace("USR", ""))
-                if num > max_num:
-                    max_num = num
-            except (ValueError, AttributeError):
-                pass
+                max_number = max(max_number, int(user_id.replace("USR", "")))
+            except ValueError:
+                continue
 
-        new_num = max_num + 1
-        new_user_id = f"USR{new_num:03d}"
+        new_user_id = f"USR{max_number + 1:03d}"
         self.user_count += 1
         self.user_map[user_name] = new_user_id
-
-        # Initialize message maps for the new user
         self.messages_sent_map[new_user_id] = {}
         self.messages_inbox_map[new_user_id] = {}
-
         return {
             "added_status": True,
             "user_id": new_user_id,
-            "message": f"Contact '{user_name}' added successfully."
+            "message": f"Contact '{user_name}' added successfully.",
         }
 
-    def delete_message(self, receiver_id: str, message_id: Optional[int] = None) -> dict:
-        """Delete a message sent to a receiver.
-
-        If message_id is None, deletes the last message in the conversation
-        (when entries are dicts with message_id, or the last string entry).
-        """
+    def delete_message(
+        self, receiver_id: str, message_id: int | None = None
+    ) -> DeleteMessageResult:
+        """Delete one message sent by the current user to a receiver."""
         if not self.current_user:
             return {
                 "deleted_status": False,
                 "message": "User is not authenticated. Please log in first.",
             }
+        conversation = self.messages_sent_map.get(
+            self.current_user, {}
+        ).get(receiver_id)
+        if not conversation:
+            return {
+                "deleted_status": False,
+                "message": "No messages found for receiver.",
+            }
 
-        sent = self.messages_sent_map.get(self.current_user, {})
-        inbox = self.messages_inbox_map  # may be nested by receiver->sender
-        conv = sent.get(receiver_id)
-        if not conv:
-            return {"deleted_status": False, "message": "No messages found for receiver."}
-
-        def _as_dict(item, idx):
-            if isinstance(item, dict):
-                return item
-            return {"message_id": idx + 1, "message": item}
-
-        normalized = [_as_dict(m, i) for i, m in enumerate(conv)]
-
-        target_idx = None
+        target_index: int | None = None
         if message_id is None:
-            target_idx = len(normalized) - 1
+            target_index = len(conversation) - 1
         else:
-            msg_id_int = int(message_id)
-            for i, m in enumerate(normalized):
-                mid = m.get("message_id")
-                try:
-                    if int(mid) == msg_id_int:
-                        target_idx = i
-                        break
-                except (TypeError, ValueError):
-                    continue
+            for index, entry in enumerate(conversation):
+                if isinstance(entry, str):
+                    stored_id = index + 1
+                else:
+                    raw_id = entry.get("message_id")
+                    if not isinstance(raw_id, int | str):
+                        continue
+                    try:
+                        stored_id = int(raw_id)
+                    except ValueError:
+                        continue
+                if stored_id == message_id:
+                    target_index = index
+                    break
 
-        if target_idx is None or target_idx < 0:
+        if target_index is None or target_index < 0:
             return {"deleted_status": False, "message": "Message not found."}
-
-        del conv[target_idx]
+        del conversation[target_index]
         return {
             "deleted_status": True,
             "message": "Message deleted successfully.",
         }
 
+    def get_user_id(self, user: str) -> UserIdResult:
+        """Get a user ID from a user name."""
+        for name, user_id in self.user_map.items():
+            if user and name.lower() == user.lower():
+                return {"user_id": user_id}
+        return {"user_id": ""}
 
-    def get_user_id(self, user: str) -> dict:
-        """Get user ID from user name."""
-        if not user:
-            return {
-                "user_id": ""
-            }
-
-        # Case-insensitive lookup
-        for name, uid in self.user_map.items():
-            if name.lower() == user.lower():
-                return {"user_id": uid}
-        return {
-            "user_id": ""
-        }
-
-    def message_login(self, user_id: str) -> dict:
-        """Log in a user with the given user ID to message application."""
+    def message_login(self, user_id: str) -> MessageLoginResult:
+        """Select a workspace user as the current messaging user."""
         if not user_id:
             return {
                 "login_status": False,
-                "message": "User ID cannot be empty."
+                "message": "User ID cannot be empty.",
             }
-
-        user_exists = user_id in self.user_map.values() or user_id in self.messages_sent_map or user_id in self.messages_inbox_map
-
+        user_exists = (
+            user_id in self.user_map.values()
+            or user_id in self.messages_sent_map
+            or user_id in self.messages_inbox_map
+        )
         if not user_exists:
             return {
                 "login_status": False,
-                "message": f"User ID '{user_id}' not found in the workspace."
+                "message": f"User ID '{user_id}' not found in the workspace.",
             }
-
         self.current_user = user_id
         return {
             "login_status": True,
-            "message": f"User '{user_id}' logged in successfully."
+            "message": f"User '{user_id}' logged in successfully.",
         }
 
-    def search_messages(self, keyword: str) -> dict:
-        """Search for messages containing a specific keyword."""
-        results: List[Dict[str, Any]] = []
-
-        if not keyword:
-            return {
-                "results": "[]"
-            }
-
-        if not self.current_user:
-            return {
-                "results": "[]"
-            }
-
-        sender_id = self.current_user
-
-        # Search in sent messages
-        if sender_id in self.messages_sent_map:
-            for receiver_id, messages in self.messages_sent_map[sender_id].items():
-                for msg in messages:
-                    msg_text = msg.get("message", "") if isinstance(msg, dict) else str(msg)
-                    if keyword.lower() in msg_text.lower():
-                        results.append({
+    def search_messages(self, keyword: str) -> MessageSearchResult:
+        """Search the current user's sent and received messages."""
+        results: list[MessageSearchMatch] = []
+        if not keyword or not self.current_user:
+            return {"results": results}
+        keyword = keyword.lower()
+        for receiver_id, messages in self.messages_sent_map.get(
+            self.current_user, {}
+        ).items():
+            for entry in messages:
+                message = _message_text(entry)
+                if keyword in message.lower():
+                    results.append(
+                        {
                             "receiver_id": receiver_id,
-                            "message": msg_text,
-                            "direction": "sent"
-                        })
+                            "message": message,
+                            "direction": "sent",
+                        }
+                    )
+        for sender_id, messages in self.messages_inbox_map.get(
+            self.current_user, {}
+        ).items():
+            for entry in messages:
+                message = _message_text(entry)
+                if keyword in message.lower():
+                    results.append(
+                        {
+                            "sender_id": sender_id,
+                            "message": message,
+                            "direction": "received",
+                        }
+                    )
+        return {"results": results}
 
-        # Search in received messages (inbox)
-        if sender_id in self.messages_inbox_map:
-            for sender, messages in self.messages_inbox_map[sender_id].items():
-                for msg in messages:
-                    msg_text = msg.get("message", "") if isinstance(msg, dict) else str(msg)
-                    if keyword.lower() in msg_text.lower():
-                        results.append({
-                            "sender_id": sender,
-                            "message": msg_text,
-                            "direction": "received"
-                        })
-
-        return {
-            "results": json.dumps(results)
-        }
-
-    def send_message(self, receiver_id: str, message: str) -> dict:
-        """Send a message to a user."""
+    def send_message(self, receiver_id: str, message: str) -> SendMessageResult:
+        """Send a message from the current user to a receiver."""
         if not self.current_user:
             return {
                 "sent_status": False,
                 "message_id": "0",
-                "message": "No user currently logged in."
+                "message": "No user currently logged in.",
             }
-
         if not receiver_id:
             return {
                 "sent_status": False,
                 "message_id": "0",
-                "message": "Receiver ID cannot be empty."
+                "message": "Receiver ID cannot be empty.",
             }
-
         if not message:
             return {
                 "sent_status": False,
                 "message_id": "0",
-                "message": "Message cannot be empty."
+                "message": "Message cannot be empty.",
             }
 
-        sender_id = self.current_user
-
         self.message_count += 1
-        msg_id = self.message_count
-
-        # Create message dict with ID (both stored as int for lookup, returned as string per schema)
-        msg_dict = {"message_id": msg_id, "message": message}
-
-        # Initialize sender's sent map if needed
-        if sender_id not in self.messages_sent_map:
-            self.messages_sent_map[sender_id] = {}
-
-        # Initialize receiver's entry in sender's sent map if needed
-        if receiver_id not in self.messages_sent_map[sender_id]:
-            self.messages_sent_map[sender_id][receiver_id] = []
-
-        # Add message dict to sender's sent map
-        self.messages_sent_map[sender_id][receiver_id].append(msg_dict)
-
-        # Initialize receiver's inbox map if needed
-        if receiver_id not in self.messages_inbox_map:
-            self.messages_inbox_map[receiver_id] = {}
-
-        # Initialize sender's entry in receiver's inbox map if needed
-        if sender_id not in self.messages_inbox_map[receiver_id]:
-            self.messages_inbox_map[receiver_id][sender_id] = []
-
-        # Add message dict to receiver's inbox map
-        self.messages_inbox_map[receiver_id][sender_id].append(msg_dict)
-
+        sender_id = self.current_user
+        message_record: Record = {
+            "message_id": self.message_count,
+            "message": message,
+        }
+        sent = self.messages_sent_map.setdefault(sender_id, {})
+        sent.setdefault(receiver_id, []).append(message_record)
+        inbox = self.messages_inbox_map.setdefault(receiver_id, {})
+        inbox.setdefault(sender_id, []).append(message_record)
         return {
             "sent_status": True,
-            "message_id": str(msg_id),
-            "message": "Message sent successfully."
+            "message_id": str(self.message_count),
+            "message": "Message sent successfully.",
         }

@@ -9,13 +9,14 @@ import os
 import sys
 from io import StringIO
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
 # Import the module under test
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-from generate_step_by_step import parse_args, load_tool_categories, main
+_ = sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+from generate_step_by_step import load_tool_categories, main, parse_args
+from llm_request_helpers import decode_json_object
 
 
 class TestParseArgs:
@@ -27,18 +28,22 @@ class TestParseArgs:
             args = parse_args()
 
         assert args.num_datapoints == 100
-        assert args.num_actions == 2
+        assert args.num_actions == 1
         assert args.output == "step_by_step_datapoints.jsonl"
-        assert args.model == "z-ai/glm-5.1"
+        assert args.model == "minimax/minimax-m2.7"
 
     def test_parse_args_custom_values(self):
         """Test custom argument values."""
         test_args = [
             "generate_step_by_step.py",
-            "--num-datapoints", "50",
-            "--num-actions", "3",
-            "--output", "custom_output.jsonl",
-            "--model", "custom/model",
+            "--num-datapoints",
+            "50",
+            "--num-actions",
+            "3",
+            "--output",
+            "custom_output.jsonl",
+            "--model",
+            "custom/model",
         ]
         with patch.object(sys, "argv", test_args):
             args = parse_args()
@@ -52,10 +57,14 @@ class TestParseArgs:
         """Test short form flags."""
         test_args = [
             "generate_step_by_step.py",
-            "-n", "25",
-            "-a", "4",
-            "-o", "output.jsonl",
-            "-m", "short/model",
+            "-n",
+            "25",
+            "-a",
+            "4",
+            "-o",
+            "output.jsonl",
+            "-m",
+            "short/model",
         ]
         with patch.object(sys, "argv", test_args):
             args = parse_args()
@@ -69,18 +78,31 @@ class TestParseArgs:
         """Test custom tool pool path."""
         test_args = [
             "generate_step_by_step.py",
-            "--tool-pool", "/custom/path/tools.jsonl",
+            "--tool-pool",
+            "/custom/path/tools.jsonl",
         ]
         with patch.object(sys, "argv", test_args):
             args = parse_args()
 
         assert "/custom/path/tools.jsonl" in args.tool_pool
 
+    def test_parse_args_verify_trajectory_mode(self):
+        test_args = [
+            "generate_step_by_step.py",
+            "--verify-trajectory",
+            "trajectory.json",
+        ]
+        with patch.object(sys, "argv", test_args):
+            args = parse_args()
+
+        assert args.verify_trajectory == "trajectory.json"
+
     def test_parse_args_invalid_num_datapoints(self):
         """Test handling of invalid num_datapoints."""
         test_args = [
             "generate_step_by_step.py",
-            "--num-datapoints", "-1",
+            "--num-datapoints",
+            "-1",
         ]
         # argparse should accept negative numbers, but we validate later
         with patch.object(sys, "argv", test_args):
@@ -91,7 +113,7 @@ class TestParseArgs:
 class TestLoadToolCategories:
     """Tests for load_tool_categories function."""
 
-    def test_load_tool_categories_success(self, tmp_path):
+    def test_load_tool_categories_success(self, tmp_path: Path):
         """Test successful tool loading and categorization."""
         # Create a temporary tool pool file
         tool_pool = tmp_path / "tools.jsonl"
@@ -100,9 +122,10 @@ class TestLoadToolCategories:
             {"api_name": "tool2", "category": "Travel"},
             {"api_name": "tool3", "category": "Food"},
         ]
-        with open(tool_pool, "w") as f:
-            for tool in tools:
-                f.write(json.dumps(tool) + "\n")
+        _ = tool_pool.write_text(
+            "".join(json.dumps(tool) + "\n" for tool in tools),
+            encoding="utf-8",
+        )
 
         result = load_tool_categories(str(tool_pool))
 
@@ -111,38 +134,41 @@ class TestLoadToolCategories:
         assert len(result["Travel"]) == 2
         assert len(result["Food"]) == 1
 
-    def test_load_tool_categories_missing_category(self, tmp_path):
+    def test_load_tool_categories_missing_category(self, tmp_path: Path):
         """Test handling of tools without category."""
         tool_pool = tmp_path / "tools.jsonl"
         tools = [
             {"api_name": "tool1"},  # No category
             {"api_name": "tool2", "category": "Travel"},
         ]
-        with open(tool_pool, "w") as f:
-            for tool in tools:
-                f.write(json.dumps(tool) + "\n")
+        _ = tool_pool.write_text(
+            "".join(json.dumps(tool) + "\n" for tool in tools),
+            encoding="utf-8",
+        )
 
         result = load_tool_categories(str(tool_pool))
 
         assert "Unknown" in result
         assert "Travel" in result
 
-    def test_load_tool_categories_empty_file(self, tmp_path):
+    def test_load_tool_categories_empty_file(self, tmp_path: Path):
         """Test handling of empty tool pool file."""
         tool_pool = tmp_path / "empty.jsonl"
-        tool_pool.write_text("")
+        _ = tool_pool.write_text("", encoding="utf-8")
 
         result = load_tool_categories(str(tool_pool))
 
         assert result == {}
 
-    def test_load_tool_categories_invalid_json(self, tmp_path):
+    def test_load_tool_categories_invalid_json(self, tmp_path: Path):
         """Test handling of invalid JSON lines."""
         tool_pool = tmp_path / "tools.jsonl"
-        with open(tool_pool, "w") as f:
-            f.write('{"api_name": "valid", "category": "A"}\n')
-            f.write("invalid json\n")  # Invalid line
-            f.write('{"api_name": "also_valid", "category": "B"}\n')
+        _ = tool_pool.write_text(
+            '{"api_name": "valid", "category": "A"}\n'
+            + "invalid json\n"
+            + '{"api_name": "also_valid", "category": "B"}\n',
+            encoding="utf-8",
+        )
 
         result = load_tool_categories(str(tool_pool))
 
@@ -150,12 +176,14 @@ class TestLoadToolCategories:
         assert "A" in result
         assert "B" in result
 
-    def test_load_tool_categories_duplicate_tools(self, tmp_path):
+    def test_load_tool_categories_duplicate_tools(self, tmp_path: Path):
         """Test handling of duplicate tools."""
         tool_pool = tmp_path / "tools.jsonl"
-        with open(tool_pool, "w") as f:
-            f.write('{"api_name": "tool1", "category": "A"}\n')
-            f.write('{"api_name": "tool1", "category": "A"}\n')  # Duplicate
+        _ = tool_pool.write_text(
+            '{"api_name": "tool1", "category": "A"}\n'
+            + '{"api_name": "tool1", "category": "A"}\n',
+            encoding="utf-8",
+        )
 
         result = load_tool_categories(str(tool_pool))
 
@@ -165,91 +193,106 @@ class TestLoadToolCategories:
 class TestMain:
     """Tests for main function."""
 
-    def test_main_missing_env_vars(self, tmp_path):
+    def test_main_missing_env_vars(self, tmp_path: Path):
         """Test exit when environment variables are missing."""
-        # Clear environment
-        env_backup = dict(os.environ)
-        os.environ.clear()
+        test_args = [
+            "generate_step_by_step.py",
+            "-n",
+            "1",
+            "-o",
+            str(tmp_path / "out.jsonl"),
+        ]
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch.object(sys, "argv", test_args),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main()
+        assert exc_info.value.code == 1
+
+    def test_main_with_env_vars(self, tmp_path: Path):
+        """Test a zero-datapoint run with configured API credentials."""
+        tool_pool = tmp_path / "tools.jsonl"
+        invocation_examples = tmp_path / "invocations.jsonl"
+        _ = tool_pool.write_text(
+            '{"api_name": "test_tool", "category": "Test"}\n',
+            encoding="utf-8",
+        )
+        _ = invocation_examples.write_text("", encoding="utf-8")
+        test_args = [
+            "generate_step_by_step.py",
+            "--mode",
+            "step-by-step",
+            "-n",
+            "0",
+            "-o",
+            str(tmp_path / "out.jsonl"),
+            "--tool-pool",
+            str(tool_pool),
+            "--invocation-examples",
+            str(invocation_examples),
+        ]
+        stdout = StringIO()
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "OPENAI_API_KEY": "test-key",
+                    "OPENAI_API_BASE": "http://test:8000/v1",
+                },
+                clear=True,
+            ),
+            patch.object(sys, "argv", test_args),
+            patch.object(sys, "stdout", stdout),
+        ):
+            main()
+        assert "Total generated: 0/0" in stdout.getvalue()
+
+    def test_main_multi_turn_passes_judge_client(self, tmp_path: Path):
+        tool_pool = tmp_path / "tools.jsonl"
+        invocation_examples = tmp_path / "invocations.jsonl"
+        _ = tool_pool.write_text(
+            '{"api_name": "test_tool", "category": "Test"}\n',
+            encoding="utf-8",
+        )
+        _ = invocation_examples.write_text("", encoding="utf-8")
+        captured: dict[str, object] = {}
+
+        def capture_multi_turn(**kwargs: object) -> list[object]:
+            captured.update(kwargs)
+            return []
 
         test_args = [
             "generate_step_by_step.py",
-            "-n", "1",
-            "-o", str(tmp_path / "out.jsonl"),
+            "--mode",
+            "multi-turn",
+            "-n",
+            "0",
+            "--judge-model",
+            "judge/model",
+            "--tool-pool",
+            str(tool_pool),
+            "--invocation-examples",
+            str(invocation_examples),
         ]
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "OPENAI_API_KEY": "test-key",
+                    "OPENAI_API_BASE": "http://test:8000/v1",
+                },
+                clear=True,
+            ),
+            patch.object(sys, "argv", test_args),
+            patch(
+                "generate_step_by_step.run_multi_turn",
+                side_effect=capture_multi_turn,
+            ),
+        ):
+            main()
 
-        with patch.object(sys, "argv", test_args):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-
-        # Should exit with error code
-        assert exc_info.value.code == 1
-
-        # Restore environment
-        os.environ.clear()
-        os.environ.update(env_backup)
-
-    def test_main_with_env_vars(self, tmp_path):
-        """Test main with environment variables set."""
-        env_backup = {}
-        try:
-            # Backup and set required env vars
-            for key in ["OPENAI_API_KEY", "OPENAI_API_BASE"]:
-                env_backup[key] = os.environ.get(key)
-            os.environ["OPENAI_API_KEY"] = "test-key"
-            os.environ["OPENAI_API_BASE"] = "http://test:8000/v1"
-
-            # Create mock tool pool
-            tool_pool = tmp_path / "tools.jsonl"
-            tool_pool.write_text('{"api_name": "test_tool", "category": "Test"}\n')
-
-            test_args = [
-                "generate_step_by_step.py",
-                "-n", "1",
-                "-a", "1",
-                "-o", str(tmp_path / "out.jsonl"),
-                "--tool-pool", str(tool_pool),
-            ]
-
-            with patch.object(sys, "argv", test_args):
-                # Mock the generator to avoid actual generation
-                with patch("generate_step_by_step.StepByStepGenerator") as mock_gen:
-                    mock_instance = MagicMock()
-                    # Create mock token_usage with actual integer values
-                    mock_token_usage = MagicMock()
-                    mock_token_usage.total_llm_calls = 5
-                    mock_token_usage.prompt_tokens = 1000
-                    mock_token_usage.completion_tokens = 500
-                    mock_token_usage.total_tokens = 1500
-
-                    mock_instance.generate_datapoint.return_value = MagicMock(
-                        trajectory=MagicMock(
-                            query="Test query",
-                            tools_used=["test_tool"],
-                        ),
-                        model_dump=lambda: {
-                            "trajectory": {"query": "Test", "steps": []},
-                            "verification_result": {"overall_verification_passed": True},
-                        },
-                        token_usage=mock_token_usage,
-                    )
-                    mock_gen.return_value = mock_instance
-
-                    with patch.object(sys, "stdout", StringIO()):
-                        # This may raise SystemExit(0) on success
-                        try:
-                            main()
-                        except SystemExit as e:
-                            assert e.code == 0
-                        except Exception:
-                            pass  # Other exceptions are fine for this test
-
-        finally:
-            # Restore environment
-            for key, value in env_backup.items():
-                if value is not None:
-                    os.environ[key] = value
-                elif key in os.environ:
-                    del os.environ[key]
+        assert captured["judge_client"] is not captured["llm_client"]
 
 
 class TestDiscardReasons:
@@ -290,10 +333,9 @@ class TestDiscardReasons:
 class TestOutputDirectory:
     """Tests for output directory creation."""
 
-    def test_output_dir_created(self, tmp_path):
+    def test_output_dir_created(self, tmp_path: Path):
         """Test that output directory is created if it doesn't exist."""
         nested_dir = tmp_path / "nested" / "output"
-        output_file = nested_dir / "data.jsonl"
 
         # Directory shouldn't exist yet
         assert not nested_dir.exists()
@@ -304,19 +346,19 @@ class TestOutputDirectory:
         assert nested_dir.exists()
         assert nested_dir.is_dir()
 
-    def test_output_file_written(self, tmp_path):
+    def test_output_file_written(self, tmp_path: Path):
         """Test that output file is written correctly."""
         output_file = tmp_path / "output.jsonl"
 
-        # Write some data
-        data = {"key": "value", "number": 42}
-        with open(output_file, "w") as f:
-            f.write(json.dumps(data) + "\n")
-
-        # Verify content
-        with open(output_file) as f:
-            line = f.readline().strip()
-            parsed = json.loads(line)
+        data: dict[str, object] = {"key": "value", "number": 42}
+        _ = output_file.write_text(
+            json.dumps(data) + "\n",
+            encoding="utf-8",
+        )
+        parsed = decode_json_object(
+            output_file.read_text(encoding="utf-8"),
+            source="test output",
+        )
 
         assert parsed["key"] == "value"
         assert parsed["number"] == 42

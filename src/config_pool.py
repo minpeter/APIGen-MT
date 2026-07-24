@@ -25,13 +25,11 @@ CHANGELOG:
 
 import copy
 import random
-from typing import Dict, List, Any
-
 
 _LOCKED_ALL = {"driver": "locked", "passenger": "locked", "rear_left": "locked", "rear_right": "locked"}
 _UNLOCKED_ALL = {"driver": "unlocked", "passenger": "unlocked", "rear_left": "unlocked", "rear_right": "unlocked"}
 
-VEHICLE_CONFIGS: List[Dict[str, Any]] = [
+VEHICLE_CONFIGS: list[dict[str, object]] = [
     {
         "remainingUnlockedDoors": 0, "fuelLevel": 15.0, "batteryVoltage": 12.8,
         "engineState": "stopped", "doorStatus": copy.deepcopy(_LOCKED_ALL),
@@ -145,7 +143,7 @@ VEHICLE_CONFIGS: List[Dict[str, Any]] = [
 ]
 
 
-TRADING_CONFIGS: List[Dict[str, Any]] = [
+TRADING_CONFIGS: list[dict[str, object]] = [
     {
         "account_info": {"account_id": 12345, "balance": 10000.0, "binding_card": 1974202140965533},
         "authenticated": False, "market_status": "Open", "order_counter": 12446,
@@ -259,7 +257,7 @@ TRADING_CONFIGS: List[Dict[str, Any]] = [
 ]
 
 
-TICKET_CONFIGS: List[Dict[str, Any]] = [
+TICKET_CONFIGS: list[dict[str, object]] = [
     {
         "tickets_queue": [
             {"id": 123456, "title": "System Error", "description": "There is a critical system error that needs immediate attention.", "status": "Open", "priority": 4, "created_by": "support_agent"},
@@ -310,7 +308,7 @@ TICKET_CONFIGS: List[Dict[str, Any]] = [
 ]
 
 
-TRAVEL_CONFIGS: List[Dict[str, Any]] = [
+TRAVEL_CONFIGS: list[dict[str, object]] = [
     {
         "credit_card_list": {
             "12345": {"card_number": "123456", "expiration_date": "12/2028", "cardholder_name": "Michael Smith", "card_verification_number": 465, "balance": 50000.0}
@@ -372,7 +370,7 @@ TRAVEL_CONFIGS: List[Dict[str, Any]] = [
 ]
 
 
-POSTING_CONFIGS: List[Dict[str, Any]] = [
+POSTING_CONFIGS: list[dict[str, object]] = [
     {
         "authenticated": False, "tweet_counter": 17,
         "tweets": {
@@ -501,7 +499,7 @@ POSTING_CONFIGS: List[Dict[str, Any]] = [
 ]
 
 
-MESSAGE_CONFIGS: List[Dict[str, Any]] = [
+MESSAGE_CONFIGS: list[dict[str, object]] = [
     {
         "workspace_id": "WS123456", "user_count": 10,
         "user_map": {
@@ -600,7 +598,7 @@ MESSAGE_CONFIGS: List[Dict[str, Any]] = [
 ]
 
 
-FILESYSTEM_CONFIGS: List[Dict[str, Any]] = [
+FILESYSTEM_CONFIGS: list[dict[str, object]] = [
     {
         "root": {
             "readme.txt": {"type": "file", "content": "Welcome to the workspace.\nThis is a shared document area.\nPlease follow the naming conventions."},
@@ -650,7 +648,7 @@ FILESYSTEM_CONFIGS: List[Dict[str, Any]] = [
 ]
 
 
-PERSONAS: List[Dict[str, str]] = [
+PERSONAS: list[dict[str, str]] = [
     {"name": "Akira Tanaka", "city": "Tokyo", "country": "Japan"},
     {"name": "Yuki Sato", "city": "Osaka", "country": "Japan"},
     {"name": "Maria Garcia", "city": "Barcelona", "country": "Spain"},
@@ -705,7 +703,7 @@ PERSONAS: List[Dict[str, str]] = [
     {"name": "Sophie Chen", "city": "Vancouver", "country": "Canada"},
 ]
 
-CITIES: List[Dict[str, str]] = [
+CITIES: list[dict[str, str]] = [
     {"city": "New York", "state": "NY", "code": "JFK"},
     {"city": "Los Angeles", "state": "CA", "code": "LAX"},
     {"city": "San Francisco", "state": "CA", "code": "SFO"},
@@ -759,7 +757,9 @@ CITIES: List[Dict[str, str]] = [
 ]
 
 
-def generate_query_seed(rng: random.Random = None) -> dict:
+def generate_query_seed(
+    rng: random.Random | None = None,
+) -> dict[str, dict[str, str]]:
     """Pick a random persona and city for query/argument diversity.
 
     Args:
@@ -769,7 +769,9 @@ def generate_query_seed(rng: random.Random = None) -> dict:
     return {"persona": choice(PERSONAS), "city": choice(CITIES)}
 
 
-def generate_random_config(seed: int = None) -> Dict[str, Any]:
+def generate_random_config(
+    seed: int | None = None,
+) -> dict[str, dict[str, object]]:
     """Pick one variation per domain and combine into a full config dict.
 
     Args:
@@ -780,7 +782,7 @@ def generate_random_config(seed: int = None) -> Dict[str, Any]:
     """
     rng = random.Random(seed)
 
-    config = {
+    config: dict[str, dict[str, object]] = {
         "GorillaFileSystem": copy.deepcopy(rng.choice(FILESYSTEM_CONFIGS)),
         "MathAPI": {"numbers": [275.5, 299.75, 250.65, 310.85, 290.1]},
         "MessageAPI": copy.deepcopy(rng.choice(MESSAGE_CONFIGS)),

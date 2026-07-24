@@ -5,41 +5,61 @@ for generating individual steps in the conversation trajectory.
 """
 
 import pytest
+
 from apigen_step_by_step import (
-    StepByStepGenerator,
-    TrajectoryStep,
-    ToolCallWithOutput,
     StepSelectionResult,
+    ToolCallWithOutput,
+    TrajectoryStep,
 )
+from llm_request_helpers import decode_json_object
+from tests.mocks.mock_llm_client import MockLLMClient
 from tests.mocks.mock_llm_responses import (
-    VALID_STEP_RESPONSE,
-    VALID_STEP_RESPONSE_PLAIN_JSON,
-    STEP_RESPONSE_MISSING_TOOL_NAME,
-    STEP_RESPONSE_MISSING_ARGUMENTS,
-    STEP_RESPONSE_MISSING_REASONING,
     STEP_RESPONSE_EMPTY,
+    STEP_RESPONSE_MISSING_ARGUMENTS,
+    STEP_RESPONSE_MISSING_TOOL_NAME,
     STEP_RESPONSE_NOT_JSON,
     STEP_RESPONSE_WITH_PLACEHOLDER,
+    VALID_STEP_RESPONSE,
+    VALID_STEP_RESPONSE_PLAIN_JSON,
 )
+from tests.unit.step_generation_types import (
+    StepGenerationHarness,
+    StepGenerationToolManager,
+    is_string_list,
+)
+
+
+@pytest.fixture
+def mock_tools() -> StepGenerationToolManager:
+    """Return the typed tool manager used by this test module."""
+    return StepGenerationToolManager()
+
+
+@pytest.fixture
+def generator(
+    mock_llm: MockLLMClient,
+    mock_tools: StepGenerationToolManager,
+) -> StepGenerationHarness:
+    """Create a generator with typed mock dependencies."""
+    return StepGenerationHarness(
+        llm_client=mock_llm,
+        tool_manager=mock_tools,
+        num_actions=2,
+    )
 
 
 class TestGenerateNextStep:
     """Tests for _generate_next_step method."""
 
-    @pytest.fixture
-    def generator(self, mock_llm, mock_tools):
-        """Create a generator with mock dependencies."""
-        return StepByStepGenerator(
-            llm_client=mock_llm,
-            tool_manager=mock_tools,
-            num_actions=2,
-        )
-
-    def test_next_step_success(self, generator, mock_llm):
+    def test_next_step_success(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test successful step generation."""
         mock_llm.set_responses([VALID_STEP_RESPONSE])
 
-        result = generator._generate_next_step(
+        result = generator.generate_next_step(
             query="Search flights and book hotel",
             trajectory=[],
             execution_context={},
@@ -52,11 +72,15 @@ class TestGenerateNextStep:
         assert "origin" in result.arguments
         assert result.reasoning != ""
 
-    def test_next_step_plain_json_response(self, generator, mock_llm):
+    def test_next_step_plain_json_response(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test step generation with plain JSON (no code block)."""
         mock_llm.set_responses([VALID_STEP_RESPONSE_PLAIN_JSON])
 
-        result = generator._generate_next_step(
+        result = generator.generate_next_step(
             query="Test",
             trajectory=[],
             execution_context={},
@@ -66,7 +90,11 @@ class TestGenerateNextStep:
 
         assert result.tool_name == "book_hotel"
 
-    def test_next_step_with_trajectory_context(self, generator, mock_llm):
+    def test_next_step_with_trajectory_context(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test that trajectory context is passed to LLM."""
         mock_llm.set_responses([VALID_STEP_RESPONSE])
 
@@ -81,7 +109,7 @@ class TestGenerateNextStep:
             ],
         )
 
-        generator._generate_next_step(
+        _ = generator.generate_next_step(
             query="Book hotel",
             trajectory=[previous_step],
             execution_context={"flight_id": "FL001"},
@@ -94,11 +122,15 @@ class TestGenerateNextStep:
         prompt_text = str(mock_llm.captured_prompts[0])
         assert "search_flights" in prompt_text
 
-    def test_next_step_missing_tool_name(self, generator, mock_llm):
+    def test_next_step_missing_tool_name(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test handling of response missing tool_name."""
         mock_llm.set_responses([STEP_RESPONSE_MISSING_TOOL_NAME])
 
-        result = generator._generate_next_step(
+        result = generator.generate_next_step(
             query="Test",
             trajectory=[],
             execution_context={},
@@ -106,14 +138,17 @@ class TestGenerateNextStep:
             step_num=1,
         )
 
-        # Should return empty result when tool_name is missing
-        assert result.tool_name == ""
+        assert result.tool_name == "__ERROR__"
 
-    def test_next_step_missing_arguments(self, generator, mock_llm):
+    def test_next_step_missing_arguments(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test handling of response missing arguments."""
         mock_llm.set_responses([STEP_RESPONSE_MISSING_ARGUMENTS])
 
-        result = generator._generate_next_step(
+        result = generator.generate_next_step(
             query="Test",
             trajectory=[],
             execution_context={},
@@ -125,32 +160,40 @@ class TestGenerateNextStep:
         assert result.tool_name == "search_flights"
         assert result.arguments == {}
 
-    def test_next_step_empty_response(self, generator, mock_llm):
+    def test_next_step_empty_response(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test handling of empty response."""
         mock_llm.set_responses([STEP_RESPONSE_EMPTY])
 
-        result = generator._generate_next_step(
+        result = generator.generate_next_step(
             query="Test",
             trajectory=[],
             execution_context={},
             expected_tools=["tool1"],
             step_num=1,
-    )
+        )
 
         assert result.tool_name == "__ERROR__"
         assert result.arguments == {}
 
-    def test_next_step_not_json_response(self, generator, mock_llm):
+    def test_next_step_not_json_response(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test handling of non-JSON response."""
         mock_llm.set_responses([STEP_RESPONSE_NOT_JSON])
 
-        result = generator._generate_next_step(
+        result = generator.generate_next_step(
             query="Test",
             trajectory=[],
             execution_context={},
             expected_tools=["tool1"],
             step_num=1,
-    )
+        )
 
         # Should return __ERROR__ result on JSON parse error
         assert result.tool_name == "__ERROR__"
@@ -159,18 +202,12 @@ class TestGenerateNextStep:
 class TestSimulateToolExecution:
     """Tests for _simulate_tool_execution method."""
 
-    @pytest.fixture
-    def generator(self, mock_llm, mock_tools):
-        """Create a generator with mock dependencies."""
-        return StepByStepGenerator(
-            llm_client=mock_llm,
-            tool_manager=mock_tools,
-            num_actions=2,
-        )
-
-    def test_simulate_execution_success(self, generator, mock_tools):
+    def test_simulate_execution_success(
+        self,
+        generator: StepGenerationHarness,
+    ) -> None:
         """Test successful tool execution."""
-        result = generator._simulate_tool_execution(
+        result = generator.simulate_tool_execution(
             tool_name="search_flights",
             arguments={"origin": "NYC", "destination": "LA"},
             execution_context={},
@@ -179,9 +216,13 @@ class TestSimulateToolExecution:
         # Should return canned output from mock
         assert result is not None
 
-    def test_simulate_with_placeholder_processing(self, generator, mock_tools):
+    def test_simulate_with_placeholder_processing(
+        self,
+        generator: StepGenerationHarness,
+        mock_tools: StepGenerationToolManager,
+    ) -> None:
         """Test that placeholders are processed before execution."""
-        result = generator._simulate_tool_execution(
+        _ = generator.simulate_tool_execution(
             tool_name="search_flights",
             arguments={"origin": "{{city}}"},
             execution_context={"city": "NYC"},
@@ -197,28 +238,25 @@ class TestSimulateToolExecution:
 class TestBuildTrajectory:
     """Tests for trajectory building."""
 
-    @pytest.fixture
-    def generator(self, mock_llm, mock_tools):
-        """Create a generator with mock dependencies."""
-        return StepByStepGenerator(
-            llm_client=mock_llm,
-            tool_manager=mock_tools,
-            num_actions=2,
-        )
-
-    def test_trajectory_step_numbering(self, generator, mock_llm):
+    def test_trajectory_step_numbering(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test that steps are numbered sequentially."""
         from tests.mocks.mock_llm_responses import (
             VALID_QUERY_RESPONSE_2_TOOLS,
             VALID_SEQUENCE_RESPONSE,
         )
 
-        mock_llm.set_responses([
-            VALID_QUERY_RESPONSE_2_TOOLS,
-            VALID_SEQUENCE_RESPONSE,
-            VALID_STEP_RESPONSE,
-            VALID_STEP_RESPONSE,
-        ])
+        mock_llm.set_responses(
+            [
+                VALID_QUERY_RESPONSE_2_TOOLS,
+                VALID_SEQUENCE_RESPONSE,
+                VALID_STEP_RESPONSE,
+                VALID_STEP_RESPONSE,
+            ]
+        )
 
         datapoint = generator.generate_datapoint(query_retries=0)
 
@@ -226,12 +264,16 @@ class TestBuildTrajectory:
             for i, step in enumerate(datapoint.trajectory.steps, 1):
                 assert step.step_number == i
 
-    def test_execution_context_accumulation(self, generator, mock_llm, mock_tools):
+    def test_execution_context_accumulation(
+        self,
+        generator: StepGenerationHarness,
+        mock_tools: StepGenerationToolManager,
+    ) -> None:
         """Test that execution context accumulates outputs."""
         mock_tools.reset()
 
         # Simulate execution and check context
-        output1 = generator._simulate_tool_execution(
+        output1 = generator.simulate_tool_execution(
             tool_name="search_flights",
             arguments={"origin": "NYC"},
             execution_context={},
@@ -239,7 +281,7 @@ class TestBuildTrajectory:
 
         context = {"search_flights_output": output1}
 
-        output2 = generator._simulate_tool_execution(
+        output2 = generator.simulate_tool_execution(
             tool_name="book_hotel",
             arguments={"location": "LAX"},
             execution_context=context,
@@ -250,41 +292,42 @@ class TestBuildTrajectory:
         context["book_hotel_output"] = output2
         assert "book_hotel_output" in context
 
-    def test_tools_used_tracking(self, generator, mock_llm):
+    def test_tools_used_tracking(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test that tools_used tracks unique tools."""
         from tests.mocks.mock_llm_responses import VALID_QUERY_RESPONSE_2_TOOLS
 
-        mock_llm.set_responses([
-            VALID_QUERY_RESPONSE_2_TOOLS,
-            VALID_STEP_RESPONSE,
-            VALID_STEP_RESPONSE,
-        ])
+        mock_llm.set_responses(
+            [
+                VALID_QUERY_RESPONSE_2_TOOLS,
+                VALID_STEP_RESPONSE,
+                VALID_STEP_RESPONSE,
+            ]
+        )
 
         # Parse expected tools from response
-        import json
         response_text = VALID_QUERY_RESPONSE_2_TOOLS
-        # Extract JSON
         json_str = response_text.split("```json")[1].split("```")[0].strip()
-        data = json.loads(json_str)
-        expected_tools = data["expected_tools"]
+        data = decode_json_object(json_str, source="query fixture")
+        expected_tools = data.get("expected_tools")
+        assert is_string_list(expected_tools)
 
         assert len(expected_tools) == 2
         assert len(set(expected_tools)) == len(expected_tools)  # No duplicates
+        assert generator.target_num_actions == len(expected_tools)
 
 
 class TestGenerateFinalResponse:
     """Tests for _generate_final_response method."""
 
-    @pytest.fixture
-    def generator(self, mock_llm, mock_tools):
-        """Create a generator with mock dependencies."""
-        return StepByStepGenerator(
-            llm_client=mock_llm,
-            tool_manager=mock_tools,
-            num_actions=2,
-        )
-
-    def test_final_response_generation(self, generator, mock_llm):
+    def test_final_response_generation(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test final response generation."""
         from tests.mocks.mock_llm_responses import VALID_FINAL_RESPONSE
 
@@ -303,7 +346,7 @@ class TestGenerateFinalResponse:
             ),
         ]
 
-        result = generator._generate_final_response(
+        result = generator.generate_final_response(
             query="Find flights",
             trajectory=trajectory,
             execution_context={},
@@ -311,7 +354,11 @@ class TestGenerateFinalResponse:
 
         assert result == VALID_FINAL_RESPONSE.strip()
 
-    def test_final_response_with_error(self, generator, mock_llm):
+    def test_final_response_with_error(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test final response error handling."""
         mock_llm.set_exception(RuntimeError("LLM Error"))
 
@@ -322,7 +369,7 @@ class TestGenerateFinalResponse:
             ),
         ]
 
-        result = generator._generate_final_response(
+        result = generator.generate_final_response(
             query="Test",
             trajectory=trajectory,
             execution_context={},
@@ -335,20 +382,15 @@ class TestGenerateFinalResponse:
 class TestStepWithPlaceholder:
     """Tests for step generation with placeholders."""
 
-    @pytest.fixture
-    def generator(self, mock_llm, mock_tools):
-        """Create a generator with mock dependencies."""
-        return StepByStepGenerator(
-            llm_client=mock_llm,
-            tool_manager=mock_tools,
-            num_actions=2,
-        )
-
-    def test_step_with_placeholder_argument(self, generator, mock_llm):
+    def test_step_with_placeholder_argument(
+        self,
+        generator: StepGenerationHarness,
+        mock_llm: MockLLMClient,
+    ) -> None:
         """Test step generation with placeholder in arguments."""
         mock_llm.set_responses([STEP_RESPONSE_WITH_PLACEHOLDER])
 
-        result = generator._generate_next_step(
+        result = generator.generate_next_step(
             query="Send message about flight",
             trajectory=[
                 TrajectoryStep(

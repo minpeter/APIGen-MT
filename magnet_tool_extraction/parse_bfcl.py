@@ -55,11 +55,79 @@ This parser:
 
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeIs
 
-from tool_definition import ToolDefinition, ToolParameters
+from magnet_tool_extraction.tool_definition import ToolDefinition, ToolParameters
 
 logger = logging.getLogger(__name__)
+
+_JSON_LOADS: Callable[[str], object] = json.loads
+
+
+def _is_object_dict(value: object) -> TypeIs[dict[object, object]]:
+    """Narrow an unknown mapping without introducing an untyped dictionary."""
+    return isinstance(value, dict)
+
+
+def _is_json_object(value: object) -> TypeIs[dict[str, object]]:
+    """Return whether a decoded JSON value is an object with string keys."""
+    return _is_object_dict(value) and all(isinstance(key, str) for key in value)
+
+
+def _is_object_list(value: object) -> TypeIs[list[object]]:
+    """Narrow an unknown JSON array without checker casts."""
+    return isinstance(value, list)
+
+
+def _load_json_records(content: str, source: Path) -> list[object]:
+    """Decode a JSON array/object or a JSON-lines document."""
+    try:
+        decoded = _JSON_LOADS(content)
+    except json.JSONDecodeError:
+        records: list[object] = []
+        for line_number, raw_line in enumerate(content.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                records.append(_JSON_LOADS(line))
+            except json.JSONDecodeError as exc:
+                logger.debug(
+                    "Skipping invalid JSON line %d in %s: %s",
+                    line_number,
+                    source,
+                    exc,
+                )
+        return records
+
+    return decoded if _is_object_list(decoded) else [decoded]
+
+
+def _get_json_object(record: dict[str, object], key: str) -> dict[str, object]:
+    """Read an optional nested JSON object, rejecting malformed schemas."""
+    value = record.get(key, {})
+    if not _is_json_object(value):
+        raise TypeError(f"{key!r} must be a JSON object")
+    return value
+
+
+def _get_string(record: dict[str, object], key: str) -> str:
+    """Read an optional string field, rejecting malformed schemas."""
+    value = record.get(key, "")
+    if not isinstance(value, str):
+        raise TypeError(f"{key!r} must be a string")
+    return value
+
+
+def _get_string_list(record: dict[str, object], key: str) -> list[str]:
+    """Read an optional array whose entries must all be strings."""
+    value = record.get(key, [])
+    if not _is_object_list(value) or not all(isinstance(item, str) for item in value):
+        raise TypeError(f"{key!r} must be an array of strings")
+    return [item for item in value if isinstance(item, str)]
+
 
 # BFCL multi-turn test file names (relative to the ``data/`` directory)
 BFCL_MULTI_TURN_FILES = [
@@ -87,7 +155,7 @@ def _resolve_category(class_name: str) -> str:
 
 
 def _parse_openai_parameters(
-    params_schema: dict,
+    params_schema: dict[str, object],
 ) -> ToolParameters:
     """
     Convert an OpenAI-style parameters schema to a :class:`ToolParameters`.
@@ -102,10 +170,9 @@ def _parse_openai_parameters(
         A :class:`ToolParameters` with ``properties``, ``required``, and
         ``optional`` filled in.
     """
-    properties: dict = params_schema.get("properties", {})
-    required_names: list[str] = params_schema.get("required", [])
-    all_names: list[str] = list(properties.keys())
-    optional_names: list[str] = [n for n in all_names if n not in required_names]
+    properties = _get_json_object(params_schema, "properties")
+    required_names = _get_string_list(params_schema, "required")
+    optional_names = [name for name in properties if name not in required_names]
 
     return ToolParameters(
         type="dict",
@@ -137,9 +204,7 @@ def parse_bfcl_func_doc(
     """
     func_doc_dir = Path(func_doc_dir)
     if not func_doc_dir.is_dir():
-        raise FileNotFoundError(
-            f"BFCL func-doc directory not found: {func_doc_dir}"
-        )
+        raise FileNotFoundError(f"BFCL func-doc directory not found: {func_doc_dir}")
 
     json_files = sorted(func_doc_dir.glob("*.json"))
     if class_names is not None:
@@ -159,51 +224,30 @@ def parse_bfcl_func_doc(
         )
 
         try:
-            with json_path.open(encoding="utf-8") as fh:
-                content = fh.read().strip()
-                
-            # Try to parse as JSON array first, then fall back to JSON-lines
+            content = json_path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            logger.warning("Skipping %s — could not read: %s", json_path, exc)
+            continue
+
+        for raw_func in _load_json_records(content, json_path):
+            if not _is_json_object(raw_func):
+                logger.debug("Skipping non-object function in %s", json_path)
+                continue
+
             try:
-                func_list = json.loads(content)
-                if not isinstance(func_list, list):
-                    func_list = [func_list]
-            except json.JSONDecodeError:
-                # Parse as JSONL (one JSON object per line)
-                func_list = []
-                for line in content.splitlines():
-                    line = line.strip()
-                    if line:
-                        try:
-                            func_list.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            continue
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Skipping %s — could not parse: %s", json_path, exc)
-            continue
+                api_name = _get_string(raw_func, "name").strip()
+                api_description = _get_string(raw_func, "description")
+                params_schema = _get_json_object(raw_func, "parameters")
+                parameters = _parse_openai_parameters(params_schema)
+            except TypeError as exc:
+                logger.warning("Skipping malformed function in %s: %s", json_path, exc)
+                continue
 
-        if not isinstance(func_list, list):
-            logger.warning(
-                "Skipping %s — expected a JSON list, got %s",
-                json_path,
-                type(func_list).__name__,
-            )
-            continue
-
-        for func in func_list:
-            api_name: str = func.get("name", "").strip()
             if not api_name:
                 continue
-
-            api_description: str = func.get("description", "")
-            params_schema: dict = func.get("parameters", {})
-
-            if require_parameters and not params_schema.get("properties"):
-                logger.debug(
-                    "Skipping %s::%s — no parameters", class_name, api_name
-                )
+            if require_parameters and not parameters.properties:
+                logger.debug("Skipping %s::%s — no parameters", class_name, api_name)
                 continue
-
-            parameters = _parse_openai_parameters(params_schema)
 
             definitions.append(
                 ToolDefinition(
@@ -253,24 +297,16 @@ def discover_bfcl_classes(data_dir: str | Path) -> set[str]:
             logger.warning("Could not read %s: %s", fpath, exc)
             continue
 
-        # Try to parse as a JSON array first, then fall back to JSON-lines.
-        try:
-            entries = json.loads(content)
-            if isinstance(entries, dict):
-                entries = [entries]
-        except json.JSONDecodeError:
-            entries = []
-            for line in content.splitlines():
-                line = line.strip()
-                if line:
-                    try:
-                        entries.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        pass
-
-        for entry in entries:
-            for cls in entry.get("involved_classes", []):
-                class_names.add(cls)
+        for raw_entry in _load_json_records(content, fpath):
+            if not _is_json_object(raw_entry):
+                logger.debug("Skipping non-object test entry in %s", fpath)
+                continue
+            try:
+                involved_classes = _get_string_list(raw_entry, "involved_classes")
+            except TypeError as exc:
+                logger.debug("Skipping malformed entry in %s: %s", fpath, exc)
+                continue
+            class_names.update(involved_classes)
 
     logger.info(
         "Discovered %d BFCL class names from test files in %s",
@@ -315,38 +351,37 @@ def parse_bfcl_jsonl(
             logger.warning("Could not read %s: %s", json_path, exc)
             continue
 
-        # Handle JSON array or JSON-lines
-        try:
-            entries = json.loads(content)
-            if not isinstance(entries, list):
-                entries = [entries]
-        except json.JSONDecodeError:
-            entries = []
-            for line in content.splitlines():
-                if line.strip():
-                    try:
-                        entries.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-
-        # Each entry has a "function" list
-        for entry in entries:
-            func_list = entry.get("function", [])
-            if not isinstance(func_list, list):
+        # Each entry has a "function" list.
+        for raw_entry in _load_json_records(content, json_path):
+            if not _is_json_object(raw_entry):
+                logger.debug("Skipping non-object entry in %s", json_path)
+                continue
+            raw_functions = raw_entry.get("function", [])
+            if not _is_object_list(raw_functions):
+                logger.debug("Skipping malformed function list in %s", json_path)
                 continue
 
-            for func in func_list:
-                api_name = func.get("name", "").strip()
+            for raw_func in raw_functions:
+                if not _is_json_object(raw_func):
+                    logger.debug("Skipping non-object function in %s", json_path)
+                    continue
+                try:
+                    api_name = _get_string(raw_func, "name").strip()
+                    api_description = _get_string(raw_func, "description")
+                    params_schema = _get_json_object(raw_func, "parameters")
+                    parameters = _parse_openai_parameters(params_schema)
+                except TypeError as exc:
+                    logger.warning(
+                        "Skipping malformed function in %s: %s",
+                        json_path,
+                        exc,
+                    )
+                    continue
+
                 if not api_name or api_name in unique_functions:
                     continue
-
-                api_description = func.get("description", "")
-                params_schema = func.get("parameters", {})
-
-                if require_parameters and not params_schema.get("properties"):
+                if require_parameters and not parameters.properties:
                     continue
-
-                parameters = _parse_openai_parameters(params_schema)
 
                 # For these generic tools, we don't have a class_name.
                 # Use a generic category based on the file name or just "General".
@@ -365,7 +400,9 @@ def parse_bfcl_jsonl(
                 unique_functions[api_name] = ToolDefinition(
                     category=category,
                     tool_name="BFCL Generic",
-                    tool_description="Functions from the Berkeley Function Calling Leaderboard.",
+                    tool_description=(
+                        "Functions from the Berkeley Function Calling Leaderboard."
+                    ),
                     api_name=api_name,
                     api_description=api_description,
                     parameters=parameters,

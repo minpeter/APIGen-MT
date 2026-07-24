@@ -30,3 +30,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src", "tools"]
+
+[tool.basedpyright]
+pythonVersion = "3.13"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "."
+extraPaths = ["src"]

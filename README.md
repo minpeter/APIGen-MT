@@ -1,9 +1,6 @@
 # APIGen-MT Simulation (Python Implementation)
 
-> [!NOTE]
-> WIP: I probably won't be able to finish this task :/
-
-This project provides a Python implementation simulating the core concepts of the **APIGen-MT** framework described in the paper "[APIGen-MT: Agentic PIpeline for Multi-Turn Data Generation via Simulated Agent-Human Interplay](https://arxiv.org/abs/2504.03601v2)" (arXiv:2504.03601).
+This project provides a Python implementation of the core concepts in **APIGen-MT**, described in "[APIGen-MT: Agentic Pipeline for Multi-Turn Data Generation via Simulated Agent-Human Interplay](https://arxiv.org/abs/2504.03601v4)" (arXiv:2504.03601).
 
 The goal is to generate synthetic multi-turn conversational data for training AI agents capable of tool use, following the two-phase approach outlined in the paper:
 1.  **Phase 1:** Generation and validation of a task "blueprint" containing a user query (`q`), a ground-truth sequence of tool calls (`a_gt`), and an expected outcome description (`o_gt`).
@@ -79,50 +76,74 @@ This implementation utilizes Large Language Models (LLMs) via the Friendli.ai AP
 
 ## How to Run
 
-1.  Save the code as a Python file (e.g., `apigen_mt_simulation.py`).
-2.  Set the `FRIENDLI_TOKEN` environment variable.
-3.  Run the script from your terminal:
-    ```bash
-    python apigen_mt_simulation.py
-    ```
-4.  The script will print progress and save the generated data to a `.jsonl` file upon completion.
+Install the project and optional development dependencies:
 
-## Limitations and Differences from APIGen-MT Paper
+```bash
+uv sync --all-extras
+```
 
-This implementation is a simplified simulation of the APIGen-MT framework and has several limitations compared to the methodology described in the paper:
+Set `OPENAI_API_KEY` and, when needed, `OPENAI_API_BASE`, then inspect the real CLI:
 
-* **Simplified Context:** Does not use the paper's sophisticated context preparation (API graph, policy/domain data/persona samplers). Blueprints are generated based only on basic tool descriptions.
-* **Simplified Validation (Phase 1):**
-    * Execution checks are basic (tool existence, argument structure via Pydantic) and do not involve simulating a real environment state.
-    * **Policy compliance checks are not implemented.**
-    * The review committee is simulated with a single LLM call, lacking multi-judge voting.
-    * **The agentic feedback/refinement loop based on validation/review failures is not implemented** (only basic retries).
-* **Missing Techniques:** Does not implement Reverse Task Recombination for complex task generation.
-* **Fake Environment (Phase 2):** Tool functions return fixed fake data, not interacting with a real, stateful environment.
-* **Simplified Trajectory Validation (Phase 2):** Validation only compares the sequence of executed tool calls (`executed_actions`) against the ground truth (`a_gt`). It does not perform state-based or output-based (`o_gt`) validation described in the paper.
-* **Basic User Simulation (Phase 2):** User simulation lacks persona integration and advanced stabilization techniques (Best-of-N sampling, self-critique).
-* **No Handling of Failed Trajectories:** Failed trajectories are simply discarded; they are not used for potential contrastive learning.
+```bash
+uv run python main.py --help
+```
 
-In essence, this code serves as a functional proof-of-concept for the core two-phase structure and function calling integration, but lacks the advanced components required to generate the high-fidelity, diverse, and robustly validated data described in the APIGen-MT paper.
+Generate step-by-step or multi-turn data:
 
-## Future Work (TODOs)
+```bash
+uv run python main.py --mode step-by-step --num-datapoints 10 --num-actions 2
+uv run python main.py --mode multi-turn --num-datapoints 10 --num-turns 3
+```
 
-* **Implement Advanced Context Samplers:** Integrate policy, domain data, persona samplers, and potentially API graph logic for richer blueprint generation (Phase 1).
-* **Implement Policy Compliance Checks:** Add mechanisms to verify blueprint actions and trajectory actions against predefined rules (Phase 1 & 2).
-* **Enhance Blueprint Review:** Implement multi-LLM review committee with majority voting (Phase 1).
-* **Implement Feedback Loop:** Add logic for the LLM generator to reflect on failure reasons and refine blueprints (Phase 1).
-* **Implement Reverse Task Recombination:** Allow building complex blueprints from simpler validated ones (Phase 1).
-* **Integrate Real Environment:** Replace fake tool functions with calls to a real executable environment or a more sophisticated simulator (Phase 2).
-* **Implement Advanced Trajectory Validation:** Add state-based checks and comparison against `o_gt` (Phase 2).
-* **Enhance User Simulation:** Integrate personas and stabilization techniques (BoN, self-critique) (Phase 2).
-* **Explore Failed Trajectory Use:** Investigate methods to leverage failed trajectories for training (e.g., contrastive learning).
+Deterministically replay a generated JSON or JSONL trajectory without an LLM call:
+
+```bash
+uv run python main.py \
+  --verify-trajectory data/generated/example.jsonl \
+  --verification-output verification.json
+```
+
+The verification command exits `0` for reproducible trajectories, `1` for output/state mismatches, and `2` when deterministic verification is unavailable or the input is invalid.
+
+## Implemented Validation
+
+For tools with local Python implementations, final acceptance now:
+
+1. Restores the recorded initial API state.
+2. Replays resolved tool calls.
+3. Compares structured outputs and recorded pre/post state.
+4. Rejects replay errors or invalid recorded state verdicts.
+5. Restores the caller's live state even when replay fails.
+6. Stores verification results for both step-by-step and multi-turn datapoints.
+
+Tools without a local implementation are marked `unavailable`; they are never reported as deterministically verified.
+
+## Remaining Differences from the Paper
+
+The official APIGen-MT generation pipeline is not publicly released, so this repository does not claim source-level reproduction. Material differences remain:
+
+* Context sampling uses local configuration/persona seeds rather than the paper's API dependency-graph random walks.
+* One configurable judge is available; the paper's independent reviewer committee and majority policy are not reproduced.
+* Reverse task recombination and Best-of-N user simulation are not implemented.
+* Deterministic replay proves artifact integrity. It does not replace domain-specific semantic assertions over independent `o_gt` targets.
+* LLM-simulated tools remain non-authoritative until a local executable implementation or task-specific verifier exists.
+
+These omissions are deliberate. Follow-up stateful-agent work consistently favors executable outcome checks before adding more generation or reviewer complexity:
+
+* [tau-bench](https://arxiv.org/abs/2406.12045)
+* [AppWorld](https://arxiv.org/abs/2407.18901)
+* [ToolSandbox](https://arxiv.org/abs/2408.04682)
+* [tau2-bench](https://arxiv.org/abs/2506.07982)
+* [ToolACE-MT](https://arxiv.org/abs/2508.12685)
+* [EigenData](https://arxiv.org/abs/2601.22607)
+* [ToolMind](https://arxiv.org/abs/2511.15718)
 
 ## Reference
 
 This project is based on the concepts presented in the APIGen-MT paper:
 
-* **Paper (arXiv):** [https://arxiv.org/abs/2504.03601v2](https://arxiv.org/abs/2504.03601v2)
-* **Paper (HTML):** [https://arxiv.org/html/2504.03601v2](https://arxiv.org/html/2504.03601v2)
+* **Paper (arXiv):** [https://arxiv.org/abs/2504.03601v4](https://arxiv.org/abs/2504.03601v4)
+* **Paper (HTML):** [https://arxiv.org/html/2504.03601v4](https://arxiv.org/html/2504.03601v4)
 * **Project Website:** [https://apigen-mt.github.io/](https://apigen-mt.github.io/)
 
 **Citation:**

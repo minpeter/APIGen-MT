@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "evidenceLayoutVersion": 2,
+  "createdAt": "2026-07-24T07:48:54.974Z",
+  "updatedAt": "2026-07-24T11:38:45.781Z",
+  "briefPath": ".omo/ulw-loop/apigen-mt-deslop-20260724/brief.md",
+  "goalsPath": ".omo/ulw-loop/apigen-mt-deslop-20260724/goals.json",
+  "ledgerPath": ".omo/ulw-loop/apigen-mt-deslop-20260724/ledger.jsonl",
+  "codexGoalMode": "aggregate",
+  "goals": [
+    {
+      "id": "G001-remove-ai-generated-slop-repository",
+      "title": "Remove AI-generated slop repository-wide from APIGen-MT while preserv...",
+      "objective": "Remove AI-generated slop repository-wide from APIGen-MT while preserving public behavior; exhaustively research the original APIGen-MT paper (arXiv:2504.03601), its released implementation, and all materially relevant follow-up research on multi-turn tool-use data synthesis, stateful validation, user simulation, self-correction, and diversity; select and implement the smallest best-supported upgrade; prove every behavior change RED-to-GREEN; run real CLI help, deterministic happy-path generation, and malformed-input scenarios; require clean tests, diagnostics, lint/typecheck/static checks, cleanup receipts, and unconditional independent heavy-tier review. Stop immediately when all cited research claims converge, cleanup and upgrade criteria pass on the frozen tree, real-surface artifacts are non-empty, and no QA resources remain.",
+      "status": "pending",
+      "successCriteria": [
+        {
+          "id": "C001",
+          "scenario": "A base installation invokes the real generation CLI help and a deterministic fixture-backed valid trajectory is accepted and written without requiring optional ML packages or external writes.",
+          "userModel": "happy",
+          "expectedEvidence": "Non-empty terminal transcripts with exit code 0, parsed output artifact assertions, and cleanup receipt.",
+          "essential": true,
+          "capturedEvidence": "Isolated base-dependency main.py --help exited 0 with --verify-trajectory visible; real MessageAPI fixture replay returned verified/checked_calls=1/exit 0; integration artifact assertions passed; no external API write.",
+          "status": "pass",
+          "capturedAt": "2026-07-24T11:38:45.748Z"
+        },
+        {
+          "id": "C002",
+          "scenario": "edge case (boundary/empty/malformed)",
+          "userModel": "edge",
+          "expectedEvidence": "Replace via revise_criterion with boundary or malformed-input proof for: Remove AI-generated slop repository-wide from APIGen-MT while preserving publ....",
+          "essential": true,
+          "capturedEvidence": "Failing-first tests captured accepted tampered output/state/replay exception; current deterministic suite passes output/pre/post-state, multi-call, placeholder, state restoration, read-only, unavailable, judge, and multi-turn cases; real tampered CLI exit 1 and malformed exit 2; no persistent QA resources.",
+          "status": "pass",
+          "capturedAt": "2026-07-24T11:38:45.781Z"
+        },
+        {
+          "id": "C003",
+          "scenario": "regression: adjacent surface still works",
+          "userModel": "regression",
+          "expectedEvidence": "Replace via revise_criterion with regression proof for neighboring behavior after: Remove AI-generated slop repository-wide from APIGen-MT while preserving publ....",
+          "essential": false,
+          "capturedEvidence": null,
+          "status": "pending"
+        }
+      ],
+      "attempt": 0,
+      "createdAt": "2026-07-24T07:48:54.974Z",
+      "updatedAt": "2026-07-24T11:38:45.781Z"
+    }
+  ],
+  "codexObjective": "Complete the durable ulw-loop plan in .omo/ulw-loop/apigen-mt-deslop-20260724/goals.json, including later accepted/appended stories, under the original brief constraints; use .omo/ulw-loop/apigen-mt-deslop-20260724/ledger.jsonl as the audit trail."
+}

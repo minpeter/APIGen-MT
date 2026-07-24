@@ -1,228 +1,201 @@
-"""Auto-generated TicketAPI implementation."""
+"""Stateful support-ticket API."""
 
-import json
-import math
-import re
-import copy
-import datetime
-from typing import List, Dict, Any, Optional, Tuple
+from typing import TypedDict
+
+from .type_utils import (
+    Config,
+    Record,
+    get_bool,
+    get_int,
+    get_str,
+    is_object_dict,
+    is_record_list,
+)
+
+
+class CreatedTicketResult(TypedDict):
+    """Public representation of a newly created support ticket."""
+
+    id: int
+    title: str
+    description: str
+    status: str
+    priority: int
+
+
+class TicketResult(CreatedTicketResult):
+    """Stored support-ticket details."""
+
+    created_by: str
+
+
+class TicketStatusResult(TypedDict):
+    """Result from changing a support ticket."""
+
+    status: str
+
+
+class TicketLoginResult(TypedDict):
+    """Result from authenticating with the ticket system."""
+
+    success: bool
+
+
+def _configured_queue(config: Config) -> list[Record]:
+    for key in ("tickets_queue", "ticket_list", "support_tickets", "ticket_queue"):
+        value = config.get(key)
+        if is_record_list(value):
+            return value
+    return []
+
+
+def _empty_created_ticket(status: str = "") -> CreatedTicketResult:
+    return {
+        "id": 0,
+        "title": "",
+        "description": "",
+        "status": status,
+        "priority": 0,
+    }
+
+
+def _empty_ticket(status: str = "") -> TicketResult:
+    return {**_empty_created_ticket(status), "created_by": ""}
+
+
+def _ticket_result(ticket: Config) -> TicketResult:
+    return {
+        "id": get_int(ticket, "id"),
+        "title": get_str(ticket, "title"),
+        "description": get_str(ticket, "description"),
+        "status": get_str(ticket, "status"),
+        "priority": get_int(ticket, "priority"),
+        "created_by": get_str(ticket, "created_by"),
+    }
 
 
 class TicketAPI:
-    """A ticketing system that allows users to create, view, and manage support business tickets."""
+    """Create, retrieve, and manage support tickets."""
 
-    def __init__(self, initial_config: dict) -> None:
-        """Initialize the TicketAPI with the given configuration, normalizing various config keys."""
-        # Normalize ticket queue from various possible keys
-        self.ticket_queue: List[Dict[str, Any]] = initial_config.get(
-            "tickets_queue",
-            initial_config.get(
-                "ticket_list",
-                initial_config.get("support_tickets", initial_config.get("ticket_queue", []))
-            )
-        )
-        
-        # Normalize ticket counter from various possible keys
-        self.ticket_counter: int = initial_config.get(
+    def __init__(self, initial_config: Config) -> None:
+        """Initialize and normalize ticket-system state."""
+        self.ticket_queue: list[Record] = _configured_queue(initial_config)
+        self.ticket_counter: int = get_int(
+            initial_config,
             "ticket_count",
-            initial_config.get("ticket_counter", 0)
+            get_int(initial_config, "ticket_counter"),
         )
-        
-        # Normalize current user
-        self.current_user: str = initial_config.get("current_user", "")
-        self.authenticated: bool = initial_config.get("authenticated", False)
-        self.username: str = initial_config.get("username", "")
-        self.password: str = initial_config.get("password", "")
-        
-        # Normalize current ticket id
-        self.current_ticket_id: Optional[int] = initial_config.get("current_ticket_id", None)
-        
-        # Normalize priority levels
-        self.priority_levels: Dict[int, str] = initial_config.get(
-            "priority_levels",
-            {1: "Low", 2: "Medium", 3: "High", 4: "Urgent", 5: "Critical"}
+        self.current_user: str = get_str(initial_config, "current_user")
+        self.authenticated: bool = get_bool(
+            initial_config,
+            "authenticated",
+            bool(self.current_user),
+        )
+        self.username: str = get_str(initial_config, "username")
+        self.password: str = get_str(initial_config, "password")
+        current_ticket_id = initial_config.get("current_ticket_id")
+        self.current_ticket_id: int | None = (
+            current_ticket_id if isinstance(current_ticket_id, int) else None
+        )
+        configured_priorities = initial_config.get("priority_levels")
+        self.priority_levels: dict[object, object] = (
+            configured_priorities
+            if is_object_dict(configured_priorities)
+            else {
+                1: "Low",
+                2: "Medium",
+                3: "High",
+                4: "Urgent",
+                5: "Critical",
+            }
         )
 
-    def close_ticket(self, ticket_id: int) -> Dict[str, Any]:
-        """Close a ticket.
-
-        Args:
-            ticket_id: ID of the ticket to be closed.
-
-        Returns:
-            A dict containing the status of the close operation.
-        """
+    def close_ticket(self, ticket_id: int) -> TicketStatusResult:
+        """Close a ticket."""
         if not self.authenticated:
             return {"status": "User not authenticated"}
         for ticket in self.ticket_queue:
-            if ticket.get("id") == ticket_id:
+            if get_int(ticket, "id") == ticket_id:
                 ticket["status"] = "Closed"
                 return {"status": "Ticket closed successfully"}
         return {"status": f"Ticket with ID {ticket_id} not found"}
 
-    def create_ticket(self, title: str, description: str = '', priority: int = 1) -> Dict[str, Any]:
-        """Create a ticket in the system and queue it.
-
-        Args:
-            title: Title of the ticket.
-            description: Description of the ticket. Defaults to an empty string.
-            priority: Priority of the ticket, from 1 to 5. Defaults to 1.
-
-        Returns:
-            A dict containing the details of the created ticket.
-        """
+    def create_ticket(
+        self, title: str, description: str = "", priority: int = 1
+    ) -> CreatedTicketResult:
+        """Create and enqueue a support ticket."""
         if not self.authenticated:
-            return {"id": 0, "title": "", "description": "", "status": "User not authenticated", "priority": 0}
+            return _empty_created_ticket("User not authenticated")
         self.ticket_counter += 1
-        new_ticket_id = self.ticket_counter
-        
-        # Ensure priority is within valid range
-        if priority < 1:
-            priority = 1
-        elif priority > 5:
-            priority = 5
-            
-        new_ticket: Dict[str, Any] = {
-            "id": new_ticket_id,
+        priority = min(5, max(1, priority))
+        ticket: Record = {
+            "id": self.ticket_counter,
             "title": title,
             "description": description,
             "status": "Open",
             "priority": priority,
-            "created_by": self.current_user
+            "created_by": self.current_user,
         }
-        
-        self.ticket_queue.append(new_ticket)
-        
+        self.ticket_queue.append(ticket)
         return {
-            "id": new_ticket_id,
+            "id": self.ticket_counter,
             "title": title,
             "description": description,
             "status": "Open",
-            "priority": priority
+            "priority": priority,
         }
 
-    def edit_ticket(self, ticket_id: int, updates: dict) -> Dict[str, Any]:
-        """Modify the details of an existing ticket.
-
-        Args:
-            ticket_id: ID of the ticket to be changed.
-            updates: Dictionary containing the fields to be updated.
-
-        Returns:
-            A dict containing the status of the update operation.
-        """
+    def edit_ticket(
+        self, ticket_id: int, updates: Config
+    ) -> TicketStatusResult:
+        """Modify fields on an existing ticket."""
         if not self.authenticated:
             return {"status": "User not authenticated"}
         for ticket in self.ticket_queue:
-            if ticket.get("id") == ticket_id:
+            if get_int(ticket, "id") == ticket_id:
                 for key, value in updates.items():
                     if key in ticket:
                         ticket[key] = value
                 return {"status": "Ticket updated successfully"}
         return {"status": f"Ticket with ID {ticket_id} not found"}
 
-    def get_ticket(self, ticket_id: int) -> Dict[str, Any]:
-        """Get a specific ticket by its ID.
-        
-        Args:
-            ticket_id: ID of the ticket to retrieve.
-            
-        Returns:
-            A dict containing the details of the ticket.
-        """
+    def get_ticket(self, ticket_id: int) -> TicketResult:
+        """Get a specific ticket by its ID."""
         for ticket in self.ticket_queue:
-            if ticket.get("id") == ticket_id:
-                return {
-                    "id": ticket.get("id", 0),
-                    "title": ticket.get("title", ""),
-                    "description": ticket.get("description", ""),
-                    "status": ticket.get("status", ""),
-                    "priority": ticket.get("priority", 0),
-                    "created_by": ticket.get("created_by", "")
-                }
-        return {
-            "id": 0,
-            "title": "",
-            "description": "",
-            "status": "Not Found",
-            "priority": 0,
-            "created_by": ""
-        }
+            if get_int(ticket, "id") == ticket_id:
+                return _ticket_result(ticket)
+        return _empty_ticket("Not Found")
 
-    def get_user_tickets(self, status: str = 'None') -> Dict[str, Any]:
-        """Get all tickets created by the current user, optionally filtered by status.
-        
-        Args:
-            status: Status to filter tickets by. If None, return all tickets.
-            
-        Returns:
-            A dict containing the details of the user's tickets.
-        """
-        user_tickets = [
-            ticket for ticket in self.ticket_queue
-            if ticket.get("created_by", "") == self.current_user
-        ]
-        
-        if status != 'None':
-            user_tickets = [
-                ticket for ticket in user_tickets
-                if ticket.get("status", "") == status
-            ]
-            
-        if not user_tickets:
-            return {
-                "id": 0,
-                "title": "",
-                "description": "",
-                "status": "",
-                "priority": 0,
-                "created_by": ""
-            }
-        
-        # Return the first matching ticket as per the single-ticket response schema
-        first_ticket = user_tickets[0]
-        return {
-            "id": first_ticket.get("id", 0),
-            "title": first_ticket.get("title", ""),
-            "description": first_ticket.get("description", ""),
-            "status": first_ticket.get("status", ""),
-            "priority": first_ticket.get("priority", 0),
-            "created_by": first_ticket.get("created_by", "")
-        }
+    def get_user_tickets(self, status: str = "None") -> TicketResult:
+        """Get the first current-user ticket with an optional status filter."""
+        for ticket in self.ticket_queue:
+            if get_str(ticket, "created_by") != self.current_user:
+                continue
+            if status == "None" or get_str(ticket, "status") == status:
+                return _ticket_result(ticket)
+        return _empty_ticket()
 
-    def resolve_ticket(self, ticket_id: int, resolution: str) -> Dict[str, Any]:
-        """Resolve a ticket with a resolution.
-
-        Args:
-            ticket_id: ID of the ticket to be resolved.
-            resolution: Resolution details for the ticket.
-
-        Returns:
-            A dict containing the status of the resolve operation.
-        """
+    def resolve_ticket(
+        self, ticket_id: int, resolution: str
+    ) -> TicketStatusResult:
+        """Resolve a ticket with resolution details."""
         if not self.authenticated:
             return {"status": "User not authenticated"}
         for ticket in self.ticket_queue:
-            if ticket.get("id") == ticket_id:
+            if get_int(ticket, "id") == ticket_id:
                 ticket["status"] = "Resolved"
                 ticket["resolution"] = resolution
                 return {"status": "Ticket resolved successfully"}
         return {"status": f"Ticket with ID {ticket_id} not found"}
 
-    def ticket_login(self, username: str, password: str) -> Dict[str, Any]:
-        """Authenticate a user for ticket system.
-
-        Args:
-            username: Username of the user.
-            password: Password of the user.
-
-        Returns:
-            A dict indicating whether the login was successful.
-        """
+    def ticket_login(self, username: str, password: str) -> TicketLoginResult:
+        """Authenticate a user for the ticket system."""
         if not username or not password:
             return {"success": False}
-        if username == self.username and password == self.password:
-            self.authenticated = True
-            self.current_user = username
-            return {"success": True}
-        return {"success": False}
+        if self.username and username != self.username:
+            return {"success": False}
+        if self.password and password != self.password:
+            return {"success": False}
+        self.authenticated = True
+        self.current_user = username
+        return {"success": True}

@@ -1,7 +1,8 @@
 """Auto-generated Pydantic input schemas for all BFCL tools."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any, Literal, Union
 
 # ─── PostingAPI ──────────
 
@@ -23,22 +24,22 @@ class DiffInput(BaseModel):
     file_name2: str = Field(description="The name of the second file in current directorry. ")
 
 class DuInput(BaseModel):
-    human_readable: Optional[bool] = Field(default=None, description="If True, returns the size in human-readable format (e.g., KB, MB). ")
+    human_readable: bool | None = Field(default=None, description="If True, returns the size in human-readable format (e.g., KB, MB). ")
 
 class EchoInput(BaseModel):
     content: str = Field(description="The content to write or display.")
-    file_name: Optional[str] = Field(default=None, description="The name of the file at current directory to write the content to. Defaults to None. ")
+    file_name: str | None = Field(default=None, description="The name of the file at current directory to write the content to. Defaults to None. ")
 
 class FindInput(BaseModel):
-    name: Optional[str] = Field(default=None, description="The name of the file or directory to search for. If None, all items are returned. ")
-    path: Optional[str] = Field(default=None, description="The directory path to start the search. Defaults to the current directory (\".\").")
+    name: str | None = Field(default=None, description="The name of the file or directory to search for. If None, all items are returned. ")
+    path: str | None = Field(default=None, description="The directory path to start the search. Defaults to the current directory (\".\").")
 
 class GrepInput(BaseModel):
     file_name: str = Field(description="The name of the file to search. No path is allowed and you can only perform on file at local directory.")
     pattern: str = Field(description="The pattern to search for. ")
 
 class LsInput(BaseModel):
-    a: Optional[bool] = Field(default=None, description="Show hidden files and directories. Defaults to False. ")
+    a: bool | None = Field(default=None, description="Show hidden files and directories. Defaults to False. ")
 
 class MkdirInput(BaseModel):
     dir_name: str = Field(description="The name of the new directory at current directory. You can only create directory at current directory.")
@@ -58,14 +59,14 @@ class SortInput(BaseModel):
 
 class TailInput(BaseModel):
     file_name: str = Field(description="The name of the file to display. No path is allowed and you can only perform on file at local directory.")
-    lines: Optional[int] = Field(default=None, description="The number of lines to display from the end of the file. Defaults to 10. ")
+    lines: int | None = Field(default=None, description="The number of lines to display from the end of the file. Defaults to 10. ")
 
 class TouchInput(BaseModel):
     file_name: str = Field(description="The name of the new file in the current directory. file_name is local to the current directory and does not allow path.")
 
 class WcInput(BaseModel):
     file_name: str = Field(description="Name of the file of current directory to perform wc operation on.")
-    mode: Optional[str] = Field(default=None, description="Mode of operation ('l' for lines, 'w' for words, 'c' for characters). ")
+    mode: str | None = Field(default=None, description="Mode of operation ('l' for lines, 'w' for words, 'c' for characters). ")
 
 # ─── MathAPI ──────────
 
@@ -91,13 +92,13 @@ class LogarithmInput(BaseModel):
     value: str = Field(description="The number to compute the logarithm of.")
 
 class MaxValueInput(BaseModel):
-    numbers: List = Field(description="List of numbers to find the maximum from. ")
+    numbers: list[object] = Field(description="List of numbers to find the maximum from. ")
 
 class MeanInput(BaseModel):
-    numbers: List = Field(description="List of numbers to calculate the mean of. ")
+    numbers: list[object] = Field(description="List of numbers to calculate the mean of. ")
 
 class MinValueInput(BaseModel):
-    numbers: List = Field(description="List of numbers to find the minimum from. ")
+    numbers: list[object] = Field(description="List of numbers to find the minimum from. ")
 
 class MultiplyInput(BaseModel):
     a: str = Field(description="First number.")
@@ -112,7 +113,7 @@ class PowerInput(BaseModel):
     exponent: str = Field(description="The exponent. ")
 
 class RoundNumberInput(BaseModel):
-    decimal_places: Optional[int] = Field(default=None, description="The number of decimal places to round to. Defaults to 0. ")
+    decimal_places: int | None = Field(default=None, description="The number of decimal places to round to. Defaults to 0. ")
     number: str = Field(description="The number to round.")
 
 class SiUnitConversionInput(BaseModel):
@@ -125,14 +126,14 @@ class SquareRootInput(BaseModel):
     precision: int = Field(description="Desired precision for the result. ")
 
 class StandardDeviationInput(BaseModel):
-    numbers: List = Field(description="List of numbers to calculate the standard deviation of. ")
+    numbers: list[object] = Field(description="List of numbers to calculate the standard deviation of. ")
 
 class SubtractInput(BaseModel):
     a: str = Field(description="Number to subtract from.")
     b: str = Field(description="Number to subtract. ")
 
 class SumValuesInput(BaseModel):
-    numbers: List = Field(description="List of numbers to sum. ")
+    numbers: list[object] = Field(description="List of numbers to sum. ")
 
 # ─── MessageAPI ──────────
 
@@ -140,7 +141,7 @@ class AddContactInput(BaseModel):
     user_name: str = Field(description="User name of contact to be added.")
 
 class DeleteMessageInput(BaseModel):
-    message_id: Optional[int] = Field(default=None, description="ID of the message to be deleted.")
+    message_id: int | None = Field(default=None, description="ID of the message to be deleted.")
     receiver_id: str = Field(description="User ID of the user to send the message to.")
 
 class GetUserIdInput(BaseModel):
@@ -199,14 +200,14 @@ class GetUserTweetsInput(BaseModel):
 class MentionInput(BaseModel):
     """Input schema for mention method."""
     tweet_id: int = Field(..., description="ID of the tweet where users are mentioned.")
-    mentioned_usernames: List[str] = Field(..., description="List of usernames to be mentioned.")
+    mentioned_usernames: list[str] = Field(..., description="List of usernames to be mentioned.")
 
 
 class PostTweetInput(BaseModel):
     """Input schema for post_tweet method."""
     content: str = Field(..., description="Content of the tweet.")
-    tags: List[str] = Field(default=[], description="List of tags for the tweet. Tag name should start with #. This is only relevant if the user wants to add tags to the tweet.")
-    mentions: List[str] = Field(default=[], description="List of users mentioned in the tweet. Mention name should start with @. This is only relevant if the user wants to add mentions to the tweet.")
+    tags: list[str] = Field(default=[], description="List of tags for the tweet. Tag name should start with #. This is only relevant if the user wants to add tags to the tweet.")
+    mentions: list[str] = Field(default=[], description="List of users mentioned in the tweet. Mention name should start with @. This is only relevant if the user wants to add mentions to the tweet.")
 
 
 class RetweetInput(BaseModel):
@@ -242,7 +243,7 @@ class CreateTicketInput(BaseModel):
 class EditTicketInput(BaseModel):
     """Input schema for edit_ticket method."""
     ticket_id: int = Field(..., description="ID of the ticket to be changed.")
-    updates: Dict[str, Any] = Field(..., description="Dictionary containing the fields to be updated. - title (str) : [Optional] New title for the ticket.")
+    updates: dict[str, object] = Field(..., description="Dictionary containing the fields to be updated. - title (str) : [Optional] New title for the ticket.")
 
 
 class GetTicketInput(BaseModel):
@@ -252,7 +253,7 @@ class GetTicketInput(BaseModel):
 
 class GetUserTicketsInput(BaseModel):
     """Input schema for get_user_tickets method."""
-    status: Optional[str] = Field(None, description="Status to filter tickets by. If None, return all tickets.")
+    status: str | None = Field(None, description="Status to filter tickets by. If None, return all tickets.")
 
 
 class ResolveTicketInput(BaseModel):
@@ -279,7 +280,7 @@ class CancelOrderInput(BaseModel):
 
 class FilterStocksByPriceInput(BaseModel):
     """Input schema for filter_stocks_by_price."""
-    stocks: List[str] = Field(..., description="List of stock symbols to filter.")
+    stocks: list[str] = Field(..., description="List of stock symbols to filter.")
     min_price: float = Field(..., description="Minimum stock price.")
     max_price: float = Field(..., description="Maximum stock price.")
 
@@ -305,8 +306,8 @@ class GetSymbolByNameInput(BaseModel):
 
 class GetTransactionHistoryInput(BaseModel):
     """Input schema for get_transaction_history."""
-    start_date: Optional[str] = Field(None, description="Start date for the history (format: 'YYYY-MM-DD').")
-    end_date: Optional[str] = Field(None, description="End date for the history (format: 'YYYY-MM-DD').")
+    start_date: str | None = Field(None, description="Start date for the history (format: 'YYYY-MM-DD').")
+    end_date: str | None = Field(None, description="End date for the history (format: 'YYYY-MM-DD').")
 
 class MakeTransactionInput(BaseModel):
     """Input schema for make_transaction."""
@@ -316,7 +317,7 @@ class MakeTransactionInput(BaseModel):
 
 class NotifyPriceChangeInput(BaseModel):
     """Input schema for notify_price_change."""
-    stocks: List[str] = Field(..., description="List of stock symbols to check.")
+    stocks: list[str] = Field(..., description="List of stock symbols to check.")
     threshold: float = Field(..., description="Percentage change threshold to trigger a notification.")
 
 class PlaceOrderInput(BaseModel):
@@ -390,8 +391,8 @@ class ContactCustomerSupportInput(BaseModel):
 
 class GetBudgetFiscalYearInput(BaseModel):
     """Input schema for get_budget_fiscal_year method."""
-    lastModifiedAfter: Optional[str] = Field(None, description="Use this field if you only want Fiscal Years that were changed after the supplied date. The supplied date will be interpreted in the UTC time zone. If lastModifiedAfter is not supplied, the service will return all Fiscal Years, regardless of modified date. Example: 2016-03-29T16:12:20. Return in the format of YYYY-MM-DDTHH:MM:SS.")
-    includeRemoved: Optional[str] = Field(None, description="If true, the service will return all Fiscal Years, including those that were previously removed. If not supplied, this field defaults to false.")
+    lastModifiedAfter: str | None = Field(None, description="Use this field if you only want Fiscal Years that were changed after the supplied date. The supplied date will be interpreted in the UTC time zone. If lastModifiedAfter is not supplied, the service will return all Fiscal Years, regardless of modified date. Example: 2016-03-29T16:12:20. Return in the format of YYYY-MM-DDTHH:MM:SS.")
+    includeRemoved: str | None = Field(None, description="If true, the service will return all Fiscal Years, including those that were previously removed. If not supplied, this field defaults to false.")
 
 
 class GetCreditCardBalanceInput(BaseModel):
@@ -434,8 +435,8 @@ class RegisterCreditCardInput(BaseModel):
 class RetrieveInvoiceInput(BaseModel):
     """Input schema for retrieve_invoice method."""
     access_token: str = Field(..., description="The access token obtained from the authenticate")
-    booking_id: Optional[str] = Field(None, description="The ID of the booking")
-    insurance_id: Optional[str] = Field(None, description="The ID of the insurance")
+    booking_id: str | None = Field(None, description="The ID of the booking")
+    insurance_id: str | None = Field(None, description="The ID of the insurance")
 
 
 class SetBudgetLimitInput(BaseModel):
@@ -475,7 +476,7 @@ class DisplayCarStatusInput(BaseModel):
 
 class DisplayLogInput(BaseModel):
     """Input schema for display_log."""
-    messages: List[Any] = Field(..., description="The list of messages to display.")
+    messages: list[object] = Field(..., description="The list of messages to display.")
 
 
 class EstimateDistanceInput(BaseModel):
@@ -512,7 +513,7 @@ class LiterToGallonInput(BaseModel):
 class LockDoorsInput(BaseModel):
     """Input schema for lockDoors."""
     unlock: bool = Field(..., description="True if the doors are to be unlocked, False otherwise.")
-    door: List[Literal["driver", "passenger", "rear_left", "rear_right"]] = Field(..., description="The list of doors to lock or unlock.")
+    door: list[Literal["driver", "passenger", "rear_left", "rear_right"]] = Field(..., description="The list of doors to lock or unlock.")
 
 
 class PressBrakePedalInput(BaseModel):
