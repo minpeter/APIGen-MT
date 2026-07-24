@@ -86,8 +86,16 @@ class MultiTurnGenerator(StepByStepGenerator):
         tool_manager: ToolManager,
         num_turns: int = 2,
         validate_outputs: bool = True,
+        target_num_actions: int = 1,
+        judge_client: LLMClient = None,
     ):
-        super().__init__(llm_client, tool_manager, validate_outputs)
+        super().__init__(
+            llm_client,
+            tool_manager,
+            validate_outputs,
+            judge_client=judge_client,
+            target_num_actions=target_num_actions,
+        )
         self.num_turns = num_turns
 
     def continue_from_checkpoint(
@@ -934,7 +942,7 @@ If ALL turns are achievable with their selected tools, set is_valid to true with
  1. Each turn: specific entities (IDs, names, dates, prices) + 1-3 tools (vary naturally based on query complexity)
  2. Conversation flows naturally, each turn builds on previous
  3. Auth persists across turns - login only in FIRST turn needing auth (don't re-login)
- 4. expected_tools: 1-3 tools per turn (allow natural variation)
+ 4. expected_tools: aim for about {self.target_num_actions} tools per turn (allow small variation; at least 1)
  5. CRITICAL: expected_tools should ONLY contain tools that the user EXPLICITLY asks about or requests in their query. Do NOT add prerequisite tools (like pressing brake before starting engine) unless the user explicitly mentions them.
  6. CRITICAL: Query must ask for what the tools can provide. If a tool only accepts ONE parameter value at a time (like displayCarStatus with option=fuel OR battery, not both), the query should ask for only ONE thing per tool call. Do NOT ask for multiple items that require the same tool with different arguments.
  7. POLICY-CONTEXT CLOSURE: Every required argument for every expected tool must
@@ -1187,8 +1195,9 @@ If ALL turns are achievable with their selected tools, set is_valid to true with
 
         expected_tools = turn_spec.get("expected_tools", [])
 
-        if not user_query or not (1 <= len(expected_tools) <= 3):
-            print(f"  ✗ Turn {turn_index + 1}: Blueprint has invalid query ({len(expected_tools)} tools, need 1-3)")
+        max_tools = max(3, self.target_num_actions + 2)
+        if not user_query or not (1 <= len(expected_tools) <= max_tools):
+            print(f"  ✗ Turn {turn_index + 1}: Blueprint has invalid query ({len(expected_tools)} tools, need 1-{max_tools})")
             return None
 
         invalid = [t for t in expected_tools if not self.tool_manager.tool_exists(t)]
