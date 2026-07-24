@@ -115,6 +115,13 @@ def parse_args():
     )
 
     parser.add_argument(
+        '--num-actions', '-a',
+        type=int,
+        default=1,
+        help='Target number of tool actions per datapoint (step-by-step) or per turn (multi-turn) (default: 1)'
+    )
+
+    parser.add_argument(
         '--output', '-o',
         type=str,
         default='step_by_step_datapoints.jsonl',
@@ -218,7 +225,8 @@ def run_step_by_step(args, llm_client, tool_manager, categories, output_path, ju
     generator = StepByStepGenerator(
         llm_client=llm_client,
         tool_manager=tool_manager,
-        judge_client=judge_client
+        judge_client=judge_client,
+        target_num_actions=args.num_actions,
     )
 
     datapoints = []
@@ -265,6 +273,7 @@ def run_multi_turn(args, llm_client, tool_manager, categories, output_path, chec
         llm_client=llm_client,
         tool_manager=tool_manager,
         num_turns=args.num_turns,
+        target_num_actions=args.num_actions,
     )
 
     # Create checkpoint callback if checkpoint manager is provided

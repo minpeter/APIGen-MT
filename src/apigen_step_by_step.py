@@ -97,11 +97,12 @@ class QueryGenerationResult(BaseModel):
 class StepByStepGenerator:
     """Generator that creates datapoints step-by-step with immediate tool simulation."""
 
-    def __init__(self, llm_client: LLMClient, tool_manager: ToolManager, validate_outputs: bool = True, judge_client: LLMClient = None):
+    def __init__(self, llm_client: LLMClient, tool_manager: ToolManager, validate_outputs: bool = True, judge_client: LLMClient = None, target_num_actions: int = 1):
         self.llm = llm_client
         self.judge = judge_client or llm_client
         self.tool_manager = tool_manager
         self.validate_outputs = validate_outputs
+        self.target_num_actions = max(1, int(target_num_actions or 1))
         self._python_tools_available = bool(tool_manager.python_tool_instances)
         self._accumulated_prompt_tokens: int = 0
         self._accumulated_completion_tokens: int = 0
@@ -405,6 +406,7 @@ Do NOT use "Michael Smith", "John", or generic American names - use {p['name']} 
 1. Specific with concrete entities (names, IDs, dates, locations)
 2. Use one or more tool calls as needed to complete the task
 3. expected_tools: List all tools from AVAILABLE TOOLS that would be needed
+   Target about {self.target_num_actions} tools (prefer this count when realistic)
 4. CRITICAL: Match query to tool capabilities - if a tool (like displayCarStatus) only accepts ONE parameter value, ask for ONE thing per query, not multiple
 5. CRITICAL: Use ONLY tools from AVAILABLE TOOLS - no invented names
 6. Auth-dependent tools need authentication FIRST - check which tools require prior authentication
