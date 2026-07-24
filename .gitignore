@@ -1,2 +1,32 @@
-__pycache__
-.venv
+__pycache__/
+.venv/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+src/*.egg-info/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Runtime / generated artifacts
+logs/
+*.log
+data/generated/
+data/exhaustive_analysis/
+step_by_step_datapoints.jsonl
+*_datapoints.jsonl
+checkpoint*/
+.checkpoints/
+
+# Bulk dumps (regenerate or LFS)
+magnet_tool_extraction/*.json
+magnet_tool_extraction/*.jsonl
+magnet_tool_extraction/*.html
+magnet_tool_extraction/*.ipynb
+magnet_tool_extraction/*analysis*
