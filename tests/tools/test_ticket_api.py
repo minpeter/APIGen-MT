@@ -149,7 +149,7 @@ def test_resolve_ticket_already_resolved(ticket_api):
 
 
 def test_ticket_login_normal(ticket_api):
-    result = ticket_api.ticket_login(username="tech_guru", password="securePass123")
+    result = ticket_api.ticket_login(username="tech_guru", password="testpass")
     assert result.get("success") is True
     assert ticket_api.current_user == "tech_guru"
 

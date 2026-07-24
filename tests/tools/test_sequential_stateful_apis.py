@@ -61,7 +61,7 @@ POSTING_API_CONFIG = {
         "history_buff": {"tweet_count": 25, "following_count": 50, "retweet_count": 10},
     },
     "username": "genealogy_enthusiast",
-    "password": "Fh7#mK9$pL2&vN4",
+    "password": "testpass",
 }
 
 TRADING_BOT_CONFIG = {
@@ -231,7 +231,7 @@ class TestPostingAPISequentialCorrect:
     def test_authenticate_then_post_tweet(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
         assert api.authenticated is False
-        auth = api.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        auth = api.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         assert auth["authentication_status"] is True
         tweet = api.post_tweet(content="My first post!", tags=["#hello"])
         assert tweet["id"] != 0
@@ -239,20 +239,20 @@ class TestPostingAPISequentialCorrect:
 
     def test_authenticate_then_post_then_comment(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
-        api.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        api.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         tweet = api.post_tweet(content="Needs feedback", tags=["#review"])
         comment = api.comment(tweet_id=tweet["id"], comment_content="Looks great!")
         assert "successfully" in comment["comment_status"].lower()
 
     def test_authenticate_then_retweet(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
-        api.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        api.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         retweet = api.retweet(tweet_id=0)
         assert "successfully" in retweet["retweet_status"].lower()
 
     def test_authenticate_then_follow_then_unfollow(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
-        api.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        api.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         follow = api.follow_user(username_to_follow="puzzle_solver")
         assert follow["follow_status"] is True
         unfollow = api.unfollow_user(username_to_unfollow="puzzle_solver")
@@ -260,13 +260,13 @@ class TestPostingAPISequentialCorrect:
 
     def test_authenticate_then_mention(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
-        api.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        api.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         mention = api.mention(tweet_id=0, mentioned_usernames=["@history_buff"])
         assert "successfully" in mention["mention_status"].lower()
 
     def test_post_then_get_tweet(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
-        api.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        api.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         posted = api.post_tweet(content="Read my new blog post", tags=["#blog"])
         fetched = api.get_tweet(tweet_id=posted["id"])
         assert fetched["id"] == posted["id"]
@@ -274,7 +274,7 @@ class TestPostingAPISequentialCorrect:
 
     def test_post_then_search(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
-        api.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        api.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         api.post_tweet(content="Quantum computing breakthrough!", tags=["#quantum"])
         search = api.search_tweets(keyword="Quantum")
         assert len(search["matching_tweets"]) > 0
@@ -324,14 +324,14 @@ class TestPostingAPISequentialProblematic:
 
     def test_authenticate_wrong_username_then_post(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
-        auth = api.authenticate_twitter(username="wrong_user", password="Fh7#mK9$pL2&vN4")
+        auth = api.authenticate_twitter(username="wrong_user", password="testpass")
         assert auth["authentication_status"] is False
         tweet = api.post_tweet(content="Should fail")
         assert tweet["id"] == 0
 
     def test_comment_on_nonexistent_tweet_after_auth(self):
         api = PostingAPI(initial_config=json.loads(json.dumps(POSTING_API_CONFIG)))
-        api.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        api.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         comment = api.comment(tweet_id=99999, comment_content="Ghost comment")
         assert "not found" in comment["comment_status"].lower()
 
@@ -347,7 +347,7 @@ class TestTradingBotSequentialCorrect:
     def test_login_then_place_order(self):
         bot = TradingBot(initial_config=json.loads(json.dumps(TRADING_BOT_CONFIG)))
         assert bot.authenticated is False
-        login = bot.trading_login(username="trader", password="pass123")
+        login = bot.trading_login(username="trader", password="testpass")
         assert login["status"] == "Login successful"
         assert bot.authenticated is True
         order = bot.place_order(order_type="Buy", symbol="AAPL", price=227.16, amount=10)
@@ -355,7 +355,7 @@ class TestTradingBotSequentialCorrect:
 
     def test_login_place_order_then_get_details(self):
         bot = TradingBot(initial_config=json.loads(json.dumps(TRADING_BOT_CONFIG)))
-        bot.trading_login(username="trader", password="pass123")
+        bot.trading_login(username="trader", password="testpass")
         order = bot.place_order(order_type="Buy", symbol="TSLA", price=667.92, amount=5)
         details = bot.get_order_details(order_id=order["order_id"])
         assert details["id"] == order["order_id"]
@@ -363,7 +363,7 @@ class TestTradingBotSequentialCorrect:
 
     def test_login_place_order_then_cancel(self):
         bot = TradingBot(initial_config=json.loads(json.dumps(TRADING_BOT_CONFIG)))
-        bot.trading_login(username="trader", password="pass123")
+        bot.trading_login(username="trader", password="testpass")
         order = bot.place_order(order_type="Buy", symbol="AAPL", price=227.16, amount=10)
         cancel = bot.cancel_order(order_id=order["order_id"])
         assert cancel["status"] == "Cancelled"
@@ -372,7 +372,7 @@ class TestTradingBotSequentialCorrect:
 
     def test_login_then_fund_then_check_balance(self):
         bot = TradingBot(initial_config=json.loads(json.dumps(TRADING_BOT_CONFIG)))
-        bot.trading_login(username="trader", password="pass123")
+        bot.trading_login(username="trader", password="testpass")
         initial_balance = bot.account_info["balance"]
         fund = bot.fund_account(amount=5000.0)
         assert fund["status"] == "Account funded successfully"
@@ -380,7 +380,7 @@ class TestTradingBotSequentialCorrect:
 
     def test_login_then_deposit_then_withdraw(self):
         bot = TradingBot(initial_config=json.loads(json.dumps(TRADING_BOT_CONFIG)))
-        bot.trading_login(username="trader", password="pass123")
+        bot.trading_login(username="trader", password="testpass")
         deposit = bot.make_transaction(account_id=12345, xact_type="deposit", amount=2000.0)
         assert "successful" in deposit["status"].lower()
         withdraw = bot.make_transaction(account_id=12345, xact_type="withdrawal", amount=500.0)
@@ -389,7 +389,7 @@ class TestTradingBotSequentialCorrect:
 
     def test_login_then_add_and_remove_from_watchlist(self):
         bot = TradingBot(initial_config=json.loads(json.dumps(TRADING_BOT_CONFIG)))
-        bot.trading_login(username="trader", password="pass123")
+        bot.trading_login(username="trader", password="testpass")
         add = bot.add_to_watchlist(stock="AAPL")
         assert "AAPL" in bot.watch_list
         remove = bot.remove_stock_from_watchlist(symbol="AAPL")
@@ -689,7 +689,7 @@ class TestTicketAPISequentialCorrect:
         config = json.loads(json.dumps(TICKET_API_CONFIG))
         config["current_user"] = ""
         api = TicketAPI(initial_config=config)
-        login = api.ticket_login(username="agent_a", password="pass123")
+        login = api.ticket_login(username="agent_a", password="testpass")
         assert login["success"] is True
         assert api.current_user == "agent_a"
         ticket = api.create_ticket(title="New bug", description="App crashes on startup", priority=3)
@@ -698,7 +698,7 @@ class TestTicketAPISequentialCorrect:
 
     def test_login_create_then_edit(self):
         api = TicketAPI(initial_config=json.loads(json.dumps(TICKET_API_CONFIG)))
-        api.ticket_login(username="agent_a", password="pass123")
+        api.ticket_login(username="agent_a", password="testpass")
         ticket = api.create_ticket(title="Login issue", description="Users cannot log in", priority=2)
         edit = api.edit_ticket(ticket_id=ticket["id"], updates={"priority": 4})
         assert edit["status"] == "Ticket updated successfully"
@@ -707,7 +707,7 @@ class TestTicketAPISequentialCorrect:
 
     def test_login_create_then_resolve(self):
         api = TicketAPI(initial_config=json.loads(json.dumps(TICKET_API_CONFIG)))
-        api.ticket_login(username="agent_a", password="pass123")
+        api.ticket_login(username="agent_a", password="testpass")
         ticket = api.create_ticket(title="Server down", description="Primary server unresponsive", priority=5)
         resolve = api.resolve_ticket(ticket_id=ticket["id"], resolution="Restarted server")
         assert resolve["status"] == "Ticket resolved successfully"
@@ -716,21 +716,21 @@ class TestTicketAPISequentialCorrect:
 
     def test_login_create_then_close(self):
         api = TicketAPI(initial_config=json.loads(json.dumps(TICKET_API_CONFIG)))
-        api.ticket_login(username="agent_a", password="pass123")
+        api.ticket_login(username="agent_a", password="testpass")
         ticket = api.create_ticket(title="Minor glitch", description="UI flicker", priority=1)
         close = api.close_ticket(ticket_id=ticket["id"])
         assert close["status"] == "Ticket closed successfully"
 
     def test_login_create_then_get_user_tickets(self):
         api = TicketAPI(initial_config=json.loads(json.dumps(TICKET_API_CONFIG)))
-        api.ticket_login(username="agent_a", password="pass123")
+        api.ticket_login(username="agent_a", password="testpass")
         api.create_ticket(title="Bug 1", description="First bug", priority=2)
         user_tickets = api.get_user_tickets()
         assert user_tickets["created_by"] == "agent_a"
 
     def test_get_ticket_then_resolve_existing(self):
         api = TicketAPI(initial_config=json.loads(json.dumps(TICKET_API_CONFIG)))
-        api.ticket_login(username="agent_a", password="pass123")
+        api.ticket_login(username="agent_a", password="testpass")
         existing = api.get_ticket(ticket_id=123456)
         assert existing["id"] == 123456
         resolve = api.resolve_ticket(ticket_id=123456, resolution="Fixed the system error")
@@ -738,7 +738,7 @@ class TestTicketAPISequentialCorrect:
 
     def test_login_create_edit_resolve_full_lifecycle(self):
         api = TicketAPI(initial_config=json.loads(json.dumps(TICKET_API_CONFIG)))
-        api.ticket_login(username="agent_a", password="pass123")
+        api.ticket_login(username="agent_a", password="testpass")
         ticket = api.create_ticket(title="Full lifecycle", description="Test full flow", priority=2)
         api.edit_ticket(ticket_id=ticket["id"], updates={"priority": 4, "description": "Updated desc"})
         resolve = api.resolve_ticket(ticket_id=ticket["id"], resolution="All good now")
@@ -785,7 +785,7 @@ class TestTicketAPISequentialProblematic:
 
     def test_get_user_tickets_no_matching_status(self):
         api = TicketAPI(initial_config=json.loads(json.dumps(TICKET_API_CONFIG)))
-        api.ticket_login(username="agent_a", password="pass123")
+        api.ticket_login(username="agent_a", password="testpass")
         result = api.get_user_tickets(status="Closed")
         assert result["id"] == 0
 
@@ -843,7 +843,7 @@ class TestCrossAPISequentialCorrect:
         order = bot.place_order(order_type="Buy", symbol="AAPL", price=227.16, amount=10)
         assert order["order_id"] is not None
 
-        posting.authenticate_twitter(username="genealogy_enthusiast", password="Fh7#mK9$pL2&vN4")
+        posting.authenticate_twitter(username="genealogy_enthusiast", password="testpass")
         tweet = posting.post_tweet(
             content=f"Just bought 10 shares of AAPL!",
             tags=["#trading", "#AAPL"]

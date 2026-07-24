@@ -149,7 +149,7 @@ TRADING_CONFIGS: List[Dict[str, Any]] = [
     {
         "account_info": {"account_id": 12345, "balance": 10000.0, "binding_card": 1974202140965533},
         "authenticated": False, "market_status": "Open", "order_counter": 12446,
-        "username": "trader_admin", "password": "TradeAdmin2024!",
+        "username": "trader_admin", "password": "testpass",
         "stocks": {
             "AAPL": {"price": 227.16, "percent_change": 0.17, "volume": 2.552, "MA(5)": 227.11, "MA(20)": 227.09},
             "GOOG": {"price": 2840.34, "percent_change": 0.24, "volume": 1.123, "MA(5)": 2835.67, "MA(20)": 2842.15},
@@ -169,7 +169,7 @@ TRADING_CONFIGS: List[Dict[str, Any]] = [
     {
         "account_info": {"account_id": 67890, "balance": 2500.0, "binding_card": 4532123498765432},
         "authenticated": False, "market_status": "Closed", "order_counter": 500,
-        "username": "retail_trader", "password": "Retail2024!",
+        "username": "retail_trader", "password": "testpass",
         "stocks": {
             "AAPL": {"price": 229.50, "percent_change": -0.32, "volume": 3.100, "MA(5)": 230.10, "MA(20)": 228.90},
             "GOOG": {"price": 2855.00, "percent_change": 0.51, "volume": 0.980, "MA(5)": 2850.20, "MA(20)": 2848.00},
@@ -189,7 +189,7 @@ TRADING_CONFIGS: List[Dict[str, Any]] = [
     {
         "account_info": {"account_id": 11111, "balance": 50000.0, "binding_card": 5555666677778888},
         "authenticated": False, "market_status": "Open", "order_counter": 89000,
-        "username": "fund_manager", "password": "FundMgr2024!",
+        "username": "fund_manager", "password": "testpass",
         "stocks": {
             "AAPL": {"price": 225.00, "percent_change": -1.08, "volume": 4.500, "MA(5)": 227.50, "MA(20)": 230.00},
             "GOOG": {"price": 2820.00, "percent_change": -0.71, "volume": 1.500, "MA(5)": 2835.00, "MA(20)": 2850.00},
@@ -213,7 +213,7 @@ TRADING_CONFIGS: List[Dict[str, Any]] = [
     {
         "account_info": {"account_id": 22222, "balance": 150.0, "binding_card": 1111222233334444},
         "authenticated": False, "market_status": "Open", "order_counter": 7,
-        "username": "penny_stock_fan", "password": "PennyStock2024!",
+        "username": "penny_stock_fan", "password": "testpass",
         "stocks": {
             "AAPL": {"price": 228.00, "percent_change": 0.44, "volume": 2.800, "MA(5)": 227.00, "MA(20)": 226.00},
             "GOOG": {"price": 2845.00, "percent_change": 0.17, "volume": 1.050, "MA(5)": 2842.00, "MA(20)": 2838.00},
@@ -235,7 +235,7 @@ TRADING_CONFIGS: List[Dict[str, Any]] = [
     {
         "account_info": {"account_id": 33333, "balance": 75000.0, "binding_card": 9876543210987654},
         "authenticated": False, "market_status": "Open", "order_counter": 15000,
-        "username": "day_trader_pro", "password": "DayTrader2024!",
+        "username": "day_trader_pro", "password": "testpass",
         "stocks": {
             "AAPL": {"price": 230.50, "percent_change": 1.47, "volume": 5.200, "MA(5)": 228.00, "MA(20)": 225.00},
             "GOOG": {"price": 2870.00, "percent_change": 1.05, "volume": 1.800, "MA(5)": 2850.00, "MA(20)": 2835.00},
@@ -267,7 +267,7 @@ TICKET_CONFIGS: List[Dict[str, Any]] = [
         ],
         "ticket_count": 654321, "ticket_counter": 654321,
         "current_user": "", "authenticated": False,
-        "username": "support_agent", "password": "SupportAgent2024!",
+        "username": "support_agent", "password": "testpass",
     },
     {
         "tickets_queue": [
@@ -278,7 +278,7 @@ TICKET_CONFIGS: List[Dict[str, Any]] = [
         ],
         "ticket_count": 1004, "ticket_counter": 1004,
         "current_user": "", "authenticated": False,
-        "username": "admin_user", "password": "AdminUser2024!",
+        "username": "admin_user", "password": "testpass",
     },
     {
         "tickets_queue": [
@@ -287,7 +287,7 @@ TICKET_CONFIGS: List[Dict[str, Any]] = [
         ],
         "ticket_count": 5002, "ticket_counter": 5002,
         "current_user": "", "authenticated": False,
-        "username": "hr_ops", "password": "HROps2024!",
+        "username": "hr_ops", "password": "testpass",
     },
     {
         "tickets_queue": [
@@ -299,13 +299,13 @@ TICKET_CONFIGS: List[Dict[str, Any]] = [
         ],
         "ticket_count": 9005, "ticket_counter": 9005,
         "current_user": "", "authenticated": False,
-        "username": "ops_lead", "password": "OpsLead2024!",
+        "username": "ops_lead", "password": "testpass",
     },
     {
         "tickets_queue": [],
         "ticket_count": 0, "ticket_counter": 0,
         "current_user": "", "authenticated": False,
-        "username": "new_agent", "password": "NewAgent2024!",
+        "username": "new_agent", "password": "testpass",
     },
 ]
 
@@ -321,7 +321,7 @@ TRAVEL_CONFIGS: List[Dict[str, Any]] = [
         "access_token": "", "token_type": "Bearer", "token_expires_in": 0, "token_scope": "",
         "user_first_name": "Michael", "user_last_name": "Smith",
         "budget_limit": 5000.0,
-        "client_id": "travel_client_001", "client_secret": "s3cretK3y!", "refresh_token": "refresh_abc123",
+        "client_id": "travel_client_001", "client_secret": "test_secret", "refresh_token": "refresh_abc123",
     },
     {
         "credit_card_list": {
@@ -331,7 +331,7 @@ TRAVEL_CONFIGS: List[Dict[str, Any]] = [
         "access_token": "", "token_type": "Bearer", "token_expires_in": 0, "token_scope": "",
         "user_first_name": "Sarah", "user_last_name": "Johnson",
         "budget_limit": 3000.0,
-        "client_id": "biz_travel_002", "client_secret": "BizTr@vel!", "refresh_token": "refresh_def456",
+        "client_id": "biz_travel_002", "client_secret": "test_secret", "refresh_token": "refresh_def456",
     },
     {
         "credit_card_list": {
@@ -344,7 +344,7 @@ TRAVEL_CONFIGS: List[Dict[str, Any]] = [
         "access_token": "", "token_type": "Bearer", "token_expires_in": 0, "token_scope": "",
         "user_first_name": "Carlos", "user_last_name": "Rivera",
         "budget_limit": 10000.0,
-        "client_id": "lux_travel_003", "client_secret": "LuxTr@vel!", "refresh_token": "refresh_ghi789",
+        "client_id": "lux_travel_003", "client_secret": "test_secret", "refresh_token": "refresh_ghi789",
     },
     {
         "credit_card_list": {
@@ -354,7 +354,7 @@ TRAVEL_CONFIGS: List[Dict[str, Any]] = [
         "access_token": "", "token_type": "Bearer", "token_expires_in": 0, "token_scope": "",
         "user_first_name": "Emily", "user_last_name": "Chen",
         "budget_limit": 1500.0,
-        "client_id": "budget_004", "client_secret": "Budget$24!", "refresh_token": "refresh_jkl012",
+        "client_id": "budget_004", "client_secret": "test_secret", "refresh_token": "refresh_jkl012",
     },
     {
         "credit_card_list": {
@@ -367,7 +367,7 @@ TRAVEL_CONFIGS: List[Dict[str, Any]] = [
         "access_token": "", "token_type": "Bearer", "token_expires_in": 0, "token_scope": "",
         "user_first_name": "David", "user_last_name": "Park",
         "budget_limit": 8000.0,
-        "client_id": "corp_travel_005", "client_secret": "CorpTr@v!", "refresh_token": "refresh_mno345",
+        "client_id": "corp_travel_005", "client_secret": "test_secret", "refresh_token": "refresh_mno345",
     },
 ]
 
@@ -401,7 +401,7 @@ POSTING_CONFIGS: List[Dict[str, Any]] = [
         "retweets": [{"username": "history_buff", "tweet_id": 0}, {"username": "family_finder", "tweet_id": 5}],
         "following_list": ["history_buff", "family_finder", "puzzle_solver"],
         "users": {"history_buff": {"tweet_count": 25, "following_count": 50, "retweet_count": 10}, "family_finder": {"tweet_count": 15, "following_count": 30, "retweet_count": 5}, "puzzle_solver": {"tweet_count": 8, "following_count": 12, "retweet_count": 2}},
-        "username": "tech_user", "password": "TechUser2024!",
+        "username": "tech_user", "password": "testpass",
     },
     {
         "authenticated": False, "tweet_counter": 5,
@@ -417,7 +417,7 @@ POSTING_CONFIGS: List[Dict[str, Any]] = [
         "retweets": [{"username": "food_critic", "tweet_id": 0}],
         "following_list": ["food_critic", "home_baker"],
         "users": {"food_critic": {"tweet_count": 40, "following_count": 80, "retweet_count": 15}, "home_baker": {"tweet_count": 12, "following_count": 25, "retweet_count": 3}},
-        "username": "foodie_chef", "password": "Foodie2024!",
+        "username": "foodie_chef", "password": "testpass",
     },
     {
         "authenticated": False, "tweet_counter": 3,
@@ -431,7 +431,7 @@ POSTING_CONFIGS: List[Dict[str, Any]] = [
         "retweets": [{"username": "globe_trotter", "tweet_id": 1}],
         "following_list": ["globe_trotter", "backpacker_joe"],
         "users": {"globe_trotter": {"tweet_count": 55, "following_count": 120, "retweet_count": 30}, "backpacker_joe": {"tweet_count": 20, "following_count": 45, "retweet_count": 8}},
-        "username": "travel_diaries", "password": "Travel2024!",
+        "username": "travel_diaries", "password": "testpass",
     },
     {
         "authenticated": False, "tweet_counter": 25,
@@ -456,7 +456,7 @@ POSTING_CONFIGS: List[Dict[str, Any]] = [
             "travel_lover": {"tweet_count": 52, "following_count": 40, "retweet_count": 15},
             "fitness_junkie": {"tweet_count": 30, "following_count": 20, "retweet_count": 5},
         },
-        "username": "newcomer", "password": "NewUser2024!",
+        "username": "newcomer", "password": "testpass",
     },
     {
         "authenticated": False, "tweet_counter": 25,
@@ -496,7 +496,7 @@ POSTING_CONFIGS: List[Dict[str, Any]] = [
         "retweets": [{"username": "sports_analyst", "tweet_id": 0}, {"username": "sports_analyst", "tweet_id": 5}],
         "following_list": ["sports_analyst", "stat_guru"],
         "users": {"sports_analyst": {"tweet_count": 100, "following_count": 200, "retweet_count": 45}, "stat_guru": {"tweet_count": 30, "following_count": 50, "retweet_count": 10}},
-        "username": "sports_fan", "password": "SportsFan2024!",
+        "username": "sports_fan", "password": "testpass",
     },
 ]
 

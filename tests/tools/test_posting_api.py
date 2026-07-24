@@ -81,7 +81,7 @@ def posting_api():
             }
         },
         "username": "genealogy_enthusiast",
-        "password": "Fh7#mK9$pL2&vN4"
+        "password": "testpass"
     }
     return PostingAPI(initial_config)
 
@@ -101,7 +101,7 @@ def unauthenticated_api():
             }
         },
         "username": "genealogy_enthusiast",
-        "password": "Fh7#mK9$pL2&vN4"
+        "password": "testpass"
     }
     return PostingAPI(initial_config)
 
@@ -109,7 +109,7 @@ def unauthenticated_api():
 def test_authenticate_twitter_success(posting_api):
     result = posting_api.authenticate_twitter(
         username='genealogy_enthusiast',
-        password='Fh7#mK9$pL2&vN4'
+        password='testpass'
     )
     assert result.get("authentication_status") is True
 
@@ -125,7 +125,7 @@ def test_authenticate_twitter_wrong_password(posting_api):
 def test_authenticate_twitter_wrong_username(posting_api):
     result = posting_api.authenticate_twitter(
         username='dr_smith',
-        password='Fh7#mK9$pL2&vN4'
+        password='testpass'
     )
     assert result.get("authentication_status") is False
 

@@ -42,7 +42,7 @@ class TestAuthenticateTravel:
     def test_authenticate_travel_success(self, travel_booking_instance):
         result = travel_booking_instance.authenticate_travel(
             client_id='client_520',
-            client_secret='rise_to_sky',
+            client_secret='testpass',
             refresh_token='token990125',
             grant_type='read_write',
             user_first_name='Michael',
@@ -56,7 +56,7 @@ class TestAuthenticateTravel:
     def test_authenticate_travel_new_user(self, travel_booking_instance):
         result = travel_booking_instance.authenticate_travel(
             client_id='trav3lMaxID2023',
-            client_secret='M@xSecret!',
+            client_secret='testpass',
             refresh_token='r3freshM3n0w',
             grant_type='read_write',
             user_first_name='Maxwell',
@@ -69,7 +69,7 @@ class TestAuthenticateTravel:
     def test_authenticate_travel_invalid_grant_type(self, travel_booking_instance):
         result = travel_booking_instance.authenticate_travel(
             client_id='client_520',
-            client_secret='rise_to_sky',
+            client_secret='testpass',
             refresh_token='token990125',
             grant_type='invalid_type',
             user_first_name='Michael',

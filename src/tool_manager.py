@@ -274,7 +274,7 @@ FULL_INITIAL_CONFIGS = {
             "puzzle_solver": {"tweet_count": 8, "following_count": 12, "retweet_count": 2}
         },
         "username": "tech_user",
-        "password": "TechUser2024!"
+        "password": "testpass"
     },
     "TicketAPI": {
         "tickets_queue": [
@@ -300,7 +300,7 @@ FULL_INITIAL_CONFIGS = {
         "current_user": "",
         "authenticated": False,
         "username": "support_agent",
-        "password": "SupportAgent2024!"
+        "password": "testpass"
     },
     "TradingBot": {
         "account_info": {
@@ -312,7 +312,7 @@ FULL_INITIAL_CONFIGS = {
         "market_status": "Open",
         "order_counter": 12446,
         "username": "trader_admin",
-        "password": "TradeAdmin2024!",
+        "password": "testpass",
         "stocks": {
             "AAPL": {"price": 227.16, "percent_change": 0.17, "volume": 2.552, "MA(5)": 227.11, "MA(20)": 227.09},
             "GOOG": {"price": 2840.34, "percent_change": 0.24, "volume": 1.123, "MA(5)": 2835.67, "MA(20)": 2842.15},
@@ -368,7 +368,7 @@ FULL_INITIAL_CONFIGS = {
         "user_last_name": "Smith",
         "budget_limit": 5000.0,
         "client_id": "travel_client_001",
-        "client_secret": "s3cretK3y!",
+        "client_secret": "test_secret",
         "refresh_token": "refresh_abc123"
     },
     "VehicleControlAPI": {

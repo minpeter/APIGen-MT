@@ -1,10 +1,30 @@
-__pycache__
-.venv
+__pycache__/
+.venv/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+src/*.egg-info/
 
 # Environment files - DO NOT COMMIT
 .env
 .env.local
 .env.*.local
+.env*
 
-# Generated data
+# Runtime / generated artifacts
+logs/
+*.log
 data/generated/
+
+# Large generated fixtures (regenerate or ship via LFS/release)
+# Keep optional small samples only; default ignore bulk dumps
+data/exhaustive_analysis/
+magnet_tool_extraction/*.json
+magnet_tool_extraction/*.jsonl
+magnet_tool_extraction/*.html
+magnet_tool_extraction/*.ipynb
+magnet_tool_extraction/*analysis*
