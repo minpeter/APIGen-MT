@@ -6,19 +6,20 @@ This document describes the three-stage data synthesis pipeline: extracting tool
 
 ### Environment
 
-Create a `.env` file in the project root with:
+Create a `.env` file in the project root with the shared runtime settings:
 
 ```
-OPENAI_API_KEY=<your NVIDIA API key>
-OPENAI_API_BASE=https://integrate.api.nvidia.com/v1
+OPENAI_API_KEY=<your API key>
+# Optional; defaults to https://openrouter.ai/api/v1
+OPENAI_API_BASE=https://openrouter.ai/api/v1
 ```
 
-The pipeline uses NVIDIA's API endpoint with OpenAI-compatible clients. All three stages require `OPENAI_API_KEY`; stages 1, 2 and 3 use `z-ai/glm-5.1` by default.
+The pipeline uses an OpenAI-compatible endpoint. `OPENAI_API_KEY` is required for LLM calls, `OPENAI_API_BASE` is optional, and the default model is `minimax/minimax-m2.7`. These values are defined in `src/runtime_config.py`; pass `--model` when a workflow needs a different model.
 
 ### Dependencies
 
 ```bash
-pip install openai pydantic python-dotenv requests pytest tiktoken
+uv sync --all-extras
 ```
 
 ---
@@ -216,7 +217,7 @@ python scripts/generate_tool_implementations.py [OPTIONS]
 | `--classes` | all 8 | Comma-separated class keys to generate |
 | `--output-dir` | `tools/` | Output directory for class modules |
 | `--test-dir` | `tests/tools/` | Output directory for test files |
-| `--model` | `z-ai/glm-5.1` | LLM model |
+| `--model` | `minimax/minimax-m2.7` | LLM model |
 | `--api-base` | `$OPENAI_API_BASE` | API endpoint URL |
 | `--api-key` | `$OPENAI_API_KEY` | API key |
 | `--skip-existing` | off | Skip classes with existing output files |
@@ -494,7 +495,7 @@ python src/apigen_step_by_step.py
 | `--output` | `-o` | `step_by_step_datapoints.jsonl` | Output JSONL path |
 | `--tool-pool` | | `magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl` | Tool pool file |
 | `--invocation-examples` | | `magnet_tool_extraction/bfcl_v3_invocation_examples.jsonl` | Invocation examples (for Python impl loading) |
-| `--model` | `-m` | `z-ai/glm-5.1` | LLM model |
+| `--model` | `-m` | `minimax/minimax-m2.7` | LLM model |
 
 ### Three-Stage Generation Workflow
 
@@ -894,8 +895,8 @@ Varies significantly with `num_actions` and verification pass rate. For 100 data
 
 ```bash
 # 0. Set up environment
-echo 'OPENAI_API_KEY=nvapi-...' > .env
-echo 'OPENAI_API_BASE=https://integrate.api.nvidia.com/v1' >> .env
+echo 'OPENAI_API_KEY=your-api-key' > .env
+echo 'OPENAI_API_BASE=https://openrouter.ai/api/v1' >> .env
 
 # 1. Extract tools from BFCL (produces bfcl_v3_tools_with_outputs.jsonl)
 python magnet_tool_extraction/extract_bfcl_with_outputs.py

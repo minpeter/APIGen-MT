@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 import os
+import sys
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+
 from dotenv import load_dotenv
 import requests
 import json
+from runtime_config import DEFAULT_API_BASE, DEFAULT_MODEL
 
 load_dotenv()
 
-base_url = os.getenv("OPENAI_API_BASE")
+base_url = os.getenv("OPENAI_API_BASE", DEFAULT_API_BASE)
 api_key = os.getenv("OPENAI_API_KEY")
-model = os.getenv("API_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
+model = os.getenv("API_MODEL", DEFAULT_MODEL)
 
 payload = {
     "model": model,

@@ -8,7 +8,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from openai import OpenAI
 
@@ -16,6 +16,7 @@ from openai import OpenAI
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from llm_client import LLMClient, LocalOpenAILLMClient
+from runtime_config import DEFAULT_API_BASE, DEFAULT_MODEL
 
 
 class OutputPrediction(BaseModel):
@@ -30,28 +31,24 @@ class LLMOutputPredictor:
     - Tool schema (name, description, parameters)
     - Invocation contexts (how the tool is used in practice)
 
-    Note: This class only supports NVIDIA LLM client.
+    The client uses the repository's OpenAI-compatible runtime configuration.
     """
 
-    def __init__(self, client_type: str = "nvidia", debug: bool = False):
+    def __init__(self, client_type: str = "openai-compatible", debug: bool = False):
         """
         Initialize the LLM output predictor.
 
         Args:
-            client_type: Type of LLM client (must be 'nvidia', others are deprecated)
+            client_type: Retained for backwards compatibility.
             debug: Enable debug logging
 
-        Note: client_type parameter is kept for backward compatibility but only 'nvidia' is supported.
+        The extraction workflow is still opt-in and requires an API key.
         """
         self.debug = debug
 
-        # Only NVIDIA client is supported
-        if client_type != "nvidia":
-            print(f"⚠️ Warning: client_type '{client_type}' is deprecated. Using 'nvidia' instead.")
-
-        # Use OpenAI-compatible client with NVIDIA API
+        # Use the shared OpenAI-compatible runtime defaults.
         api_key = os.getenv("OPENAI_API_KEY")
-        base_url = os.getenv("OPENAI_API_BASE", "https://integrate.api.nvidia.com/v1")
+        base_url = os.getenv("OPENAI_API_BASE", DEFAULT_API_BASE)
 
         if not api_key:
             raise ValueError("OPENAI_API_KEY not found in environment")
@@ -60,8 +57,8 @@ class LLMOutputPredictor:
             api_key=api_key,
             base_url=base_url
         )
-        self.model = "z-ai/glm-5.1"
-        self.client_type = "nvidia"
+        self.model = DEFAULT_MODEL
+        self.client_type = "openai-compatible"
 
     def predict_output(
         self,
@@ -97,7 +94,7 @@ class LLMOutputPredictor:
         # Retry loop
         for attempt in range(1, max_retries + 1):
             try:
-                if self.client_type == "nvidia":
+                if self.client_type == "openai-compatible":
                     # Use OpenAI client directly
                     response = self.client.chat.completions.create(
                         model=self.model,
@@ -257,7 +254,7 @@ Respond ONLY with a valid JSON object matching the schema:
 def predict_outputs_for_tools(
     tools: List[Dict[str, Any]],
     invocations: List[Dict[str, Any]],
-    client_type: str = "nvidia",
+    client_type: str = "openai-compatible",
     max_contexts: int = 5,
     debug: bool = False
 ) -> List[Dict[str, Any]]:
@@ -267,7 +264,7 @@ def predict_outputs_for_tools(
     Args:
         tools: List of tool definitions
         invocations: List of all invocation examples
-        client_type: Type of LLM client to use (must be 'nvidia')
+        client_type: Retained for backwards compatibility.
         max_contexts: Maximum invocation contexts per tool
         debug: Enable debug mode
 
@@ -351,7 +348,7 @@ if __name__ == "__main__":
         }
     ]
 
-    predictor = LLMOutputPredictor(client_type="nvidia", debug=True)
+    predictor = LLMOutputPredictor(client_type="openai-compatible", debug=True)
     prediction = predictor.predict_output(test_tool, test_contexts)
 
     print(f"\n{'='*80}")

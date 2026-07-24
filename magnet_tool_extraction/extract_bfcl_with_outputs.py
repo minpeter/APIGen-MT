@@ -6,7 +6,7 @@ Downloads BFCL_v3 if it doesn't exist.
 
 This script only works with:
 - BFCL_v3 (version is hardcoded)
-- NVIDIA LLM client (client type is hardcoded)
+- OpenAI-compatible LLM client (runtime defaults are shared with the primary CLI)
 """
 
 import argparse
@@ -25,7 +25,7 @@ from llm_output_predictor import predict_outputs_for_tools
 
 # Fixed constants - no configuration options
 BFCL_VERSION = "v3"
-LLM_CLIENT_TYPE = "nvidia"
+LLM_CLIENT_TYPE = "openai-compatible"
 
 
 def extract_tools_from_bfcl(
@@ -132,7 +132,7 @@ def main():
     load_dotenv()
 
     parser = argparse.ArgumentParser(
-        description="Extract BFCL_v3 tools with LLM-predicted output fields (NVIDIA client only)"
+        description="Extract BFCL_v3 tools with LLM-predicted output fields"
     )
     parser.add_argument(
         "--data-dir",
@@ -223,11 +223,11 @@ def main():
         else:
             print(f"\n⚠️ Warning: {frequent_tools_file} not found, ignoring --frequent flag")
 
-    # Predict outputs using LLM (always uses NVIDIA client)
+    # Predict outputs using the shared OpenAI-compatible runtime.
     enhanced_tools = predict_outputs_for_tools(
         tools=tools,
         invocations=invocations,
-        client_type=LLM_CLIENT_TYPE,  # Hardcoded to "nvidia"
+        client_type=LLM_CLIENT_TYPE,
         debug=args.debug,
         max_contexts=args.max_contexts
     )

@@ -33,6 +33,10 @@ from dotenv import load_dotenv
 
 _ = load_dotenv()
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+from runtime_config import DEFAULT_API_BASE, DEFAULT_MODEL
+
 type JsonObject = dict[str, object]
 
 _JSON_LOADS: Callable[[str], object] = json.loads
@@ -64,7 +68,7 @@ class CliArgs(argparse.Namespace):
     classes: str | None = None
     output_dir: str = ""
     test_dir: str = ""
-    model: str = ""
+    model: str = DEFAULT_MODEL
     api_base: str | None = None
     api_key: str | None = None
     skip_existing: bool = False
@@ -140,7 +144,6 @@ def _tool_sort_key(tool: JsonObject) -> str:
     return _get_string(tool, "api_name")
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TOOLS_EXTRACTION_DIR = PROJECT_ROOT / "magnet_tool_extraction"
 BFCL_FUNC_DOC_DIR = (
     PROJECT_ROOT.parent / "magnet_mt" / "data" / "BFCL_v3" / "multi_turn_func_doc"
@@ -300,9 +303,9 @@ class SimpleLLMClient:
 
     def __init__(
         self,
-        url: str = "https://integrate.api.nvidia.com/v1",
+        url: str = DEFAULT_API_BASE,
         api_key: str = "",
-        api_model: str = "z-ai/glm-5.1",
+        api_model: str = DEFAULT_MODEL,
         debug_mode: bool = False,
     ) -> None:
         self.url: str = url
@@ -437,16 +440,14 @@ class SimpleLLMClient:
 
 
 def create_llm_client(
-    model: str = "z-ai/glm-5.1",
+    model: str = DEFAULT_MODEL,
     api_base: str | None = None,
     api_key: str | None = None,
     verbose: bool = False,
 ) -> SimpleLLMClient:
     """Create a lightweight LLM client (no transformers dependency)."""
 
-    url = api_base or os.getenv(
-        "OPENAI_API_BASE", "https://integrate.api.nvidia.com/v1"
-    )
+    url = api_base or os.getenv("OPENAI_API_BASE", DEFAULT_API_BASE)
     key = api_key or os.getenv("OPENAI_API_KEY", "")
 
     client = SimpleLLMClient(
@@ -1492,8 +1493,8 @@ def main() -> int:
     _ = parser.add_argument(
         "--model",
         type=str,
-        default="z-ai/glm-5.1",
-        help="LLM model to use (default: z-ai/glm-5.1)",
+        default=DEFAULT_MODEL,
+        help=f"LLM model to use (default: {DEFAULT_MODEL})",
     )
     _ = parser.add_argument(
         "--api-base",

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -11,21 +10,23 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 
+from runtime_config import OPENAI_API_BASE_ENV, OPENAI_API_KEY_ENV, RuntimeConfig
+
 
 def main() -> int:
     if "--help" in sys.argv or "-h" in sys.argv:
         print(__doc__)
-        print("Env: OPENAI_API_KEY, OPENAI_API_BASE")
+        print(f"Env: {OPENAI_API_KEY_ENV} (required), {OPENAI_API_BASE_ENV} (optional)")
         print("Paths: magnet_tool_extraction/bfcl_v3_tools_with_outputs.jsonl")
         return 0
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    api_base = os.getenv("OPENAI_API_BASE")
     pool = ROOT / "magnet_tool_extraction" / "bfcl_v3_tools_with_outputs.jsonl"
     examples = ROOT / "magnet_tool_extraction" / "bfcl_v3_invocation_examples.jsonl"
 
-    if not api_key or not api_base:
-        print("ERROR: set OPENAI_API_KEY and OPENAI_API_BASE", file=sys.stderr)
+    try:
+        RuntimeConfig.from_environment()
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
         return 1
     if not pool.is_file():
         print(

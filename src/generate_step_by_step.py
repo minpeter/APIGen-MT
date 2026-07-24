@@ -42,6 +42,7 @@ from apigen_multi_turn import MultiTurnDatapoint, MultiTurnGenerator
 from apigen_step_by_step import StepByStepDatapoint, StepByStepGenerator
 from llm_client import LocalOpenAILLMClient
 from llm_request_helpers import decode_json_object
+from runtime_config import DEFAULT_MODEL, RuntimeConfig
 from step_by_step_models import TokenUsageStats
 from step_by_step_protocols import LLM, StepByStepToolManager
 from tool_manager import ToolManager
@@ -64,7 +65,7 @@ class Arguments(argparse.Namespace):
     tool_pool: str = ""
     invocation_examples: str = ""
     category: str | None = None
-    model: str = "minimax/minimax-m2.7"
+    model: str = DEFAULT_MODEL
     judge_model: str | None = None
     judge_api_base: str | None = None
     judge_api_key: str | None = None
@@ -179,8 +180,8 @@ def parse_args() -> Arguments:
     _ = parser.add_argument(
         "--model",
         "-m",
-        default="minimax/minimax-m2.7",
-        help="Model to use for generation (default: minimax/minimax-m2.7)",
+        default=DEFAULT_MODEL,
+        help=f"Model to use for generation (default: {DEFAULT_MODEL})",
     )
     _ = parser.add_argument(
         "--judge-model",
@@ -464,16 +465,16 @@ def main() -> None:
     print(f"Model: {args.model}")
     print("=" * 70)
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    api_base = os.getenv("OPENAI_API_BASE")
-    if not api_key or not api_base:
-        print("ERROR: OPENAI_API_KEY or OPENAI_API_BASE not set")
+    try:
+        runtime_config = RuntimeConfig.from_environment(model=args.model)
+    except ValueError as error:
+        print(f"ERROR: {error}")
         raise SystemExit(1)
 
     llm_client = LocalOpenAILLMClient(
-        url=api_base,
-        api_key=api_key,
-        api_model=args.model,
+        url=runtime_config.api_base,
+        api_key=runtime_config.api_key,
+        api_model=runtime_config.model,
         hf_tokenizer_id=None,
     )
     print("\nLoading tools...")
@@ -502,8 +503,8 @@ def main() -> None:
     judge_client: LLM = llm_client
     if args.judge_model:
         judge_client = LocalOpenAILLMClient(
-            url=args.judge_api_base or api_base,
-            api_key=args.judge_api_key or api_key,
+            url=args.judge_api_base or runtime_config.api_base,
+            api_key=args.judge_api_key or runtime_config.api_key,
             api_model=args.judge_model,
             hf_tokenizer_id=None,
         )

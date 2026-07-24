@@ -1,14 +1,18 @@
 # Agents Documentation
 
-## Current LLM Configuration (Updated 2026-07-16)
+## Current LLM Configuration (source of truth)
 
-**API Provider**: OpenRouter
-- API Base: https://openrouter.ai/api/v1
-- API Key: <USE ENVIRONMENT VARIABLE OR SECURE VAULT>
-- Default Model: minimaxai/minimax-m2.7
+The primary generation CLI uses the OpenAI-compatible settings in
+`src/runtime_config.py`:
 
-**Previous Configurations**:
-- NVIDIA API (deprecated): nvidia/nemotron-3-super-120b-a12b with https://integrate.api.nvidia.com/v1
+- Provider: OpenRouter by default; any compatible endpoint may be selected.
+- API base: `OPENAI_API_BASE`, defaulting to `https://openrouter.ai/api/v1`.
+- API key: required in `OPENAI_API_KEY`; keep it in the environment or a secure vault.
+- Default model: `minimax/minimax-m2.7`.
+
+Use `uv run python main.py --help` to inspect the CLI without credentials or a
+network call. Historical extraction notes below are not a second configuration
+source; their runnable defaults use the same shared constants where applicable.
 
 ## BFCL Tool Extraction - Completed (2026-04-10)
 
@@ -17,7 +21,7 @@ Successfully extracted and enhanced tool definitions from BFCL_v3 dataset with L
 ### Changes Implemented
 1. ✅ Removed `-v` command line argument from `extract_bfcl_with_outputs.py`
 2. ✅ Hardcoded to BFCL_v3 dataset only (no version choice)
-3. ✅ Removed LLM client choice, hardcoded to NVIDIA API
+3. ✅ The extraction workflow uses the shared OpenAI-compatible runtime settings
 4. ✅ Added 5-second timeout after each LLM invocation (in `llm_output_predictor.py`)
 5. ✅ Implemented 3-attempt retry logic for LLM errors
 6. ✅ Added `--frequent` argument for processing top 100 most frequent tools

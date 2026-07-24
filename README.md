@@ -6,7 +6,7 @@ The goal is to generate synthetic multi-turn conversational data for training AI
 1.  **Phase 1:** Generation and validation of a task "blueprint" containing a user query (`q`), a ground-truth sequence of tool calls (`a_gt`), and an expected outcome description (`o_gt`).
 2.  **Phase 2:** Simulation of a multi-turn interaction between a user and an AI agent based on the validated blueprint, resulting in a conversational trajectory including dialogue and tool usage.
 
-This implementation utilizes Large Language Models (LLMs) via the Friendli.ai API (using the `openai` library) and leverages **Function Calling** for the agent's decision-making process in Phase 2.
+The primary CLI uses an OpenAI-compatible API (via the `openai`-compatible HTTP client) and leverages **Function Calling** for the agent's decision-making process in Phase 2. The default endpoint and model are defined once in `src/runtime_config.py`.
 
 ## Implemented Features
 
@@ -31,7 +31,7 @@ This implementation utilizes Large Language Models (LLMs) via the Friendli.ai AP
     * **Trajectory Validation:** Validates the completed trajectory by comparing the sequence of *successfully executed* tool calls against the ground truth sequence (`a_gt`) from the blueprint.
     * Saving successful, unique data points (blueprint + trajectory) to a `.jsonl` file.
     * Removes `null` values from the final trajectory data before saving.
-* **Configuration:** Allows specifying different LLM models for standard generation (`MODEL_ID`) and function calling steps (`FC_MODEL_ID`).
+* **Configuration:** Uses `OPENAI_API_KEY`, optional `OPENAI_API_BASE`, and the shared default model `minimax/minimax-m2.7`. `--model` and `--judge-model` override the model for a run.
 
 ## How it Works (Simplified Flow)
 
@@ -63,30 +63,33 @@ This implementation utilizes Large Language Models (LLMs) via the Friendli.ai AP
 
 ## Setup and Requirements
 
-1.  **Python:** Python 3.8+ recommended.
+1.  **Python:** Python 3.13 (the version declared by `pyproject.toml`).
 2.  **Libraries:** Install required libraries. Pydantic v2+ and openai v1.17.0+ are recommended.
     ```bash
-    pip install openai "pydantic>=2.0"
+    uv sync --all-extras
     ```
-    (Consider creating a `requirements.txt` file).
-3.  **API Key:** Set your Friendli.ai API token as an environment variable:
+3.  **API credentials:** Set the required key and, optionally, an endpoint override:
     ```bash
-    export FRIENDLI_TOKEN="your_friendli_api_token_here"
+    export OPENAI_API_KEY="your-api-key"
+    # Defaults to https://openrouter.ai/api/v1
+    export OPENAI_API_BASE="https://openrouter.ai/api/v1"
     ```
 
 ## How to Run
 
-Install the project and optional development dependencies:
+Install the project, test dependencies, and ML extras:
 
 ```bash
 uv sync --all-extras
 ```
 
-Set `OPENAI_API_KEY` and, when needed, `OPENAI_API_BASE`, then inspect the real CLI:
+Set `OPENAI_API_KEY` and, when needed, `OPENAI_API_BASE`, then inspect the CLI:
 
 ```bash
 uv run python main.py --help
 ```
+
+The default model is `minimax/minimax-m2.7`. `OPENAI_API_BASE` is optional and defaults to `https://openrouter.ai/api/v1`; `OPENAI_API_KEY` remains required only when generation starts. `uv run python main.py --help` and `uv run pytest tests/unit/test_runtime_config.py` are no-network smoke checks.
 
 Generate step-by-step or multi-turn data:
 
@@ -104,6 +107,10 @@ uv run python main.py \
 ```
 
 The verification command exits `0` for reproducible trajectories, `1` for output/state mismatches, and `2` when deterministic verification is unavailable or the input is invalid.
+
+## CI and typing baseline
+
+CI installs the locked project with `uv sync --all-extras --frozen`, runs the full pytest suite, compiles `src/`, `tools/`, and `tests/`, and runs `basedpyright` on `src/`. The maintained `src/` boundary currently has a clean static-type baseline. A repository-wide baseline measurement on `main` found 180 errors and 3,404 warnings, concentrated in generated tool implementations and legacy extraction/generator scripts. Those surfaces are intentionally outside this gate with an explicit rollout boundary; no individual diagnostics are blanket-disabled. They should be brought into the gate incrementally with ownership and tests.
 
 ## Implemented Validation
 
